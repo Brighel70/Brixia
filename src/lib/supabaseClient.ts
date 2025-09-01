@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 
-// Credenziali Supabase hardcoded per sviluppo
-const url = 'https://lsuqdeizqapsexeekrua.supabase.co'
-const anon = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxzdXFkZWl6cWFwc2V4ZWVrcnVhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYzMDcxMDUsImV4cCI6MjA3MTg4MzEwNX0.8w5u567qZcgxLmvi5N6M2N2eMrc6il20i7fkLIPJYHA'
+// Credenziali Supabase da variabili d'ambiente
+const url = import.meta.env.VITE_SUPABASE_URL || 'https://lsuqdeizqapsexeekrua.supabase.co'
+const anon = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxzdXFkZWl6cWFwc2V4ZWVrcnVhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYzMDcxMDUsImV4cCI6MjA3MTg4MzEwNX0.8w5u567qZcgxLmvi5N6M2N2eMrc6il20i7fkLIPJYHA'
 
 // Verifica che le credenziali siano valide
 if (!url || !url.includes('supabase.co')) {
