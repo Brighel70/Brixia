@@ -1,0 +1,21 @@
+{
+  "name": "Brixia Rugby - Gestione Club",
+  "short_name": "Brixia Rugby",
+  "description": "App gestionale per il club Brixia Rugby - Presenze, allenamenti e comunicazioni",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b1f4d",
+  "theme_color": "#4aa3ff",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/brixia-logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["sports", "productivity"],
+  "lang": "it-IT",
+  "dir": "ltr"
+}

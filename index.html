@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0B1B3B" />
+    <!-- Disabilita tracking esterni -->
+    <meta name="disable-bugsnag" content="true" />
+    <meta name="disable-analytics" content="true" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="bugsnag-disabled" content="true" />
+    <meta name="crash-reporting-disabled" content="true" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/favicon.svg" />
+    <title>Segna Presenze</title>
+  </head>
+  <body class="bg-gradient-to-b from-[#0B1B3B] via-[#2A60A6] to-[#F6F4EF] min-h-screen">
+    <div id="root"></div>
+    
+    <!-- Blocca Bugsnag e servizi di tracking -->
+    <script>
+      // Disabilita Bugsnag completamente
+      window.Bugsnag = { 
+        start: () => {},
+        createClient: () => ({ 
+          start: () => {}, 
+          startSession: () => {},
+          notify: () => {},
+          leaveBreadcrumb: () => {},
+          _configure: () => {},
+          startSession: () => {},
+          configure: () => {},
+          _configure: () => {}
+        }),
+        configure: () => {},
+        notify: () => {},
+        leaveBreadcrumb: () => {},
+        _configure: () => {},
+        start: () => {},
+        startSession: () => {}
+      };
+      
+      // Blocca anche oggetti globali di Bugsnag
+      Object.defineProperty(window, 'Bugsnag', {
+        value: window.Bugsnag,
+        writable: false,
+        configurable: false
+      });
+      
+      // Blocca richieste a crashdash e bugsnag
+      if (window.XMLHttpRequest) {
+        const originalSend = XMLHttpRequest.prototype.send;
+        XMLHttpRequest.prototype.send = function(...args) {
+          if (this.responseURL && (
+            this.responseURL.includes('crashdash') || 
+            this.responseURL.includes('bugsnag') ||
+            this.responseURL.includes('dropbox.com/crashdash')
+          )) {
+            console.log('🚫 Blocco richiesta Bugsnag:', this.responseURL);
+            return;
+          }
+          return originalSend.apply(this, args);
+        };
+      }
+      
+      // Blocca anche fetch requests
+      if (window.fetch) {
+        const originalFetch = window.fetch;
+        window.fetch = function(...args) {
+          const url = args[0]?.toString() || '';
+          if (url.includes('crashdash') || url.includes('bugsnag') || url.includes('dropbox.com/crashdash')) {
+            console.log('🚫 Blocco fetch Bugsnag:', url);
+            return Promise.resolve(new Response('', { status: 404 }));
+          }
+          return originalFetch.apply(this, args);
+        };
+      }
+      
+      // Blocca errori di Bugsnag
+      window.addEventListener('error', function(e) {
+        if (e.message && e.message.includes('bugsnag')) {
+          e.preventDefault();
+          e.stopPropagation();
+          console.log('🚫 Blocco errore Bugsnag:', e.message);
+          return false;
+        }
+      }, true);
+      
+      // Disabilita Service Worker
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for(let registration of registrations) {
+            registration.unregister();
+            console.log('🚫 Service Worker disabilitato:', registration);
+          }
+        });
+        
+        // Blocca registrazione futura
+        navigator.serviceWorker.register = function() {
+          console.log('🚫 Registrazione Service Worker bloccata');
+          return Promise.resolve({});
+        };
+        
+        // Blocca errori del service worker
+        window.addEventListener('error', function(e) {
+          if (e.message && (e.message.includes('sw.js') || e.message.includes('ServiceWorker'))) {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('🚫 Blocco errore Service Worker:', e.message);
+            return false;
+          }
+        }, true);
+      }
+    </script>
+    
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

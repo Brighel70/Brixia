@@ -1,0 +1,26 @@
+<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Sfondo circolare con gradiente Brixia -->
+  <defs>
+    <linearGradient id="brixiaGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0b1f4d;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4aa3ff;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Cerchio di sfondo -->
+  <circle cx="60" cy="60" r="55" fill="url(#brixiaGradient)" stroke="#ffffff" stroke-width="2"/>
+  
+  <!-- Pallone da rugby stilizzato -->
+  <ellipse cx="60" cy="60" rx="25" ry="20" fill="#ffffff" opacity="0.9"/>
+  
+  <!-- Linee del pallone -->
+  <path d="M35 60 Q60 40 85 60 Q60 80 35 60" stroke="#0b1f4d" stroke-width="2" fill="none"/>
+  <path d="M60 40 Q85 60 60 80 Q35 60 60 40" stroke="#0b1f4d" stroke-width="2" fill="none"/>
+  
+  <!-- Lettera B stilizzata -->
+  <path d="M45 35 L45 85 M45 35 Q65 35 65 50 Q65 65 45 65 Q65 65 65 85" stroke="#ffffff" stroke-width="4" fill="none" stroke-linecap="round"/>
+  
+  <!-- Rugby ball details -->
+  <circle cx="60" cy="60" r="3" fill="#0b1f4d"/>
+</svg>
+
