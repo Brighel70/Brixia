@@ -29,5 +29,12 @@
     "tailwindcss": "^3.4.10",
     "typescript": "^5.5.4",
     "vite": "^5.4.1"
+  },
+  "overrides": {
+    "rollup": {
+      "optionalDependencies": {
+        "@rollup/rollup-linux-x64-gnu": "4.9.5"
+      }
+    }
   }
 }
