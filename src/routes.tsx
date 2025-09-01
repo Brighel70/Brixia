@@ -101,7 +101,7 @@ export const router = createBrowserRouter([
     path: '/brand-customization',
     element: (
       <AuthLayout requireAuth={true}>
-        <PermissionGuard requiredPermission={PERMISSIONS.SYSTEM.MANAGE_SETTINGS} fallback={<div className="p-6 text-center text-red-600">❌ Accesso negato: permesso insufficiente</div>}>
+        <PermissionGuard requiredPermission={PERMISSIONS.SETTINGS.EDIT} fallback={<div className="p-6 text-center text-red-600">❌ Accesso negato: permesso insufficiente</div>}>
           <BrandCustomization />
         </PermissionGuard>
       </AuthLayout>
@@ -111,7 +111,7 @@ export const router = createBrowserRouter([
     path: '/settings',
     element: (
       <AuthLayout requireAuth={true}>
-        <PermissionGuard requiredPermission={PERMISSIONS.SYSTEM.MANAGE_SETTINGS} fallback={<div className="p-6 text-center text-red-600">❌ Accesso negato: permesso insufficiente</div>}>
+        <PermissionGuard requiredPermission={PERMISSIONS.SETTINGS.EDIT} fallback={<div className="p-6 text-center text-red-600">❌ Accesso negato: permesso insufficiente</div>}>
           <Settings />
         </PermissionGuard>
       </AuthLayout>
