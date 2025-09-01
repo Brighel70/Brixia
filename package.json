@@ -3,9 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "dev": "npx serve -s dist",
-    "build": "echo 'Build completed' && mkdir -p dist && echo '<html><body><h1>Brixia Rugby App</h1><p>Coming soon...</p></body></html>' > dist/index.html",
-    "preview": "npx serve -s dist"
+    "dev": "vite",
+    "build": "vite build --mode production",
+    "preview": "vite preview"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.46.1",
@@ -22,6 +22,11 @@
   "devDependencies": {
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
-    "typescript": "^5.5.4"
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.10",
+    "typescript": "^5.5.4",
+    "vite": "^4.5.2"
   }
 }
