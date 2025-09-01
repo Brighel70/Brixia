@@ -1,6 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/store/auth'
-import { BRAND_CONFIG } from '@/config/brand'
+import { getBrandConfig } from '@/config/brand'
 
 interface HeaderProps {
   title: string
@@ -11,6 +11,7 @@ export default function Header({ title, showBack = false }: HeaderProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const { signOut } = useAuth()
+  const brandConfig = getBrandConfig()
 
   const handleLogout = async () => {
     await signOut()
@@ -34,8 +35,8 @@ export default function Header({ title, showBack = false }: HeaderProps) {
         )}
         <div className="flex items-center gap-3">
           <img 
-            src={BRAND_CONFIG.assets.logo} 
-            alt={BRAND_CONFIG.assets.logoAlt}
+            src={brandConfig.assets.logo} 
+            alt={brandConfig.assets.logoAlt}
             className="w-40 h-auto object-contain"
           />
           <h1 className="text-4xl font-bold">{title}</h1>

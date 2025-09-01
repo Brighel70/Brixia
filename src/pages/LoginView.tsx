@@ -1,7 +1,7 @@
 import Header from '@/components/Header'
 import { useAuth } from '@/store/auth'
 import { useState } from 'react'
-import { BRAND_CONFIG, getBrandClasses } from '@/config/brand'
+import { getBrandConfig, getBrandClasses } from '@/config/brand'
 
 export default function LoginView(){
   const { signIn, loading } = useAuth()
@@ -9,6 +9,7 @@ export default function LoginView(){
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [showError, setShowError] = useState(false)
+  const brandConfig = getBrandConfig()
 
   // Valida se i campi sono compilati
   const isFormValid = email.trim() !== '' && password.trim() !== ''
@@ -55,19 +56,19 @@ export default function LoginView(){
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-brixia-accent to-white">
-      <Header title={`${BRAND_CONFIG.clubName} - Login`} />
+      <Header title={`${brandConfig.clubName} - Login`} />
       
       <div className="flex items-center justify-center min-h-screen p-4">
-        <div className={`${getBrandClasses.card} p-8 max-w-md w-full`}>
+        <div className={`${getBrandClasses().card} p-8 max-w-md w-full`}>
           {/* Logo e titolo */}
           <div className="text-center mb-8">
             <img 
-              src={BRAND_CONFIG.assets.logo} 
-              alt={BRAND_CONFIG.assets.logoAlt}
+              src={brandConfig.assets.logo} 
+              alt={brandConfig.assets.logoAlt}
               className="w-20 h-20 mx-auto mb-4"
             />
             <h2 className="text-2xl font-bold text-brixia-primary mb-2">
-              Benvenuto in {BRAND_CONFIG.clubShortName}
+              Benvenuto in {brandConfig.clubShortName}
             </h2>
             <p className="text-gray-600 text-sm">
               Accedi per gestire presenze e allenamenti
@@ -122,10 +123,10 @@ export default function LoginView(){
           {/* Informazioni club */}
           <div className="mt-8 pt-6 border-t border-gray-200 text-center">
             <p className="text-xs text-gray-500">
-              {BRAND_CONFIG.clubDescription}
+              {brandConfig.clubDescription}
             </p>
             <p className="text-xs text-gray-400 mt-1">
-              Stagione {BRAND_CONFIG.season}
+              Stagione {brandConfig.season}
             </p>
           </div>
         </div>
