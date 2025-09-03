@@ -225,7 +225,7 @@ export default function CreateUser() {
 
       const { error: profileError } = await supabase
         .from('profiles')
-        .insert(profileData)
+        .upsert(profileData, { onConflict: 'id' })
 
       if (profileError) throw profileError
 

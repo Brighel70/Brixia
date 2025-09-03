@@ -62,7 +62,7 @@ export const DEFAULT_BRAND_CONFIG: BrandConfig = {
   // Nome e identità del club
   clubName: 'Brixia Rugby',
   clubShortName: 'Brixia',
-  clubDescription: 'Società Sportiva Dilettantistica Brixia Rugby',
+  clubDescription: 'Società Sportiva Dilettantistica',
   
   // Colori sociali del club
   colors: {

@@ -11,6 +11,8 @@ export default function StaffView() {
   const [filteredStaff, setFilteredStaff] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   
+
+  
   // Statistiche per il dashboard
   const [stats, setStats] = useState({
     totalStaff: 0,
@@ -53,11 +55,11 @@ export default function StaffView() {
           role,
           created_at
         `)
+        .not('full_name', 'is', null)
+        .neq('full_name', '')
         .order('full_name', { ascending: true })
 
       if (error) throw error
-
-      console.log('Dati grezzi da Supabase:', data) // Debug
 
       // Formatta i dati con controlli di sicurezza
       const formattedStaff = (data || []).map(member => {
@@ -72,7 +74,6 @@ export default function StaffView() {
           categories: [] // Temporaneamente vuoto fino a quando non risolviamo la foreign key
         }
         
-        console.log('Staff formattato:', formatted) // Debug
         return formatted
       })
 

@@ -20,48 +20,74 @@ export default function Header({ title, subtitle, showBack = false, rightButton 
     navigate('/')
   }
 
+  const handleBack = () => {
+    // Se c'è una cronologia, vai indietro
+    if (window.history.length > 1) {
+      navigate(-1)
+    } else {
+      // Altrimenti vai alla home
+      navigate('/home')
+    }
+  }
+
+  const handleLogoClick = () => {
+    navigate('/home')
+  }
+
   // Mostra il pulsante Logout solo nella dashboard e home
   const showLogout = location.pathname === '/dashboard' || location.pathname === '/home'
 
   return (
     <header className="bg-gradient-to-r from-brixia-primary to-brixia-secondary text-white shadow-brixia">
       <div className="max-w-6xl mx-auto p-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-        {showBack && (
-          <button 
-            onClick={() => navigate(-1)} 
-            className="p-2 rounded-full hover:bg-white/20 transition"
-            title="Indietro"
-          >
-            ←
-          </button>
-        )}
+        {/* Left side - Back button */}
+        <div className="flex items-center">
+          {showBack && (
+            <button 
+              onClick={handleBack} 
+              className="p-4 rounded-full bg-blue-200/30 hover:bg-blue-200/50 transition"
+              title="Indietro"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          )}
+        </div>
+        
+        {/* Center - Logo and title */}
         <div className="flex items-center gap-3">
           <img 
             src={brandConfig.assets.logo} 
             alt={brandConfig.assets.logoAlt}
-            className="w-40 h-auto object-contain"
+            className="w-40 h-auto object-contain cursor-pointer hover:opacity-80 transition-opacity"
+            onClick={handleLogoClick}
+            title="Torna alla Home"
           />
-          <div>
-            <h1 className="text-4xl font-bold">{title}</h1>
-            {subtitle && (
-              <p className="text-sm text-white/90 mt-1">{subtitle}</p>
-            )}
-          </div>
+          {title && (
+            <div>
+              <h1 className="text-4xl font-bold">{title}</h1>
+              {subtitle && (
+                <p className="text-sm text-white/90 mt-1">{subtitle}</p>
+              )}
+            </div>
+          )}
         </div>
-      </div>
-      
-      {rightButton ? (
-        rightButton
-      ) : showLogout ? (
-        <button 
-          onClick={handleLogout}
-          className="px-3 py-1 text-sm bg-white/20 hover:bg-white/30 text-white rounded-lg transition-colors"
-          title="Logout"
-        >
-          Logout
-        </button>
-      ) : null}
+        
+        {/* Right side - Logout or right button */}
+        <div className="flex items-center">
+          {rightButton ? (
+            rightButton
+          ) : showLogout ? (
+            <button 
+              onClick={handleLogout}
+              className="px-3 py-1 text-sm bg-white/20 hover:bg-white/30 text-white rounded-lg transition-colors"
+              title="Logout"
+            >
+              Logout
+            </button>
+          ) : null}
+        </div>
       </div>
     </header>
   )

@@ -32,10 +32,34 @@ interface Session {
   }
 }
 
+interface Event {
+  id: string
+  category_id: string
+  event_date: string
+  event_type: string
+  title: string
+  location: string
+  away_location?: string
+  opponent?: string
+  is_home?: boolean
+  is_championship?: boolean
+  is_friendly?: boolean
+  start_time?: string
+  end_time?: string
+  description?: string
+  created_at: string
+  categories: {
+    id: string
+    code: string
+    name: string
+  }
+}
+
 export default function CategoryActivities() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [sessions, setSessions] = useState<Session[]>([])
+  const [events, setEvents] = useState<Event[]>([])
   const [sessionTimes, setSessionTimes] = useState<{[key: string]: {start_time: string, end_time: string}}>({})
   const [loading, setLoading] = useState(true)
   const [categoryName, setCategoryName] = useState('')
@@ -69,6 +93,29 @@ export default function CategoryActivities() {
   const [attendance, setAttendance] = useState<Record<string, { status: string; injured_place?: string }>>({})
   const [isOpeningPopup, setIsOpeningPopup] = useState(false)
   
+  // Stati per il modal di creazione eventi
+  const [showEventModal, setShowEventModal] = useState(false)
+  const [eventForm, setEventForm] = useState({
+    event_type: 'partita',
+    title: '',
+    category_id: '',
+    opponent: '',
+    event_date: '',
+    location: '',
+    away_location: '',
+    is_home: true,
+    is_championship: false,
+    is_friendly: false,
+    start_time: '',
+    end_time: '',
+    description: ''
+  })
+  const [showValidationPopup, setShowValidationPopup] = useState(false)
+  
+  // Stati per la modifica eventi
+  const [editingEvent, setEditingEvent] = useState<Event | null>(null)
+  const [showEditEventModal, setShowEditEventModal] = useState(false)
+  
   // State per memorizzare lo status delle presenze per ogni sessione
   const [sessionAttendanceStatus, setSessionAttendanceStatus] = useState<Record<string, {
     hasUnassigned: boolean
@@ -77,6 +124,11 @@ export default function CategoryActivities() {
     presentCount: number
     totalPlayers: number
   }>>({})
+  
+  // State per i dati del grafico settimanale
+
+  
+
   
   const { isAdmin, isAllenatore, isTeamManager } = usePermissions()
   const { loadPlayers, players, setCurrentSession, setCurrentCategory: setDataCurrentCategory } = useData()
@@ -98,8 +150,12 @@ export default function CategoryActivities() {
           loadSessionAttendanceStatus(session.id, session.category_id)
         }
       })
+      
+
     }
   }, [sessions])
+
+
 
   // Cleanup: ripristina lo scroll quando il componente viene smontato
   useEffect(() => {
@@ -166,6 +222,36 @@ export default function CategoryActivities() {
       }
 
       setSessions(data || [])
+
+      // Carica anche gli eventi della categoria
+      const { data: eventsData, error: eventsError } = await supabase
+        .from('events')
+        .select(`
+          id,
+          category_id,
+          event_date,
+          event_type,
+          title,
+          location,
+          away_location,
+          opponent,
+          is_home,
+          is_championship,
+          is_friendly,
+          start_time,
+          end_time,
+          description,
+          created_at,
+          categories!inner(id, code, name)
+        `)
+        .eq('category_id', categoryData.id)
+        .order('event_date', { ascending: false })
+
+      if (eventsError) {
+        console.error('Errore nel caricamento eventi:', eventsError)
+      } else {
+        setEvents(eventsData || [])
+      }
     } catch (error) {
       console.error('Errore generale:', error)
     } finally {
@@ -778,6 +864,8 @@ export default function CategoryActivities() {
     }
   }, [sessions])
 
+
+
   // Controlla se ci sono presenze per una sessione
   const checkSessionAttendance = async (sessionId: string): Promise<boolean> => {
     const { data, error } = await supabase
@@ -892,6 +980,238 @@ export default function CategoryActivities() {
     setSessionToDelete(null)
   }
 
+  // Funzioni per il modal di creazione eventi
+  const generateEventTitle = (opponent: string, location: string, categoryName: string) => {
+    if (!opponent) return ''
+    
+    if (location === 'Trasferta') {
+      return `${opponent} vs ${categoryName}`
+    } else {
+      return `${categoryName} vs ${opponent}`
+    }
+  }
+
+  const handleLocationChange = (newLocation: string) => {
+    const isHome = newLocation !== 'Trasferta'
+    const newTitle = generateEventTitle(eventForm.opponent, newLocation, categoryName)
+    
+    setEventForm(prev => ({
+      ...prev,
+      location: newLocation,
+      is_home: isHome,
+      title: newTitle
+    }))
+  }
+
+  const handleOpponentChange = (newOpponent: string) => {
+    const newTitle = generateEventTitle(newOpponent, eventForm.location, categoryName)
+    
+    setEventForm(prev => ({
+      ...prev,
+      opponent: newOpponent,
+      title: newTitle
+    }))
+  }
+
+  const handleCheckboxChange = (field: 'is_championship' | 'is_friendly', value: boolean) => {
+    setEventForm(prev => ({
+      ...prev,
+      [field]: value,
+      // Se sto selezionando uno, deseleziono l'altro
+      [field === 'is_championship' ? 'is_friendly' : 'is_championship']: value ? false : prev[field === 'is_championship' ? 'is_friendly' : 'is_championship']
+    }))
+  }
+
+  const validateEventForm = () => {
+    // Controlla se almeno uno tra campionato o amichevole è selezionato
+    if (!eventForm.is_championship && !eventForm.is_friendly) {
+      setShowValidationPopup(true)
+      return false
+    }
+    return true
+  }
+
+  const handleCreateEvent = async () => {
+    if (!validateEventForm()) return
+    try {
+      const { error } = await supabase
+        .from('events')
+        .insert([{
+          event_type: eventForm.event_type,
+          title: eventForm.title,
+          category_id: eventForm.category_id,
+          opponent: eventForm.opponent,
+          event_date: eventForm.event_date,
+          location: eventForm.location,
+          away_location: eventForm.away_location,
+          is_home: eventForm.is_home,
+          is_championship: eventForm.is_championship,
+          is_friendly: eventForm.is_friendly,
+          start_time: eventForm.start_time,
+          end_time: eventForm.end_time,
+          description: eventForm.description
+        }])
+
+      if (error) {
+        console.error('Errore nella creazione evento:', error)
+        alert('Errore nella creazione dell\'evento')
+        return
+      }
+
+
+      
+      alert('✅ Evento creato con successo!')
+      
+      // Chiudi modal e resetta form
+      setShowEventModal(false)
+      setEventForm({
+        event_type: 'partita',
+        title: '',
+        category_id: '',
+        opponent: '',
+        event_date: '',
+        location: '',
+        away_location: '',
+        is_home: true,
+        is_championship: false,
+        is_friendly: false,
+        start_time: '',
+        end_time: '',
+        description: ''
+      })
+
+      // Ricarica gli eventi
+      const categoryCode = searchParams.get('category')
+      if (categoryCode) {
+        loadCategorySessions(categoryCode)
+      }
+    } catch (error) {
+      console.error('Errore:', error)
+      alert('Errore nella creazione dell\'evento')
+    }
+  }
+
+  const closeEventModal = () => {
+    setShowEventModal(false)
+    setEventForm({
+      event_type: 'partita',
+      title: '',
+      category_id: '',
+      opponent: '',
+      event_date: '',
+      location: '',
+      away_location: '',
+      is_home: true,
+      is_championship: false,
+      is_friendly: false,
+      start_time: '',
+      end_time: '',
+      description: ''
+    })
+  }
+
+  // Funzioni per la modifica eventi
+  const handleEditEvent = (event: Event) => {
+    setEditingEvent(event)
+    setEventForm({
+      event_type: event.event_type || 'partita',
+      title: event.title || '',
+      category_id: event.category_id || '',
+      opponent: event.opponent || '',
+      event_date: event.event_date || '',
+      location: event.location || '',
+      away_location: event.away_location || '',
+      is_home: event.is_home !== undefined ? event.is_home : true,
+      is_championship: event.is_championship || false,
+      is_friendly: event.is_friendly || false,
+      start_time: event.start_time || '',
+      end_time: event.end_time || '',
+      description: event.description || ''
+    })
+    setShowEditEventModal(true)
+  }
+
+  const handleUpdateEvent = async () => {
+    if (!editingEvent || !validateEventForm()) return
+    
+    try {
+      const { error } = await supabase
+        .from('events')
+        .update({
+          event_type: eventForm.event_type,
+          title: eventForm.title,
+          category_id: eventForm.category_id,
+          opponent: eventForm.opponent,
+          event_date: eventForm.event_date,
+          location: eventForm.location,
+          away_location: eventForm.away_location,
+          is_home: eventForm.is_home,
+          is_championship: eventForm.is_championship,
+          is_friendly: eventForm.is_friendly,
+          start_time: eventForm.start_time,
+          end_time: eventForm.end_time,
+          description: eventForm.description
+        })
+        .eq('id', editingEvent.id)
+
+      if (error) {
+        console.error('Errore nell\'aggiornamento evento:', error)
+        alert('Errore nell\'aggiornamento dell\'evento')
+        return
+      }
+
+      alert('✅ Evento aggiornato con successo!')
+      
+      // Chiudi modal e resetta form
+      setShowEditEventModal(false)
+      setEditingEvent(null)
+      setEventForm({
+        event_type: 'partita',
+        title: '',
+        category_id: '',
+        opponent: '',
+        event_date: '',
+        location: '',
+        away_location: '',
+        is_home: true,
+        is_championship: false,
+        is_friendly: false,
+        start_time: '',
+        end_time: '',
+        description: ''
+      })
+
+      // Ricarica gli eventi
+      const categoryCode = searchParams.get('category')
+      if (categoryCode) {
+        loadCategorySessions(categoryCode)
+      }
+    } catch (error) {
+      console.error('Errore:', error)
+      alert('Errore nell\'aggiornamento dell\'evento')
+    }
+  }
+
+  const closeEditEventModal = () => {
+    setShowEditEventModal(false)
+    setEditingEvent(null)
+    setEventForm({
+      event_type: 'partita',
+      title: '',
+      category_id: '',
+      opponent: '',
+      event_date: '',
+      location: '',
+      away_location: '',
+      is_home: true,
+      is_championship: false,
+      is_friendly: false,
+      start_time: '',
+      end_time: '',
+      description: ''
+    })
+  }
+
   if (loading) {
     return (
       <div className="p-4 text-center">
@@ -901,30 +1221,49 @@ export default function CategoryActivities() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Header title={`Attività - ${categoryName}`} showBack={true} />
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      <Header title="" showBack={true} />
       
-      <div className="max-w-7xl mx-auto p-6">
+      <div className="max-w-7xl mx-auto p-8">
         {/* Header */}
-        <div className="mb-8">
+        <div className="mb-10">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Attività {categoryName}</h1>
-              <p className="text-gray-600 mt-2">
-                Sessioni e allenamenti della categoria {categoryName}
+              <h1 className="text-4xl font-semibold text-blue-900 tracking-tight">{categoryName}</h1>
+              <p className="text-blue-700 mt-3 text-lg">
+                Allenamenti e partite della categoria {categoryName}
               </p>
             </div>
+            <div className="flex items-center space-x-4">
             <button
               onClick={() => setShowStats(!showStats)}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 ${
+                className={`px-6 py-3 rounded-2xl font-medium transition-all duration-200 flex items-center space-x-3 shadow-sm ${
                 showStats 
-                  ? 'bg-purple-600 hover:bg-purple-700 text-white' 
-                  : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-200' 
+                    : 'bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 shadow-gray-100'
               }`}
             >
-              <span>📊</span>
+                <span className="text-lg">📊</span>
               <span>{showStats ? 'Nascondi' : 'Mostra'} Statistiche</span>
             </button>
+              <button
+                onClick={handleNewSessionClick}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl font-medium transition-all duration-200 shadow-sm hover:shadow-md flex items-center space-x-3"
+              >
+                <span className="text-lg">🚀</span>
+                <span>Nuova Sessione</span>
+              </button>
+              <button
+                onClick={() => {
+                  setEventForm(prev => ({ ...prev, category_id: currentCategoryId || '' }))
+                  setShowEventModal(true)
+                }}
+                className="bg-cyan-500 hover:bg-cyan-600 text-white px-6 py-3 rounded-2xl font-medium transition-all duration-200 shadow-sm hover:shadow-md flex items-center space-x-3"
+              >
+                <span className="text-lg">⚽</span>
+                <span>Nuovo Evento</span>
+            </button>
+            </div>
           </div>
         </div>
 
@@ -939,50 +1278,191 @@ export default function CategoryActivities() {
         )}
 
         {/* Statistiche */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="card p-6 bg-gradient-to-r from-blue-500 to-blue-600 text-white">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+          <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-all duration-200">
+            <div className="space-y-4">
+              {/* Prima riga: Sessioni e Partite */}
+              <div className="flex justify-center">
+                <div className="flex items-center space-x-10">
+                  {/* Sessioni Totali */}
             <div className="flex items-center">
-              <div className="text-3xl mr-4">📊</div>
+                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
+                      <span className="text-lg">📊</span>
+                    </div>
               <div>
-                <div className="text-2xl font-bold">{sessions.length}</div>
-                <div className="text-sm text-blue-100">Sessioni Totali</div>
-              </div>
+                      <div className="text-xl font-semibold text-gray-900">{sessions.length}</div>
+                      <div className="text-blue-700 text-xs font-medium">Sessioni</div>
             </div>
           </div>
           
-          <div className="card p-6 bg-gradient-to-r from-green-500 to-green-600 text-white">
+                  {/* Partite Totali */}
             <div className="flex items-center">
-              <div className="text-3xl mr-4">📅</div>
+                    <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center mr-3">
+                      <span className="text-lg">️</span>
+                    </div>
               <div>
-                <div className="text-2xl font-bold">
-                  {sessions.length > 0 ? formatDate(sessions[0].session_date) : 'N/A'}
+                                            <div className="text-xl font-semibold text-gray-900">
+                        {events.filter(event => 
+                          event.event_type === 'MATCH' || 
+                          event.event_type === 'TOURNAMENT' || 
+                          event.event_type === 'partita' ||
+                          event.event_type === 'torneo'
+                        ).length}
                 </div>
-                <div className="text-sm text-green-100">Ultima Sessione</div>
+                      <div className="text-gray-500 text-xs font-medium">Partite</div>
+                    </div>
               </div>
             </div>
           </div>
           
-          <div className="card p-6 bg-gradient-to-r from-purple-500 to-purple-600 text-white">
-            <div className="flex items-center">
-              <div className="text-3xl mr-4">🏉</div>
-              <div>
-                <div className="text-2xl font-bold">{getCategoryAbbreviation(searchParams.get('category') || '')}</div>
-                <div className="text-sm text-purple-100">Categoria</div>
+              {/* Seconda riga: V, X, P */}
+              <div className="pt-3 border-t border-gray-100">
+                <div className="grid grid-cols-3 gap-4">
+                  {/* V - Vinte */}
+                  <div className="flex flex-col items-center justify-center text-center">
+                    <div className="text-xl font-semibold text-gray-900">0</div>
+                    <div className="text-gray-500 text-xs font-medium">Vinte</div>
+                  </div>
+                  
+                  {/* X - Pareggiate */}
+                  <div className="flex flex-col items-center justify-center text-center">
+                    <div className="text-xl font-semibold text-gray-900">0</div>
+                    <div className="text-gray-500 text-xs font-medium">Pareggiate</div>
+                  </div>
+                  
+                  {/* P - Perse */}
+                  <div className="flex flex-col items-center justify-center text-center">
+                    <div className="text-xl font-semibold text-gray-900">0</div>
+                    <div className="text-gray-500 text-xs font-medium">Perse</div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
+          
+          <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-all duration-200">
+            <div className="space-y-3">
+              <div className="text-sm font-medium text-gray-600 mb-3">Statistiche Categoria</div>
+              
+              {/* Griglia 2x2 */}
+              <div className="grid grid-cols-2 gap-4">
+                {/* Media Presenze */}
+                <div className="flex items-center justify-between">
+            <div className="flex items-center">
+                    <div className="w-7 h-7 bg-green-100 rounded-lg flex items-center justify-center mr-2">
+                      <span className="text-green-600 text-xs">📊</span>
+              </div>
+                    <span className="text-xs text-gray-600">Media Presenze</span>
+            </div>
+                  <span className="text-sm font-semibold text-green-600">
+                    {(() => {
+                      const totalSessions = sessions.length
+                      if (totalSessions === 0) return '0%'
+                      
+                      let totalAttendance = 0
+                      let sessionsWithData = 0
+                      
+                      sessions.forEach(session => {
+                        const status = sessionAttendanceStatus[session.id]
+                        if (status && status.totalPlayers > 0) {
+                          const attendanceRate = (status.presentCount / status.totalPlayers) * 100
+                          totalAttendance += attendanceRate
+                          sessionsWithData++
+                        }
+                      })
+                      
+                      return sessionsWithData > 0 ? `${Math.round(totalAttendance / sessionsWithData)}%` : '0%'
+                    })()}
+                  </span>
+          </div>
+                
+                {/* Giocatori Attivi */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <div className="w-7 h-7 bg-blue-100 rounded-lg flex items-center justify-center mr-2">
+                      <span className="text-blue-600 text-xs">👥</span>
+                    </div>
+                    <span className="text-xs text-blue-700">Giocatori Attivi</span>
+                  </div>
+                  <span className="text-sm font-semibold text-blue-600">
+                    {(() => {
+                      const uniquePlayers = new Set()
+                      sessions.forEach(session => {
+                        const status = sessionAttendanceStatus[session.id]
+                        if (status) {
+                          Object.values(status.players || {}).forEach((player: any) => {
+                            if (player.status && player.status !== 'NON_ASSEGNATO') {
+                              uniquePlayers.add(player.id)
+                            }
+                          })
+                        }
+                      })
+                      return uniquePlayers.size
+                    })()}
+                  </span>
+                </div>
+                
+                {/* Infortunati */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <div className="w-7 h-7 bg-red-100 rounded-lg flex items-center justify-center mr-2">
+                      <span className="text-red-600 text-xs">🏥</span>
+                    </div>
+                    <span className="text-xs text-gray-600">Infortunati</span>
+                  </div>
+                  <span className="text-sm font-semibold text-red-600">
+                    {(() => {
+                      const injuredPlayers = new Set()
+                      sessions.forEach(session => {
+                        const status = sessionAttendanceStatus[session.id]
+                        if (status) {
+                          Object.values(status.players || {}).forEach((player: any) => {
+                            if (player.status === 'INFORTUNATO') {
+                              injuredPlayers.add(player.id)
+                            }
+                          })
+                        }
+                      })
+                      return injuredPlayers.size
+                    })()}
+                  </span>
+                </div>
+                
+                {/* Squalificati */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <div className="w-7 h-7 bg-purple-100 rounded-lg flex items-center justify-center mr-2">
+                      <span className="text-purple-600 text-xs">🚫</span>
+                    </div>
+                    <span className="text-xs text-gray-600">Squalificati</span>
+                  </div>
+                  <span className="text-sm font-semibold text-purple-600">
+                    {(() => {
+                      const suspendedPlayers = new Set()
+                      sessions.forEach(session => {
+                        const status = sessionAttendanceStatus[session.id]
+                        if (status) {
+                          Object.values(status.players || {}).forEach((player: any) => {
+                            if (player.status === 'SQUALIFICATO') {
+                              suspendedPlayers.add(player.id)
+                            }
+                          })
+                        }
+                      })
+                      return suspendedPlayers.size
+                    })()}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+
         </div>
 
         {/* Lista sessioni */}
         <div>
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-semibold text-gray-900">Sessioni</h2>
-            <button
-              onClick={handleNewSessionClick}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
-            >
-              🚀 Nuova Sessione
-            </button>
+          <div className="mb-8">
           </div>
           
           {sessions.length === 0 ? (
@@ -998,22 +1478,22 @@ export default function CategoryActivities() {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-3 gap-6">
               {/* Colonna Attivi */}
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Attivi</h3>
+                <h3 className="text-lg font-semibold text-blue-900 mb-4 text-center">Attivi</h3>
                 {getActiveSessions().length === 0 ? null : (
                   <div className="space-y-6">
                     {groupByDate(getActiveSessions()).map((dateGroup) => (
                       <div key={dateGroup.date}>
                         <div className="mb-3">
-                          <h4 className="text-sm font-medium text-gray-700 bg-gradient-to-r from-blue-50 to-indigo-50 px-3 py-2 rounded-lg border border-blue-100 shadow-sm">
+                          <h4 className="text-sm font-semibold text-slate-600 bg-slate-100 px-4 py-3 rounded-2xl border border-slate-200 shadow-sm">
                             {formatDateHeader(dateGroup.date)}
                           </h4>
                         </div>
                         <div className="space-y-3">
                           {dateGroup.items.map((session) => (
-                <div key={session.id} className="card p-6">
+                <div key={session.id} className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-all duration-200">
                   {editingSession?.id === session.id ? (
                     // Form di modifica
                     <div className="space-y-4">
@@ -1081,33 +1561,33 @@ export default function CategoryActivities() {
                   ) : (
                     // Vista normale della sessione
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-4">
+                      <div className="flex items-center space-x-1">
                         <div className="text-2xl font-bold text-blue-600 bg-blue-100 rounded-full w-12 h-12 flex items-center justify-center">
                           {getCategoryAbbreviation(session.categories?.code || '')}
                         </div>
-                        <div>
+                        <div className="flex-1">
                           <p className="text-sm text-gray-600">
-                            Data: {formatDate(session.session_date)}
+                            {session.location} - {formatDate(session.session_date)}
                           </p>
                           <p className="text-sm text-gray-600">
-                            {sessionTimes[session.id] ? `${sessionTimes[session.id].start_time.substring(0, 5)} - ${sessionTimes[session.id].end_time.substring(0, 5)} • ` : ''}Location: {session.location}
-                            {session.away_place && ` - ${session.away_place}`}
+                            {sessionTimes[session.id] ? `${sessionTimes[session.id].start_time.substring(0, 5)} - ${sessionTimes[session.id].end_time.substring(0, 5)}` : ''}
+                            {session.away_place && ` • ${session.away_place}`}
                           </p>
                         </div>
                       </div>
                       
-                      <div className="flex items-center space-x-4">
+                      <div className="flex items-center space-x-1">
                         <button
                           onClick={() => handleOpenAttendancePopup(session.id)}
                           disabled={isSessionLocked(session.id)}
-                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                          className={`p-3 rounded-2xl transition-all duration-200 ${
                             isSessionLocked(session.id)
-                              ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
-                              : 'bg-green-600 hover:bg-green-700 text-white'
+                              ? 'text-gray-400 cursor-not-allowed'
+                              : 'text-blue-600 hover:text-blue-700 hover:bg-blue-50'
                           }`}
                           title={isSessionLocked(session.id) ? 'Presenze bloccate dopo 24 ore' : 'Registra presenze'}
                         >
-                          📝 Registra Presenze
+                          <span className="text-xl">👥</span>
                         </button>
                         
                         {canManageSessions && (
@@ -1117,20 +1597,20 @@ export default function CategoryActivities() {
                                 e.stopPropagation()
                                 startEditSession(session)
                               }}
-                              className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                              className="p-3 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-2xl transition-all duration-200"
                               title="Modifica sessione"
                             >
-                              ✏️
+                              <span className="text-xl">✏️</span>
                             </button>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation()
                                 deleteSession(session.id)
                               }}
-                              className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                              className="p-3 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-2xl transition-all duration-200"
                               title="Elimina sessione"
                             >
-                              🗑️
+                              <span className="text-xl">🗑️</span>
                             </button>
                           </div>
                         )}
@@ -1148,19 +1628,19 @@ export default function CategoryActivities() {
 
               {/* Colonna Effettuati */}
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Effettuati</h3>
+                <h3 className="text-lg font-semibold text-blue-900 mb-4 text-center">Effettuati</h3>
                 {getCompletedSessions().length === 0 ? null : (
                   <div className="space-y-6">
                     {groupByDate(getCompletedSessions()).map((dateGroup) => (
                       <div key={dateGroup.date}>
                         <div className="mb-3">
-                          <h4 className="text-sm font-medium text-gray-700 bg-gradient-to-r from-blue-50 to-indigo-50 px-3 py-2 rounded-lg border border-blue-100 shadow-sm">
+                          <h4 className="text-sm font-semibold text-slate-600 bg-slate-100 px-4 py-3 rounded-2xl border border-slate-200 shadow-sm">
                             {formatDateHeader(dateGroup.date)}
                           </h4>
                         </div>
                         <div className="space-y-3">
                           {dateGroup.items.map((session) => (
-                <div key={session.id} className="card p-6">
+                <div key={session.id} className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-all duration-200">
                   {editingSession?.id === session.id ? (
                     // Form di modifica
                     <div className="space-y-4">
@@ -1217,45 +1697,46 @@ export default function CategoryActivities() {
                   ) : (
                     // Vista normale della sessione
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-4">
+                      <div className="flex items-center space-x-1">
                         <div className="text-2xl font-bold text-blue-600 bg-blue-100 rounded-full w-12 h-12 flex items-center justify-center">
                           {getCategoryAbbreviation(session.categories?.code || '')}
                         </div>
-                        <div>
+                        <div className="flex-1">
                           <p className="text-sm text-gray-600">
-                            Data: {formatDate(session.session_date)}
+                            {session.location} - {formatDate(session.session_date)}
                           </p>
                           <p className="text-sm text-gray-600">
-                            {sessionTimes[session.id] ? `${sessionTimes[session.id].start_time.substring(0, 5)} - ${sessionTimes[session.id].end_time.substring(0, 5)} • ` : ''}Location: {session.location}
-                            {session.away_place && ` - ${session.away_place}`}
+                            {sessionTimes[session.id] ? `${sessionTimes[session.id].start_time.substring(0, 5)} - ${sessionTimes[session.id].end_time.substring(0, 5)}` : ''}
+                            {session.away_place && ` • ${session.away_place}`}
                           </p>
                         </div>
                       </div>
                       
-                      <div className="flex items-center space-x-4">
+                      <div className="flex items-center space-x-1">
                         <div className="flex items-center space-x-2">
-                          <button
-                            onClick={() => handleOpenAttendancePopup(session.id)}
-                            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-                          >
-                            Registra Presenze
-                          </button>
+                        <button
+                          onClick={() => handleOpenAttendancePopup(session.id)}
+                            className="p-3 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-2xl transition-all duration-200"
+                            title="Registra Presenze"
+                        >
+                            <span className="text-xl">👥</span>
+                        </button>
                           {/* Status indicator */}
                           {(() => {
                             const status = sessionAttendanceStatus[session.id]
                             
                             if (status?.isComplete) {
                               return (
-                                <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
-                                  <span className="text-white text-xs font-bold">
+                                <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center shadow-sm">
+                                  <span className="text-white text-sm font-semibold">
                                     {status.totalPlayers}
                                   </span>
                                 </div>
                               )
                             } else if (status?.hasUnassigned) {
                               return (
-                                <div className="w-6 h-6 bg-orange-500 rounded-full flex items-center justify-center">
-                                  <span className="text-white text-xs font-bold">{status.unassignedCount}</span>
+                                <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center shadow-sm">
+                                  <span className="text-white text-sm font-semibold">{status.unassignedCount}</span>
                                 </div>
                               )
                             }
@@ -1269,26 +1750,100 @@ export default function CategoryActivities() {
                                 e.stopPropagation()
                                 startEditSession(session)
                               }}
-                              className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                              className="p-3 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-2xl transition-all duration-200"
                               title="Modifica sessione"
                             >
-                              ✏️
+                              <span className="text-xl">✏️</span>
                             </button>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation()
                                 deleteSession(session.id)
                               }}
-                              className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                              className="p-3 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-2xl transition-all duration-200"
                               title="Elimina sessione"
                             >
-                              🗑️
+                              <span className="text-xl">🗑️</span>
                             </button>
                           </div>
                         )}
                       </div>
                     </div>
                   )}
+                </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Colonna Partite */}
+              <div>
+                <h3 className="text-lg font-semibold text-blue-900 mb-4 text-center">Partite</h3>
+                {(() => {
+                  const matches = events.filter(event => 
+                    event.event_type === 'MATCH' || 
+                    event.event_type === 'TOURNAMENT' || 
+                    event.event_type === 'partita' ||
+                    event.event_type === 'torneo'
+                  )
+                  return matches.length === 0
+                })() ? (
+                  <div className="text-center py-8">
+                    <div className="text-2xl mb-2 text-gray-400">️</div>
+                    <p className="text-gray-600 text-sm">Nessuna partita programmata</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {groupByDate(events.filter(event => 
+                      event.event_type === 'MATCH' || 
+                      event.event_type === 'TOURNAMENT' || 
+                      event.event_type === 'partita' ||
+                      event.event_type === 'torneo'
+                    )).map((dateGroup) => (
+                      <div key={dateGroup.date}>
+                        <div className="mb-3">
+                          <h4 className="text-sm font-semibold text-slate-600 bg-slate-100 px-4 py-3 rounded-2xl border border-slate-200 shadow-sm">
+                            {formatDateHeader(dateGroup.date)}
+                          </h4>
+                        </div>
+                        <div className="space-y-3">
+                          {dateGroup.items.map((event) => (
+                            <div key={event.id} className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-all duration-200">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center space-x-1">
+                                  <div className="w-12 h-12 bg-orange-100 rounded-2xl flex items-center justify-center">
+                                    <span className="text-orange-600 text-lg font-bold">️</span>
+                                  </div>
+                                  <div className="flex-1">
+                                    <div className="text-sm text-gray-600">{event.location} - {formatDate(event.event_date)}</div>
+                                    <div className="text-sm text-gray-600">{event.title}</div>
+                                    {event.description && event.description.trim() && (
+                                      <div className="text-xs text-gray-500 mt-1 italic">
+                                        {event.description}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex items-center space-x-1">
+                                  <button
+                                    onClick={() => handleEditEvent(event)}
+                                    className="p-3 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-2xl transition-all duration-200"
+                                    title="Modifica Partita"
+                                  >
+                                    <span className="text-xl">✏️</span>
+                                  </button>
+                                  <button
+                                    onClick={() => {/* TODO: Implement delete match */}}
+                                    className="p-3 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-2xl transition-all duration-200"
+                                    title="Elimina Partita"
+                                  >
+                                    <span className="text-xl">🗑️</span>
+                                  </button>
+                                </div>
+                              </div>
                 </div>
                           ))}
                         </div>
@@ -1617,7 +2172,7 @@ export default function CategoryActivities() {
                     year: 'numeric' 
                   })}
                 </p>
-              </div>
+    </div>
               <button
                 onClick={handleCloseAttendancePopup}
                 className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
@@ -1754,6 +2309,435 @@ export default function CategoryActivities() {
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal per creazione eventi */}
+      {showEventModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-auto">
+            <h2 className="text-2xl font-bold text-blue-900 mb-6">Crea Nuovo Evento</h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              {/* Colonna Sinistra */}
+              <div className="space-y-4">
+                {/* Tipo Evento */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Tipo Evento *</label>
+                  <select
+                    value={eventForm.event_type}
+                    onChange={(e) => setEventForm(prev => ({ ...prev, event_type: e.target.value }))}
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="partita">Partita</option>
+                    <option value="torneo">Torneo</option>
+                  </select>
+                </div>
+
+                {/* Categoria */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Categoria</label>
+                  <select
+                    value={eventForm.category_id}
+                    onChange={(e) => setEventForm(prev => ({ ...prev, category_id: e.target.value }))}
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">Seleziona categoria</option>
+                    <option value={currentCategoryId}>{categoryName}</option>
+                  </select>
+                </div>
+
+                {/* Data Evento */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Data Evento *</label>
+                  <input
+                    type="date"
+                    value={eventForm.event_date}
+                    onChange={(e) => setEventForm(prev => ({ ...prev, event_date: e.target.value }))}
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+
+              {/* Colonna Destra */}
+              <div className="space-y-4">
+                {/* Titolo Evento */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Titolo Evento *</label>
+                  <input
+                    type="text"
+                    value={eventForm.title}
+                    onChange={(e) => setEventForm(prev => ({ ...prev, title: e.target.value }))}
+                    placeholder="Es. Partita U14 vs Rugby Milano"
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                {/* Avversario */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Avversario (per partite)</label>
+                  <input
+                    type="text"
+                    value={eventForm.opponent}
+                    onChange={(e) => handleOpponentChange(e.target.value)}
+                    placeholder="Es. Rugby Milano"
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                {/* Location */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Location</label>
+                  <select
+                    value={eventForm.location}
+                    onChange={(e) => handleLocationChange(e.target.value)}
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">Seleziona location</option>
+                    <option value="Brescia">Brescia</option>
+                    <option value="Gussago">Gussago</option>
+                    <option value="Ospitaletto">Ospitaletto</option>
+                    <option value="Trasferta">Trasferta</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Sezione "Dove giocare" e orari per trasferta */}
+            {eventForm.location === 'Trasferta' && (
+              <div className="mb-6">
+                {/* Campo "Dove giocare" in riga da solo */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Dove giocare</label>
+                  <input
+                    type="text"
+                    value={eventForm.away_location}
+                    onChange={(e) => setEventForm(prev => ({ ...prev, away_location: e.target.value }))}
+                    placeholder="Es. Stadio Comunale Milano"
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                {/* Orari in riga sotto */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Ora Inizio</label>
+                    <input
+                      type="time"
+                      value={eventForm.start_time}
+                      onChange={(e) => setEventForm(prev => ({ ...prev, start_time: e.target.value }))}
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Ora Fine</label>
+                    <input
+                      type="time"
+                      value={eventForm.end_time}
+                      onChange={(e) => setEventForm(prev => ({ ...prev, end_time: e.target.value }))}
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Checkboxes */}
+            <div className="flex space-x-6 mb-6">
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={eventForm.is_home}
+                  onChange={(e) => setEventForm(prev => ({ ...prev, is_home: e.target.checked }))}
+                  className="mr-2"
+                />
+                <span className="text-sm text-gray-700">
+                  {eventForm.is_home ? 'Evento in casa' : 'In trasferta'}
+                </span>
+              </label>
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={eventForm.is_championship}
+                  onChange={(e) => handleCheckboxChange('is_championship', e.target.checked)}
+                  className="mr-2"
+                />
+                <span className="text-sm text-gray-700">Campionato</span>
+              </label>
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={eventForm.is_friendly}
+                  onChange={(e) => handleCheckboxChange('is_friendly', e.target.checked)}
+                  className="mr-2"
+                />
+                <span className="text-sm text-gray-700">Amichevole</span>
+              </label>
+            </div>
+
+            {/* Descrizione */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Descrizione</label>
+              <textarea
+                value={eventForm.description}
+                onChange={(e) => setEventForm(prev => ({ ...prev, description: e.target.value }))}
+                placeholder="Descrizione dell'evento..."
+                rows={3}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            {/* Pulsanti */}
+            <div className="flex space-x-3">
+              <button
+                onClick={closeEventModal}
+                className="flex-1 px-4 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-xl font-medium transition-colors"
+              >
+                Annulla
+              </button>
+              <button
+                onClick={handleCreateEvent}
+                className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors"
+              >
+                Crea Evento
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal per modifica eventi */}
+      {showEditEventModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-auto">
+            <h2 className="text-2xl font-bold text-blue-900 mb-6">Modifica Evento</h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              {/* Colonna Sinistra */}
+              <div className="space-y-4">
+                {/* Tipo Evento */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Tipo Evento *</label>
+                  <select
+                    value={eventForm.event_type}
+                    onChange={(e) => setEventForm(prev => ({ ...prev, event_type: e.target.value }))}
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="partita">Partita</option>
+                    <option value="torneo">Torneo</option>
+                  </select>
+                </div>
+
+                {/* Categoria */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Categoria</label>
+                  <select
+                    value={eventForm.category_id}
+                    onChange={(e) => setEventForm(prev => ({ ...prev, category_id: e.target.value }))}
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">Seleziona categoria</option>
+                    <option value={currentCategoryId}>{categoryName}</option>
+                  </select>
+                </div>
+
+                {/* Data Evento */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Data Evento *</label>
+                  <input
+                    type="date"
+                    value={eventForm.event_date}
+                    onChange={(e) => setEventForm(prev => ({ ...prev, event_date: e.target.value }))}
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+
+              {/* Colonna Destra */}
+              <div className="space-y-4">
+                {/* Titolo Evento */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Titolo Evento *</label>
+                  <input
+                    type="text"
+                    value={eventForm.title}
+                    onChange={(e) => setEventForm(prev => ({ ...prev, title: e.target.value }))}
+                    placeholder="Es. Partita U14 vs Rugby Milano"
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                {/* Avversario */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Avversario (per partite)</label>
+                  <input
+                    type="text"
+                    value={eventForm.opponent}
+                    onChange={(e) => handleOpponentChange(e.target.value)}
+                    placeholder="Es. Rugby Milano"
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                {/* Location */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Location</label>
+                  <select
+                    value={eventForm.location}
+                    onChange={(e) => handleLocationChange(e.target.value)}
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">Seleziona location</option>
+                    <option value="Brescia">Brescia</option>
+                    <option value="Gussago">Gussago</option>
+                    <option value="Ospitaletto">Ospitaletto</option>
+                    <option value="Trasferta">Trasferta</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Sezione "Dove giocare" e orari per trasferta */}
+            {eventForm.location === 'Trasferta' && (
+              <div className="mb-6">
+                {/* Campo "Dove giocare" in riga da solo */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Dove giocare</label>
+                  <input
+                    type="text"
+                    value={eventForm.away_location}
+                    onChange={(e) => setEventForm(prev => ({ ...prev, away_location: e.target.value }))}
+                    placeholder="Es. Stadio Comunale Milano"
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                {/* Orari in riga sotto */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Ora Inizio</label>
+                    <input
+                      type="time"
+                      value={eventForm.start_time}
+                      onChange={(e) => setEventForm(prev => ({ ...prev, start_time: e.target.value }))}
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Ora Fine</label>
+                    <input
+                      type="time"
+                      value={eventForm.end_time}
+                      onChange={(e) => setEventForm(prev => ({ ...prev, end_time: e.target.value }))}
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Checkboxes */}
+            <div className="flex space-x-6 mb-6">
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={eventForm.is_home}
+                  onChange={(e) => setEventForm(prev => ({ ...prev, is_home: e.target.checked }))}
+                  className="mr-2"
+                />
+                <span className="text-sm text-gray-700">
+                  {eventForm.is_home ? 'Evento in casa' : 'In trasferta'}
+                </span>
+              </label>
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={eventForm.is_championship}
+                  onChange={(e) => handleCheckboxChange('is_championship', e.target.checked)}
+                  className="mr-2"
+                />
+                <span className="text-sm text-gray-700">Campionato</span>
+              </label>
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={eventForm.is_friendly}
+                  onChange={(e) => handleCheckboxChange('is_friendly', e.target.checked)}
+                  className="mr-2"
+                />
+                <span className="text-sm text-gray-700">Amichevole</span>
+              </label>
+            </div>
+
+            {/* Descrizione */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Descrizione</label>
+              <textarea
+                value={eventForm.description}
+                onChange={(e) => setEventForm(prev => ({ ...prev, description: e.target.value }))}
+                placeholder="Descrizione dell'evento..."
+                rows={3}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            {/* Pulsanti */}
+            <div className="flex space-x-3">
+              <button
+                onClick={closeEditEventModal}
+                className="flex-1 px-4 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-xl font-medium transition-colors"
+              >
+                Annulla
+              </button>
+              <button
+                onClick={handleUpdateEvent}
+                className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors"
+              >
+                Aggiorna Evento
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Popup di validazione elegante */}
+      {showValidationPopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-gray-100">
+              <div className="flex items-center">
+                <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center mr-3">
+                  <span className="text-orange-600 text-lg">⚠️</span>
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Selezione Obbligatoria</h3>
+                  <p className="text-sm text-gray-500">Scegli il tipo di evento</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="px-6 py-4">
+              <p className="text-gray-700 leading-relaxed">
+                Devi selezionare almeno una delle seguenti opzioni:
+              </p>
+              <ul className="mt-3 text-gray-600 space-y-1">
+                <li>• <strong>Campionato</strong> - per partite ufficiali</li>
+                <li>• <strong>Amichevole</strong> - per partite non ufficiali</li>
+              </ul>
+            </div>
+
+            {/* Actions */}
+            <div className="px-6 py-4 bg-gray-50 flex justify-end">
+              <button
+                onClick={() => setShowValidationPopup(false)}
+                className="px-6 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors"
+              >
+                Ho Capito
+              </button>
             </div>
           </div>
         </div>
