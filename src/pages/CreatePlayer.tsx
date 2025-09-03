@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom'
 interface PlayerForm {
   first_name: string
   last_name: string
-  birth_year: string
+  birth_date: string
   fir_code: string
   role_id: string
   category_ids: string[]
@@ -31,7 +31,7 @@ export default function CreatePlayer() {
   const [form, setForm] = useState<PlayerForm>({
     first_name: '',
     last_name: '',
-    birth_year: '',
+    birth_date: '',
     fir_code: '',
     role_id: '',
     category_ids: []
@@ -81,11 +81,10 @@ export default function CreatePlayer() {
     setMessage('')
 
     try {
-      // Calcola l'anno di nascita dalla data completa
-      const birthDate = new Date(form.birth_year)
-      const birthYear = birthDate.getFullYear()
+      // Usa la data di nascita completa
+      const birthDate = form.birth_date
       
-      if (isNaN(birthYear) || birthYear < 1900 || birthYear > new Date().getFullYear()) {
+      if (!birthDate) {
         throw new Error('Data di nascita non valida')
       }
 
@@ -101,7 +100,7 @@ export default function CreatePlayer() {
         .insert({
           first_name: form.first_name,
           last_name: form.last_name,
-          birth_year: birthYear,
+          birth_date: birthDate,
           fir_code: form.fir_code,
           role_id: form.role_id,
           injured: false,
@@ -132,7 +131,7 @@ export default function CreatePlayer() {
       setForm({
         first_name: '',
         last_name: '',
-        birth_year: '',
+        birth_date: '',
         fir_code: '',
         role_id: '',
         category_ids: []
@@ -215,8 +214,8 @@ export default function CreatePlayer() {
                 <input
                   type="date"
                   required
-                  value={form.birth_year}
-                  onChange={(e) => handleInputChange('birth_year', e.target.value)}
+                  value={form.birth_date}
+                  onChange={(e) => handleInputChange('birth_date', e.target.value)}
                   className="w-full p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-sky-500 focus:border-transparent"
                   max={new Date().toISOString().split('T')[0]}
                 />

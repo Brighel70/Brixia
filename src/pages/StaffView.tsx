@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import Header from '@/components/Header'
 import { supabase } from '@/lib/supabaseClient'
 import { useAuth } from '@/store/auth'
 
 export default function StaffView() {
   const { profile } = useAuth()
+  const navigate = useNavigate()
   const [staff, setStaff] = useState<any[]>([])
   const [filteredStaff, setFilteredStaff] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -23,7 +25,8 @@ export default function StaffView() {
     fullName: '',
     email: '',
     role: '',
-    category: ''
+    category: '',
+    firCode: ''
   })
 
   // Paginazione
@@ -46,13 +49,9 @@ export default function StaffView() {
           full_name,
           email,
           phone,
-          role_id,
-          created_at,
-          user_roles!left(id, name),
-          staff_categories!left(
-            category_id,
-            categories!left(id, code, name)
-          )
+          fir_code,
+          role,
+          created_at
         `)
         .order('full_name', { ascending: true })
 
@@ -67,11 +66,10 @@ export default function StaffView() {
           full_name: member.full_name || '',
           email: member.email || '',
           phone: member.phone || '',
+          fir_code: member.fir_code || '',
           created_at: member.created_at,
-          role: member.user_roles || null,
-          categories: member.staff_categories && member.staff_categories.length > 0 
-            ? member.staff_categories.map((sc: any) => sc.categories).filter(Boolean)
-            : []
+          role: member.role || null,
+          categories: [] // Temporaneamente vuoto fino a quando non risolviamo la foreign key
         }
         
         console.log('Staff formattato:', formatted) // Debug
@@ -145,6 +143,11 @@ export default function StaffView() {
         member.categories.some((cat: any) => cat.code?.toLowerCase().includes(columnFilters.category.toLowerCase()))
       )
     }
+    if (columnFilters.firCode) {
+      filtered = filtered.filter(member => 
+        member.fir_code?.toLowerCase().includes(columnFilters.firCode.toLowerCase())
+      )
+    }
 
     setFilteredStaff(filtered)
     setCurrentPage(1)
@@ -179,7 +182,7 @@ export default function StaffView() {
       
       <div className="max-w-7xl mx-auto p-6">
         {/* Dashboard interno con statistiche */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-2">
           <div className="card p-6 bg-gradient-to-r from-orange-500 to-orange-600 text-white">
             <div className="flex items-center">
               <div className="text-3xl mr-4">👥</div>
@@ -221,18 +224,24 @@ export default function StaffView() {
           </div>
         </div>
 
-        {/* Contenuto esistente... */}
-
-        {/* Header con statistiche */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-white mb-2">Gestione Staff</h1>
-          <p className="text-white/80">
-            {filteredStaff.length} membri staff trovati su {staff.length} totali
-          </p>
+        {/* Header con statistiche e pulsante allineati */}
+        <div className="mt-8 mb-1 flex items-center justify-between">
+          <div>
+            <p className="text-navy/80">
+              {filteredStaff.length} membri staff trovati su {staff.length} totali
+            </p>
+          </div>
+          <button
+            onClick={() => navigate('/create-user')}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center gap-2"
+          >
+            <span className="text-xl">➕</span>
+            Crea Nuovo Staff
+          </button>
         </div>
 
         {/* Filtro globale */}
-        <div className="mb-6">
+        <div className="mb-1">
           <div className="relative">
             <input
               type="text"
@@ -318,7 +327,7 @@ export default function StaffView() {
                     <tr key={staffMember.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-gray-900">
-                          {staffMember.last_name} {staffMember.first_name}
+                          {staffMember.full_name}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -333,7 +342,7 @@ export default function StaffView() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900 font-mono">
-                          {getFirCode(staffMember.fir_code)}
+                          {staffMember.fir_code || '-'}
                         </div>
                       </td>
                     </tr>

@@ -14,21 +14,37 @@ interface Category {
   created_at: string
 }
 
+interface TrainingLocation {
+  location: string
+  weekday: string
+  start_time: string
+  end_time: string
+}
+
 interface NewCategory {
   code: string
   name: string
+  training_locations: TrainingLocation[]
 }
 
 export default function Settings() {
   const navigate = useNavigate()
   const { profile } = useAuth()
   const [categories, setCategories] = useState<Category[]>([])
-  const [newCategory, setNewCategory] = useState<NewCategory>( { code: '', name: '' })
+  const [newCategory, setNewCategory] = useState<NewCategory>({ 
+    code: '', 
+    name: '', 
+    training_locations: [{ location: '', weekday: '', start_time: '', end_time: '' }] 
+  })
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [activeTab, setActiveTab] = useState<'categories' | 'system' | 'emails' | 'permissions'>('categories')
   const [editingCategory, setEditingCategory] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editingCategoryData, setEditingCategoryData] = useState<Category | null>(null)
+  const [editingTrainingLocations, setEditingTrainingLocations] = useState<TrainingLocation[]>([])
+  const [categoryTrainingLocations, setCategoryTrainingLocations] = useState<Record<string, TrainingLocation[]>>({})
 
   useEffect(() => {
     loadCategories()
@@ -58,8 +74,71 @@ export default function Settings() {
       }))
       
       setCategories(categoriesWithActive)
+      
+      // Carica le sedi di allenamento per tutte le categorie
+      await loadTrainingLocations(categoriesWithActive)
     } catch (error) {
       console.error('Errore nel caricamento categorie:', error)
+    }
+  }
+
+  const sortByWeekday = (locations: TrainingLocation[]): TrainingLocation[] => {
+    const weekdayOrder = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica']
+    
+    return locations.sort((a, b) => {
+      const aIndex = weekdayOrder.indexOf(a.weekday)
+      const bIndex = weekdayOrder.indexOf(b.weekday)
+      
+      // Se i giorni sono diversi, ordina per giorno
+      if (aIndex !== bIndex) {
+        return aIndex - bIndex
+      }
+      
+      // Se il giorno è lo stesso, ordina per orario di inizio
+      return a.start_time.localeCompare(b.start_time)
+    })
+  }
+
+  const loadTrainingLocations = async (categories: Category[]) => {
+    try {
+      const categoryIds = categories.map(cat => cat.id)
+      
+      const { data, error } = await supabase
+        .from('training_locations')
+        .select('*')
+        .in('category_id', categoryIds)
+        .order('start_time')
+
+      if (error) throw error
+
+      // Raggruppa le sedi per categoria
+      const locationsByCategory: Record<string, TrainingLocation[]> = {}
+      
+      categories.forEach(cat => {
+        locationsByCategory[cat.id] = []
+      })
+
+      if (data) {
+        data.forEach(location => {
+          if (locationsByCategory[location.category_id]) {
+            locationsByCategory[location.category_id].push({
+              location: location.location,
+              weekday: location.weekday,
+              start_time: location.start_time,
+              end_time: location.end_time
+            })
+          }
+        })
+      }
+
+      // Ordina i giorni della settimana per ogni categoria
+      Object.keys(locationsByCategory).forEach(categoryId => {
+        locationsByCategory[categoryId] = sortByWeekday(locationsByCategory[categoryId])
+      })
+
+      setCategoryTrainingLocations(locationsByCategory)
+    } catch (error) {
+      console.error('Errore nel caricamento sedi di allenamento:', error)
     }
   }
 
@@ -71,6 +150,15 @@ export default function Settings() {
     try {
       if (!newCategory.code.trim() || !newCategory.name.trim()) {
         throw new Error('Codice e nome sono obbligatori')
+      }
+
+      // Validazione sedi di allenamento
+      const validLocations = newCategory.training_locations.filter(loc => 
+        loc.location.trim() && loc.weekday.trim() && loc.start_time.trim() && loc.end_time.trim()
+      )
+      
+      if (validLocations.length === 0) {
+        throw new Error('Devi inserire almeno una sede di allenamento completa')
       }
 
       // Verifica che il codice non esista già
@@ -100,19 +188,42 @@ export default function Settings() {
         sortValue = maxSort + 1
       }
 
-      const { error } = await supabase
+      // Inserisci la categoria
+      const { data: categoryData, error: categoryError } = await supabase
         .from('categories')
         .insert({
           code: newCategory.code.toUpperCase(),
           name: newCategory.name.trim(),
           sort: sortValue
         })
+        .select()
 
-      if (error) throw error
+      if (categoryError) throw categoryError
 
-      setMessage('✅ Categoria creata con successo!')
-      setNewCategory({ code: '', name: '' })
-      loadCategories() // Ricarica la lista
+      const categoryId = categoryData[0].id
+
+      // Inserisci le sedi di allenamento
+      const trainingLocationsData = validLocations.map(loc => ({
+        category_id: categoryId,
+        location: loc.location.trim(),
+        weekday: loc.weekday.trim(),
+        start_time: loc.start_time.trim(),
+        end_time: loc.end_time.trim()
+      }))
+
+      const { error: locationsError } = await supabase
+        .from('training_locations')
+        .insert(trainingLocationsData)
+
+      if (locationsError) throw locationsError
+
+      setMessage('✅ Categoria e sedi di allenamento create con successo!')
+      setNewCategory({ 
+        code: '', 
+        name: '', 
+        training_locations: [{ location: '', weekday: '', start_time: '', end_time: '' }] 
+      })
+      loadCategories() // Ricarica la lista e le sedi di allenamento
     } catch (error: any) {
       console.error('Errore nella creazione categoria:', error)
       setMessage(`❌ Errore: ${error.message}`)
@@ -267,6 +378,145 @@ export default function Settings() {
     setNewCategory(prev => ({ ...prev, [field]: value }))
   }
 
+  const handleTrainingLocationChange = (index: number, field: keyof TrainingLocation, value: string) => {
+    setNewCategory(prev => ({
+      ...prev,
+      training_locations: prev.training_locations.map((loc, i) => 
+        i === index ? { ...loc, [field]: value } : loc
+      )
+    }))
+  }
+
+  const addTrainingLocation = () => {
+    setNewCategory(prev => ({
+      ...prev,
+      training_locations: [...prev.training_locations, { location: '', weekday: '', start_time: '', end_time: '' }]
+    }))
+  }
+
+  const removeTrainingLocation = (index: number) => {
+    setNewCategory(prev => ({
+      ...prev,
+      training_locations: prev.training_locations.filter((_, i) => i !== index)
+    }))
+  }
+
+  // Funzioni per il modal di modifica
+  const openEditModal = async (category: Category) => {
+    setEditingCategoryData(category)
+    setShowEditModal(true)
+    
+    try {
+      // Carica le sedi di allenamento esistenti
+      const { data: locations, error } = await supabase
+        .from('training_locations')
+        .select('*')
+        .eq('category_id', category.id)
+        .order('location')
+
+      if (error) throw error
+
+      if (locations && locations.length > 0) {
+        setEditingTrainingLocations(locations.map(loc => ({
+          location: loc.location,
+          weekday: loc.weekday || '',
+          start_time: loc.start_time,
+          end_time: loc.end_time
+        })))
+      } else {
+        setEditingTrainingLocations([{ location: '', weekday: '', start_time: '', end_time: '' }])
+      }
+    } catch (error) {
+      console.error('Errore nel caricamento sedi di allenamento:', error)
+      setEditingTrainingLocations([{ location: '', weekday: '', start_time: '', end_time: '' }])
+    }
+  }
+
+  const closeEditModal = () => {
+    setShowEditModal(false)
+    setEditingCategoryData(null)
+    setEditingTrainingLocations([])
+  }
+
+  const handleEditTrainingLocationChange = (index: number, field: keyof TrainingLocation, value: string) => {
+    setEditingTrainingLocations(prev => 
+      prev.map((loc, i) => 
+        i === index ? { ...loc, [field]: value } : loc
+      )
+    )
+  }
+
+  const addEditTrainingLocation = () => {
+    setEditingTrainingLocations(prev => [
+      ...prev,
+      { location: '', weekday: '', start_time: '', end_time: '' }
+    ])
+  }
+
+  const removeEditTrainingLocation = (index: number) => {
+    setEditingTrainingLocations(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const saveCategoryEdit = async () => {
+    if (!editingCategoryData) return
+
+    setLoading(true)
+    setMessage('')
+
+    try {
+      // Validazione sedi di allenamento
+      const validLocations = editingTrainingLocations.filter(loc => 
+        loc.location.trim() && loc.weekday.trim() && loc.start_time.trim() && loc.end_time.trim()
+      )
+      
+      if (validLocations.length === 0) {
+        throw new Error('Devi inserire almeno una sede di allenamento completa')
+      }
+
+      // Aggiorna la categoria
+      const { error: categoryError } = await supabase
+        .from('categories')
+        .update({
+          name: editingCategoryData.name.trim()
+        })
+        .eq('id', editingCategoryData.id)
+
+      if (categoryError) throw categoryError
+
+      // Elimina le sedi esistenti
+      const { error: deleteError } = await supabase
+        .from('training_locations')
+        .delete()
+        .eq('category_id', editingCategoryData.id)
+
+      if (deleteError) throw deleteError
+
+      // Inserisci le nuove sedi
+      const trainingLocationsData = validLocations.map(loc => ({
+        category_id: editingCategoryData.id,
+        location: loc.location.trim(),
+        weekday: loc.weekday.trim(),
+        start_time: loc.start_time.trim(),
+        end_time: loc.end_time.trim()
+      }))
+
+      const { error: locationsError } = await supabase
+        .from('training_locations')
+        .insert(trainingLocationsData)
+
+      if (locationsError) throw locationsError
+
+      setMessage('✅ Categoria e sedi di allenamento aggiornate con successo!')
+      closeEditModal()
+      loadCategories() // Ricarica la lista e le sedi di allenamento
+    } catch (error: any) {
+      console.error('Errore nell\'aggiornamento categoria:', error)
+      setMessage(`❌ Errore: ${error.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div>
       <Header title="Configurazioni" showBack={true} />
@@ -366,6 +616,100 @@ export default function Settings() {
                     />
                   </div>
                 </div>
+
+                {/* Sedi di Allenamento */}
+                <div className="mt-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Sedi di Allenamento *</h3>
+                  <div className="space-y-4">
+                    {newCategory.training_locations.map((location, index) => (
+                      <div key={index} className="grid grid-cols-1 md:grid-cols-5 gap-4 p-4 bg-gray-50 rounded-lg">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Sede *
+                          </label>
+                          <select
+                            required
+                            value={location.location}
+                            onChange={(e) => handleTrainingLocationChange(index, 'location', e.target.value)}
+                            className="w-full p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                          >
+                            <option value="">Seleziona sede</option>
+                            <option value="Brescia">Brescia</option>
+                            <option value="Ospitaletto">Ospitaletto</option>
+                            <option value="Gussago">Gussago</option>
+                          </select>
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Giorno *
+                          </label>
+                          <select
+                            required
+                            value={location.weekday}
+                            onChange={(e) => handleTrainingLocationChange(index, 'weekday', e.target.value)}
+                            className="w-full p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                          >
+                            <option value="">Seleziona giorno</option>
+                            <option value="Lunedì">Lunedì</option>
+                            <option value="Martedì">Martedì</option>
+                            <option value="Mercoledì">Mercoledì</option>
+                            <option value="Giovedì">Giovedì</option>
+                            <option value="Venerdì">Venerdì</option>
+                            <option value="Sabato">Sabato</option>
+                            <option value="Domenica">Domenica</option>
+                          </select>
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Dalle *
+                          </label>
+                          <input
+                            type="time"
+                            required
+                            value={location.start_time}
+                            onChange={(e) => handleTrainingLocationChange(index, 'start_time', e.target.value)}
+                            className="w-full p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Alle *
+                          </label>
+                          <input
+                            type="time"
+                            required
+                            value={location.end_time}
+                            onChange={(e) => handleTrainingLocationChange(index, 'end_time', e.target.value)}
+                            className="w-full p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                          />
+                        </div>
+                        
+                        <div className="flex items-end">
+                          {newCategory.training_locations.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeTrainingLocation(index)}
+                              className="w-full p-3 bg-red-500 text-white rounded-2xl hover:bg-red-600 transition-colors"
+                            >
+                              🗑️ Rimuovi
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    
+                    <button
+                      type="button"
+                      onClick={addTrainingLocation}
+                      className="w-full p-3 bg-green-500 text-white rounded-2xl hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
+                    >
+                      ➕ Aggiungi Sede di Allenamento
+                    </button>
+                  </div>
+                </div>
                 
                 <button
                   type="submit"
@@ -444,15 +788,32 @@ export default function Settings() {
                               <span className="ml-2 text-red-700">✗ Non attiva</span>
                             )}
                           </div>
+                          
+                          {/* Sedi di Allenamento */}
+                          {categoryTrainingLocations[category.id] && categoryTrainingLocations[category.id].length > 0 && (
+                            <div className="mt-2">
+                              <div className="text-xs font-medium text-gray-700 mb-1">Sedi di Allenamento:</div>
+                              <div className="space-y-1">
+                                {categoryTrainingLocations[category.id].map((location, index) => (
+                                  <div key={index} className="text-xs text-gray-600 bg-gray-50 px-2 py-1 rounded">
+                                    <span className="font-medium">{location.weekday}</span> - {location.location} 
+                                    <span className="text-gray-500 ml-1">
+                                      ({location.start_time} - {location.end_time})
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                       
                       <div className="flex items-center space-x-2">
                         {editingCategory !== category.id && (
                           <button
-                            onClick={() => handleEditCategory(category.id, category.name)}
+                            onClick={() => openEditModal(category)}
                             className="btn bg-blue-500 text-white px-3 py-2 text-sm hover:bg-blue-600"
-                            title="Modifica nome categoria"
+                            title="Modifica categoria e sedi di allenamento"
                           >
                             Modifica
                           </button>
@@ -541,6 +902,22 @@ export default function Settings() {
                   <p className="text-sm text-purple-700">
                     Sistema di tracciamento presenze per sessioni e allenamenti.
                   </p>
+                </div>
+
+                {/* Gestione Consiglio */}
+                <div className="p-4 bg-yellow-50 rounded-lg flex items-center justify-between">
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-yellow-800 mb-2">🏛️ Gestione Consiglio</h3>
+                    <p className="text-sm text-yellow-700">
+                      Configura Presidente, Vice Presidente e Consiglieri per gli eventi consiglio.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => navigate('/council-management')}
+                    className="btn bg-yellow-600 text-white px-4 py-2 text-sm hover:bg-yellow-700 ml-4"
+                  >
+                    ⚙️ Gestisci Consiglio
+                  </button>
                 </div>
 
                 {/* I Tuoi Permessi - NUOVA FASCIA */}
@@ -690,6 +1067,157 @@ export default function Settings() {
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal di modifica categoria */}
+        {showEditModal && editingCategoryData && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+              {/* Header */}
+              <div className="px-6 py-4 border-b border-gray-100">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xl font-semibold text-gray-900">Modifica Categoria</h3>
+                    <p className="text-sm text-gray-500">{editingCategoryData.name}</p>
+                  </div>
+                  <button
+                    onClick={closeEditModal}
+                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="px-6 py-4">
+                {/* Nome categoria */}
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Nome Categoria *
+                  </label>
+                  <input
+                    type="text"
+                    value={editingCategoryData.name}
+                    onChange={(e) => setEditingCategoryData(prev => prev ? { ...prev, name: e.target.value } : null)}
+                    className="w-full p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                    placeholder="Nome della categoria"
+                  />
+                </div>
+
+                {/* Sedi di Allenamento */}
+                <div>
+                  <h4 className="text-lg font-semibold text-gray-900 mb-4">Sedi di Allenamento *</h4>
+                  <div className="space-y-4">
+                    {editingTrainingLocations.map((location, index) => (
+                      <div key={index} className="grid grid-cols-1 md:grid-cols-5 gap-4 p-4 bg-gray-50 rounded-lg">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Sede *
+                          </label>
+                          <select
+                            required
+                            value={location.location}
+                            onChange={(e) => handleEditTrainingLocationChange(index, 'location', e.target.value)}
+                            className="w-full p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                          >
+                            <option value="">Seleziona sede</option>
+                            <option value="Brescia">Brescia</option>
+                            <option value="Ospitaletto">Ospitaletto</option>
+                            <option value="Gussago">Gussago</option>
+                          </select>
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Giorno *
+                          </label>
+                          <select
+                            required
+                            value={location.weekday}
+                            onChange={(e) => handleEditTrainingLocationChange(index, 'weekday', e.target.value)}
+                            className="w-full p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                          >
+                            <option value="">Seleziona giorno</option>
+                            <option value="Lunedì">Lunedì</option>
+                            <option value="Martedì">Martedì</option>
+                            <option value="Mercoledì">Mercoledì</option>
+                            <option value="Giovedì">Giovedì</option>
+                            <option value="Venerdì">Venerdì</option>
+                            <option value="Sabato">Sabato</option>
+                            <option value="Domenica">Domenica</option>
+                          </select>
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Dalle *
+                          </label>
+                          <input
+                            type="time"
+                            required
+                            value={location.start_time}
+                            onChange={(e) => handleEditTrainingLocationChange(index, 'start_time', e.target.value)}
+                            className="w-full p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Alle *
+                          </label>
+                          <input
+                            type="time"
+                            required
+                            value={location.end_time}
+                            onChange={(e) => handleEditTrainingLocationChange(index, 'end_time', e.target.value)}
+                            className="w-full p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                          />
+                        </div>
+                        
+                        <div className="flex items-end">
+                          {editingTrainingLocations.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeEditTrainingLocation(index)}
+                              className="w-full p-3 bg-red-500 text-white rounded-2xl hover:bg-red-600 transition-colors"
+                            >
+                              🗑️ Rimuovi
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    
+                    <button
+                      type="button"
+                      onClick={addEditTrainingLocation}
+                      className="w-full p-3 bg-green-500 text-white rounded-2xl hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
+                    >
+                      ➕ Aggiungi Sede di Allenamento
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="px-6 py-4 bg-gray-50 flex space-x-3">
+                <button
+                  onClick={closeEditModal}
+                  className="flex-1 px-4 py-3 bg-white border border-gray-300 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors"
+                >
+                  Annulla
+                </button>
+                <button
+                  onClick={saveCategoryEdit}
+                  disabled={loading}
+                  className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loading ? 'Salvataggio...' : 'Salva Modifiche'}
+                </button>
               </div>
             </div>
           </div>

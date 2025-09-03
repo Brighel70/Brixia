@@ -91,11 +91,11 @@ export default function HomeView() {
   // Card di navigazione principali
   const navigationCards = [
     {
-      title: "Giocatori",
-      description: "Gestione anagrafica e categorie",
-      icon: "🏉",
-      route: "/players",
-      color: "bg-gradient-to-r from-blue-500 to-blue-600 border-l-4 border-blue-400"
+      title: "Attività",
+      description: "Presenze e sessioni allenamento",
+      icon: "📊",
+      route: "/activities",
+      color: "bg-gradient-to-r from-green-500 to-green-600 border-l-4 border-green-400"
     },
     {
       title: "Staff",
@@ -105,11 +105,11 @@ export default function HomeView() {
       color: "bg-gradient-to-r from-orange-500 to-orange-600 border-l-4 border-orange-400"
     },
     {
-      title: "Attività",
-      description: "Presenze e sessioni allenamento",
-      icon: "📊",
-      route: "/activities",
-      color: "bg-gradient-to-r from-green-500 to-green-600 border-l-4 border-green-400"
+      title: "Giocatori",
+      description: "Gestione anagrafica e categorie",
+      icon: "🏉",
+      route: "/players",
+      color: "bg-gradient-to-r from-blue-500 to-blue-600 border-l-4 border-blue-400"
     },
     {
       title: "Nuovo Giocatore",

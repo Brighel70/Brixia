@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabaseClient'
 
-type Profile = { id: string; full_name: string | null; role: 'admin'|'coach'|'medic'|'director'; password: string; email: string }
+type Profile = { id: string; full_name: string | null; role: 'Admin'|'Dirigente'|'Segreteria'|'Direttore Sportivo'|'Direttore Tecnico'|'Allenatore'|'Team Manager'|'Accompagnatore'|'Player'|'Preparatore'|'Medico'|'Fisio'|'Famiglia'; password: string; email: string }
 
 interface AuthState {
   userId: string | null

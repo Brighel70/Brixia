@@ -32,18 +32,15 @@ export default function StartTraining(){
 
   const loadCategory = async (categoryCode: string) => {
     try {
-      // Trova la categoria dalla configurazione invece che dal database
-      const foundCategory = BRIXIA_CATEGORIES.find(cat => cat.code === categoryCode)
-      
-      if (!foundCategory) {
-        throw new Error(`Categoria ${categoryCode} non trovata`)
-      }
+      // Trova la categoria dal database per ottenere l'UUID reale
+      const { data: categoryData, error: categoryError } = await supabase
+        .from('categories')
+        .select('id, code, name')
+        .eq('code', categoryCode)
+        .single()
 
-      // Crea un oggetto categoria compatibile
-      const categoryData = {
-        id: categoryCode, // Usa il codice come ID temporaneo
-        code: foundCategory.code as any,
-        name: foundCategory.name
+      if (categoryError) {
+        throw new Error(`Categoria ${categoryCode} non trovata nel database`)
       }
 
       setCategory(categoryData)
@@ -115,8 +112,8 @@ export default function StartTraining(){
 
       // Sessione creata con successo
       
-      // Naviga al board presenze con l'ID della sessione
-      navigate(`/board?session=${data.id}`)
+      // Torna alla pagina delle attività della categoria
+      navigate(`/category-activities?category=${category.code}`)
     } catch (error) {
       console.error('Errore nell\'avvio sessione:', error)
       alert('Errore nell\'avvio della sessione')

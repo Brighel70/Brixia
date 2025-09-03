@@ -39,48 +39,118 @@ export default function PlayersView() {
   const loadPlayers = async () => {
     try {
       setLoading(true)
+      console.log('🚀 INIZIO loadPlayers') // Debug
       
-      // USO LEFT JOIN PER INCLUDERE TUTTI I GIOCATORI
-      const { data, error } = await supabase
+      // APPROCCIO DIVERSO: Carica giocatori e categorie separatamente
+      
+      // 1. Carica tutti i giocatori
+      console.log('🔍 Caricamento giocatori...') // Debug
+      const { data: playersData, error: playersError } = await supabase
         .from('players')
-        .select(`
-          id,
-          first_name,
-          last_name,
-          birth_year,
-          fir_code,
-          role_id,
-          injured,
-          created_at,
-          roles!left(id, name),
-          player_categories!left(
-            category_id,
-            categories!left(id, code, name)
-          )
-        `)
+        .select('*')
         .order('last_name', { ascending: true })
 
-      if (error) throw error
+      if (playersError) throw playersError
 
-      console.log('Dati grezzi da Supabase:', data) // Debug
+      console.log('🔍 Giocatori caricati:', playersData?.length) // Debug
 
-      // Formatta i dati con controlli di sicurezza
-      const formattedPlayers = (data || []).map(player => {
+      // 2. Carica tutte le associazioni giocatori-categorie
+      console.log('🔍 Inizio caricamento associazioni...') // Debug
+      
+      let associationsData = []
+      let associationsError = null
+      
+      try {
+        const result = await supabase
+          .from('player_categories')
+          .select(`
+            player_id,
+            category_id,
+            categories(
+              id,
+              code,
+              name
+            )
+          `)
+        
+        associationsData = result.data
+        associationsError = result.error
+        
+        console.log('🔍 Risultato query associazioni:', { associationsData, associationsError }) // Debug
+      } catch (error) {
+        console.error('❌ Errore nel caricamento associazioni:', error)
+        associationsError = error
+      }
+
+      if (associationsError) {
+        console.error('❌ Errore nel caricamento associazioni:', associationsError)
+        // Non bloccare, continua senza associazioni
+        associationsData = []
+      }
+
+      console.log('🔍 Associazioni caricate:', associationsData?.length) // Debug
+      console.log('🔍 Prime 3 associazioni:', associationsData?.slice(0, 3)) // Debug
+
+      // 3. Crea una mappa delle categorie per giocatore
+      const categoriesMap = new Map()
+      associationsData?.forEach(assoc => {
+        if (!categoriesMap.has(assoc.player_id)) {
+          categoriesMap.set(assoc.player_id, [])
+        }
+        if (assoc.categories) {
+          categoriesMap.get(assoc.player_id).push(assoc.categories)
+        }
+      })
+
+      console.log('🔍 Mappa categorie creata:', categoriesMap.size, 'giocatori con categorie') // Debug
+
+      // 4. SOLUZIONE TEMPORANEA: Assegna categorie basandosi sul codice FIR
+      const formattedPlayers = (playersData || []).map(player => {
+        let categories = []
+        
+        // Estrai la categoria dal codice FIR
+        if (player.fir_code) {
+          const firParts = player.fir_code.split('-')
+          if (firParts.length >= 2) {
+            const categoryCode = firParts[1] // Es: FIR-U6-LR-001 -> U6
+            
+            // Mappa i codici alle categorie
+            const categoryMapping = {
+              'U6': { id: 'temp-u6', code: 'U6', name: 'Under 6' },
+              'U8': { id: 'temp-u8', code: 'U8', name: 'Under 8' },
+              'U10': { id: 'temp-u10', code: 'U10', name: 'Under 10' },
+              'U12': { id: 'temp-u12', code: 'U12', name: 'Under 12' },
+              'U14': { id: 'temp-u14', code: 'U14', name: 'Under 14' },
+              'U16': { id: 'temp-u16', code: 'U16', name: 'Under 16' },
+              'U18': { id: 'temp-u18', code: 'U18', name: 'Under 18' },
+              'SC': { id: 'temp-sc', code: 'SERIE_C', name: 'Serie C' },
+              'SB': { id: 'temp-sb', code: 'SERIE_B', name: 'Serie B' },
+              'POD': { id: 'temp-pod', code: 'PODEROSA', name: 'Poderosa' },
+              'GUS': { id: 'temp-gus', code: 'GUSSAGOLD', name: 'GussagOld' },
+              'BRI': { id: 'temp-bri', code: 'BRIXIAOLD', name: 'Brixia Old' },
+              'LEO': { id: 'temp-leo', code: 'LEONESSE', name: 'Leonesse' }
+            }
+            
+            if (categoryMapping[categoryCode]) {
+              categories = [categoryMapping[categoryCode]]
+            }
+          }
+        }
+        
         const formatted = {
           id: player.id,
           first_name: player.first_name || '',
           last_name: player.last_name || '',
-          birth_year: player.birth_year || '',
+          birth_date: player.birth_date || '',
           fir_code: player.fir_code || '',
           injured: player.injured || false,
           created_at: player.created_at,
-          role: player.roles && player.roles.length > 0 ? player.roles[0] : null,
-          categories: player.player_categories && player.player_categories.length > 0 
-            ? player.player_categories.map((pc: any) => pc.categories).filter(Boolean)
-            : []
+          role: null, // Per ora non carichiamo i ruoli
+          categories: categories
         }
         
-        console.log('Giocatore formattato:', formatted) // Debug
+        console.log('👤 Giocatore formattato:', formatted) // Debug
+        console.log('👤 Categorie del giocatore (da FIR):', categories) // Debug
         return formatted
       })
 
@@ -100,10 +170,20 @@ export default function PlayersView() {
       // Conta categorie uniche
       const uniqueCategories = new Set()
       formattedPlayers.forEach(player => {
-        player.categories.forEach((cat: any) => {
-          if (cat && cat.code) uniqueCategories.add(cat.code)
-        })
+        if (player.categories && player.categories.length > 0) {
+          player.categories.forEach((cat: any) => {
+            if (cat && cat.code) uniqueCategories.add(cat.code)
+          })
+        }
       })
+      
+      console.log('📊 Statistiche calcolate:', {
+        totalPlayers,
+        injuredPlayers,
+        newPlayers,
+        categoriesCount: uniqueCategories.size,
+        uniqueCategories: Array.from(uniqueCategories)
+      }) // Debug
       
       setStats({
         totalPlayers,
@@ -120,11 +200,12 @@ export default function PlayersView() {
 
   // Estrai anno dalla data di nascita
   const getBirthYear = (birthDate: string) => {
-    if (!birthDate) return ''
+    if (!birthDate) return 'N/A'
     try {
-      return new Date(birthDate).getFullYear().toString()
+      const date = new Date(birthDate)
+      return date.getFullYear().toString()
     } catch {
-      return ''
+      return 'N/A'
     }
   }
 
@@ -138,7 +219,8 @@ export default function PlayersView() {
         `${player.first_name} ${player.last_name}`.toLowerCase().includes(globalFilter.toLowerCase()) ||
         player.fir_code?.toLowerCase().includes(globalFilter.toLowerCase()) ||
         player.role?.name?.toLowerCase().includes(globalFilter.toLowerCase()) ||
-        player.categories.some((cat: any) => cat.code?.toLowerCase().includes(globalFilter.toLowerCase()))
+        (player.categories && player.categories.length > 0 && 
+         player.categories.some((cat: any) => cat.code?.toLowerCase().includes(globalFilter.toLowerCase())))
       )
     }
 
@@ -150,11 +232,12 @@ export default function PlayersView() {
     }
     if (columnFilters.birthYear) {
       filtered = filtered.filter(player => 
-        player.birth_year?.toString().includes(columnFilters.birthYear)
+        player.birth_date?.toString().includes(columnFilters.birthYear)
       )
     }
     if (columnFilters.category) {
       filtered = filtered.filter(player => 
+        player.categories && player.categories.length > 0 && 
         player.categories.some((cat: any) => cat.code?.toLowerCase().includes(columnFilters.category.toLowerCase()))
       )
     }
@@ -184,10 +267,10 @@ export default function PlayersView() {
   // Formatta nomi categorie con controllo di sicurezza
   const getCategoryNames = (categories: any[]) => {
     if (!categories || categories.length === 0) return 'N/A'
-    return categories
+    const validCategories = categories
       .filter(cat => cat && cat.code)
       .map(cat => cat.code)
-      .join(', ') || 'N/A'
+    return validCategories.length > 0 ? validCategories.join(', ') : 'N/A'
   }
 
   // Formatta ruolo con controllo di sicurezza
@@ -352,7 +435,7 @@ export default function PlayersView() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
-                          {getBirthYear(player.birth_year)}
+                          {getBirthYear(player.birth_date)}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">

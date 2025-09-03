@@ -14,6 +14,7 @@ import StartTraining from '@/pages/StartTraining'
 
 import CategoryActivities from '@/pages/CategoryActivities'
 import Events from '@/pages/Events'
+import CouncilManagement from '@/pages/CouncilManagement'
 import AuthLayout from '@/components/AuthLayout'
 import { PermissionGuard } from '@/components/PermissionGuard'
 import { PERMISSIONS } from '@/config/permissions'
@@ -29,6 +30,14 @@ export const router = createBrowserRouter([
   },
   {
     path: '/home',
+    element: (
+      <AuthLayout requireAuth={true}>
+        <HomeView />
+      </AuthLayout>
+    )
+  },
+  {
+    path: '/dashboard',
     element: (
       <AuthLayout requireAuth={true}>
         <HomeView />
@@ -118,6 +127,16 @@ export const router = createBrowserRouter([
     )
   },
   {
+    path: '/council-management',
+    element: (
+      <AuthLayout requireAuth={true}>
+        <PermissionGuard requiredPermission={PERMISSIONS.SETTINGS.EDIT} fallback={<div className="p-6 text-center text-red-600">❌ Accesso negato: permesso insufficiente</div>}>
+          <CouncilManagement />
+        </PermissionGuard>
+      </AuthLayout>
+    )
+  },
+  {
     path: '/players',
     element: (
       <AuthLayout requireAuth={true}>
@@ -136,5 +155,21 @@ export const router = createBrowserRouter([
         </PermissionGuard>
       </AuthLayout>
     )
+  },
+  {
+    path: '*',
+    element: (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-4xl font-bold text-red-600 mb-4">404</h1>
+          <p className="text-gray-600 mb-4">Pagina non trovata</p>
+          <a href="/home" className="text-blue-600 hover:underline">Torna alla Home</a>
+        </div>
+      </div>
+    )
   }
-])
+], {
+  future: {
+    v7_startTransition: true
+  }
+})

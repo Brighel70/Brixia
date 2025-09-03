@@ -4,10 +4,12 @@ import { getBrandConfig } from '@/config/brand'
 
 interface HeaderProps {
   title: string
+  subtitle?: string
   showBack?: boolean
+  rightButton?: React.ReactNode
 }
 
-export default function Header({ title, showBack = false }: HeaderProps) {
+export default function Header({ title, subtitle, showBack = false, rightButton }: HeaderProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const { signOut } = useAuth()
@@ -22,8 +24,9 @@ export default function Header({ title, showBack = false }: HeaderProps) {
   const showLogout = location.pathname === '/dashboard' || location.pathname === '/home'
 
   return (
-    <header className="bg-gradient-to-r from-brixia-primary to-brixia-secondary text-white p-4 flex items-center justify-between shadow-brixia">
-      <div className="flex items-center gap-3">
+    <header className="bg-gradient-to-r from-brixia-primary to-brixia-secondary text-white shadow-brixia">
+      <div className="max-w-6xl mx-auto p-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
         {showBack && (
           <button 
             onClick={() => navigate(-1)} 
@@ -39,11 +42,18 @@ export default function Header({ title, showBack = false }: HeaderProps) {
             alt={brandConfig.assets.logoAlt}
             className="w-40 h-auto object-contain"
           />
-          <h1 className="text-4xl font-bold">{title}</h1>
+          <div>
+            <h1 className="text-4xl font-bold">{title}</h1>
+            {subtitle && (
+              <p className="text-sm text-white/90 mt-1">{subtitle}</p>
+            )}
+          </div>
         </div>
       </div>
       
-      {showLogout && (
+      {rightButton ? (
+        rightButton
+      ) : showLogout ? (
         <button 
           onClick={handleLogout}
           className="px-3 py-1 text-sm bg-white/20 hover:bg-white/30 text-white rounded-lg transition-colors"
@@ -51,7 +61,8 @@ export default function Header({ title, showBack = false }: HeaderProps) {
         >
           Logout
         </button>
-      )}
+      ) : null}
+      </div>
     </header>
   )
 }

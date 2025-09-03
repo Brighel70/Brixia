@@ -1,6 +1,6 @@
 import React from 'react'
 import { usePermissions } from '@/hooks/usePermissions'
-import { PERMISSIONS, PERMISSION_CATEGORIES } from '@/config/permissions'
+import { PERMISSIONS } from '@/config/permissions'
 
 export const UserPermissions: React.FC = () => {
   const { permissions, userRole, loading } = usePermissions()

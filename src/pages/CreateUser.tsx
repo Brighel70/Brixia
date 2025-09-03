@@ -9,12 +9,13 @@ interface UserForm {
   last_name: string
   email: string
   role: string
-  birth_year: string
+  birth_date: string
   fir_code: string
   phone: string
   categories: string[]
   password: string
   confirmPassword: string
+  player_name: string // Nome del giocatore collegato (solo per ruolo Player)
 }
 
 export default function CreateUser() {
@@ -30,12 +31,13 @@ export default function CreateUser() {
     last_name: '',
     email: '',
     role: '',
-    birth_year: '',
+    birth_date: '',
     fir_code: '',
     phone: '',
     categories: [],
     password: '',
-    confirmPassword: ''
+    confirmPassword: '',
+    player_name: ''
   })
 
   // Carica le categorie disponibili
@@ -57,9 +59,50 @@ export default function CreateUser() {
     }
   }
 
+  // Funzione per cercare il giocatore tramite FIR code
+  const findPlayerByFirCode = async (firCode: string) => {
+    if (!firCode.trim()) {
+      setForm(prev => ({ ...prev, player_name: '' }))
+      return
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('players')
+        .select('first_name, last_name')
+        .eq('fir_code', firCode.trim())
+        .single()
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          // Nessun giocatore trovato
+          setForm(prev => ({ ...prev, player_name: '' }))
+          setError('Nessun giocatore trovato con questo codice FIR')
+        } else {
+          throw error
+        }
+      } else if (data) {
+        setForm(prev => ({ 
+          ...prev, 
+          player_name: `${data.first_name} ${data.last_name}` 
+        }))
+        setError('') // Rimuovi eventuali errori precedenti
+      }
+    } catch (error) {
+      console.error('Errore nella ricerca giocatore:', error)
+      setForm(prev => ({ ...prev, player_name: '' }))
+      setError('Errore nella ricerca del giocatore')
+    }
+  }
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
     setForm(prev => ({ ...prev, [name]: value }))
+    
+    // Se il ruolo è Player e si sta modificando il FIR code, cerca automaticamente il giocatore
+    if (name === 'fir_code' && form.role === 'Player') {
+      findPlayerByFirCode(value)
+    }
   }
 
   const handleCategoryChange = (categoryId: string) => {
@@ -88,14 +131,23 @@ export default function CreateUser() {
       setError('Il ruolo è obbligatorio')
       return false
     }
-    if (!form.birth_year) {
-      setError('L\'anno di nascita è obbligatorio')
+    if (!form.birth_date) {
+      setError('La data di nascita è obbligatoria')
       return false
     }
     if (!form.fir_code.trim()) {
       setError('Il codice FIR è obbligatorio')
       return false
     }
+    
+    // Validazione specifica per il ruolo Player
+    if (form.role === 'Player') {
+      if (!form.player_name.trim()) {
+        setError('Nessun giocatore trovato con questo codice FIR. Verifica il codice e riprova.')
+        return false
+      }
+    }
+    
     if (!form.password) {
       setError('La password è obbligatoria')
       return false
@@ -108,10 +160,13 @@ export default function CreateUser() {
       setError('La password deve essere di almeno 6 caratteri')
       return false
     }
-    if (form.categories.length === 0) {
+    
+    // Per i ruoli diversi da Player, le categorie sono obbligatorie
+    if (form.role !== 'Player' && form.categories.length === 0) {
       setError('Seleziona almeno una categoria')
       return false
     }
+    
     return true
   }
 
@@ -125,37 +180,59 @@ export default function CreateUser() {
     try {
       setLoading(true)
 
-      // Crea l'utente in Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+      // Crea l'utente tramite signup (richiede conferma email)
+      const { data: authData, error: authError } = await supabase.auth.signUp({
         email: form.email,
         password: form.password,
-        email_confirm: true
+        options: {
+          data: {
+            first_name: form.first_name,
+            last_name: form.last_name,
+            role: form.role,
+            birth_year: new Date(form.birth_date).getFullYear(),
+            fir_code: form.fir_code,
+            phone: form.phone
+          }
+        }
       })
 
       if (authError) throw authError
 
+      if (!authData.user) {
+        throw new Error('Errore nella creazione dell\'utente')
+      }
+
       const userId = authData.user.id
 
       // Inserisci il profilo nella tabella profiles
+      const profileData: any = {
+        id: userId, // Usa l'ID dell'utente auth direttamente
+        first_name: form.first_name,
+        last_name: form.last_name,
+        email: form.email,
+        role: form.role,
+        birth_year: new Date(form.birth_date).getFullYear(),
+        fir_code: form.fir_code,
+        phone: form.phone || null
+      }
+
+      console.log('🔍 Dati profilo da inserire:', profileData)
+
+      // Per il ruolo Player, aggiungi il FIR code per collegare al giocatore
+      if (form.role === 'Player') {
+        profileData.fir_code = form.fir_code
+      }
+
       const { error: profileError } = await supabase
         .from('profiles')
-        .insert({
-          id: userId,
-          first_name: form.first_name,
-          last_name: form.last_name,
-          email: form.email,
-          role: form.role,
-          birth_year: parseInt(form.birth_year),
-          fir_code: form.fir_code,
-          phone: form.phone || null
-        })
+        .insert(profileData)
 
       if (profileError) throw profileError
 
-      // Collega l'utente alle categorie
-      if (form.categories.length > 0) {
+      // Collega l'utente alle categorie (solo per ruoli diversi da Player)
+      if (form.role !== 'Player' && form.categories.length > 0) {
         const categoryLinks = form.categories.map(categoryId => ({
-          user_id: userId,
+          user_id: userId, // Usa l'ID dell'utente auth
           category_id: categoryId
         }))
 
@@ -166,7 +243,7 @@ export default function CreateUser() {
         if (categoryError) throw categoryError
       }
 
-      setSuccess('Utente creato con successo!')
+      setSuccess('Utente creato con successo! L\'utente riceverà un\'email di conferma per attivare l\'account.')
       
       // Reset form
       setForm({
@@ -174,12 +251,13 @@ export default function CreateUser() {
         last_name: '',
         email: '',
         role: '',
-        birth_year: '',
+        birth_date: '',
         fir_code: '',
         phone: '',
         categories: [],
         password: '',
-        confirmPassword: ''
+        confirmPassword: '',
+        player_name: ''
       })
 
       // Redirect dopo 2 secondi
@@ -220,7 +298,7 @@ export default function CreateUser() {
                 <input
                   type="text"
                   name="first_name"
-                  value={form.first_name}
+                  value={form.first_name || ''}
                   onChange={handleInputChange}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent"
                   placeholder="Nome"
@@ -234,7 +312,7 @@ export default function CreateUser() {
                 <input
                   type="text"
                   name="last_name"
-                  value={form.last_name}
+                  value={form.last_name || ''}
                   onChange={handleInputChange}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent"
                   placeholder="Cognome"
@@ -251,7 +329,7 @@ export default function CreateUser() {
                 <input
                   type="email"
                   name="email"
-                  value={form.email}
+                  value={form.email || ''}
                   onChange={handleInputChange}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent"
                   placeholder="email@esempio.com"
@@ -264,35 +342,44 @@ export default function CreateUser() {
                 </label>
                 <select
                   name="role"
-                  value={form.role}
+                  value={form.role || ''}
                   onChange={handleInputChange}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent"
                 >
                   <option value="">Seleziona ruolo</option>
-                  <option value="allenatore">Allenatore</option>
-                  <option value="staff">Staff</option>
-                  <option value="team_manager">Team Manager</option>
-                  <option value="accompagnatore">Accompagnatore</option>
-                  <option value="famiglia">Famiglia</option>
+                  <option value="admin">Amministratore</option>
+                  <option value="admin">Admin</option>
+                  <option value="director">Dirigente</option>
+                  <option value="medic">Medico</option>
+                  <option value="director">Direttore Tecnico</option>
+                  <option value="medic">Medic</option>
+                  <option value="director">Director</option>
+                  <option value="director">Direttore Sportivo</option>
+                  <option value="coach">Coach</option>
+                  <option value="coach">Staff</option>
+                  <option value="coach">Team Manager</option>
+                  <option value="coach">Accompagnatore</option>
+                  <option value="medic">Medicina</option>
+                  <option value="admin">Segreteria</option>
+                  <option value="coach">Tutor</option>
+                  <option value="coach">Giocatore</option>
                 </select>
               </div>
             </div>
 
-            {/* Anno di Nascita e Codice FIR */}
+            {/* Data di Nascita e Codice FIR */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Anno di Nascita *
+                  Data di Nascita *
                 </label>
                 <input
-                  type="number"
-                  name="birth_year"
-                  value={form.birth_year}
+                  type="date"
+                  name="birth_date"
+                  value={form.birth_date || ''}
                   onChange={handleInputChange}
-                  min="1950"
-                  max={new Date().getFullYear()}
+                  max={new Date().toISOString().split('T')[0]}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent"
-                  placeholder="1985"
                 />
               </div>
 
@@ -303,13 +390,32 @@ export default function CreateUser() {
                 <input
                   type="text"
                   name="fir_code"
-                  value={form.fir_code}
+                  value={form.fir_code || ''}
                   onChange={handleInputChange}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent"
                   placeholder="FIR-001"
                 />
               </div>
             </div>
+
+            {/* Campo Nome Giocatore - visibile solo per ruolo Player */}
+            {form.role === 'Player' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Giocatore Collegato
+                </label>
+                <input
+                  type="text"
+                  value={form.player_name || ''}
+                  readOnly
+                  className="w-full p-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-600"
+                  placeholder="Inserisci il codice FIR per trovare il giocatore"
+                />
+                <p className="text-sm text-gray-500 mt-1">
+                  Questo campo si popola automaticamente quando inserisci un codice FIR valido
+                </p>
+              </div>
+            )}
 
             {/* Telefono */}
             <div>
@@ -319,32 +425,34 @@ export default function CreateUser() {
               <input
                 type="tel"
                 name="phone"
-                value={form.phone}
+                value={form.phone || ''}
                 onChange={handleInputChange}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent"
                 placeholder="+39 123 456 7890"
               />
             </div>
 
-            {/* Categorie */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Categorie * (seleziona almeno una)
-              </label>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {categories.map((category) => (
-                  <label key={category.id} className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      checked={form.categories.includes(category.id)}
-                      onChange={() => handleCategoryChange(category.id)}
-                      className="rounded border-gray-300 text-sky-600 focus:ring-sky-500"
-                    />
-                    <span className="text-sm text-gray-700">{category.code}</span>
-                  </label>
-                ))}
+            {/* Categorie - nascoste per il ruolo Player */}
+            {form.role !== 'Player' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Categorie * (seleziona almeno una)
+                </label>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {categories.map((category) => (
+                    <label key={category.id} className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={form.categories.includes(category.id)}
+                        onChange={() => handleCategoryChange(category.id)}
+                        className="rounded border-gray-300 text-sky-600 focus:ring-sky-500"
+                      />
+                      <span className="text-sm text-gray-700">{category.code}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Password */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -355,7 +463,7 @@ export default function CreateUser() {
                 <input
                   type="password"
                   name="password"
-                  value={form.password}
+                  value={form.password || ''}
                   onChange={handleInputChange}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent"
                   placeholder="Minimo 6 caratteri"
@@ -369,7 +477,7 @@ export default function CreateUser() {
                 <input
                   type="password"
                   name="confirmPassword"
-                  value={form.confirmPassword}
+                  value={form.confirmPassword || ''}
                   onChange={handleInputChange}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent"
                   placeholder="Ripeti la password"
@@ -395,7 +503,7 @@ export default function CreateUser() {
               <button
                 type="button"
                 onClick={() => navigate('/staff')}
-                className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                className="px-6 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
               >
                 Annulla
               </button>
@@ -403,7 +511,7 @@ export default function CreateUser() {
               <button
                 type="submit"
                 disabled={loading}
-                className="px-6 py-3 bg-sky-600 text-white rounded-lg hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {loading ? 'Creazione...' : 'Crea Utente'}
               </button>

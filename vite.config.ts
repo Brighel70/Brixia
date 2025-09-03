@@ -4,17 +4,20 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
+  server: { 
+    host: 'localhost',
+    port: 3000,
+    strictPort: true,
+    hmr: {
+      port: 3001
+    }
+  },
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
+      '@': path.resolve(__dirname, './src')
+    }
   },
-  build: {
-    outDir: 'dist',
-    sourcemap: false,
-    minify: 'esbuild',
-  },
-  server: {
-    port: 3000,
-  },
+  optimizeDeps: {
+    force: true
+  }
 })

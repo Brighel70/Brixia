@@ -111,18 +111,63 @@ export const usePermissions = () => {
     return true // DISABILITATO - Ritorna sempre true
   }
 
-  // Controlla se l'utente è coach
-  const isCoach = (): boolean => {
+  // Controlla se l'utente è dirigente
+  const isDirigente = (): boolean => {
     return true // DISABILITATO - Ritorna sempre true
   }
 
-  // Controlla se l'utente è medic
-  const isMedic = (): boolean => {
+  // Controlla se l'utente è segreteria
+  const isSegreteria = (): boolean => {
     return true // DISABILITATO - Ritorna sempre true
   }
 
-  // Controlla se l'utente è director
-  const isDirector = (): boolean => {
+  // Controlla se l'utente è direttore sportivo
+  const isDirettoreSportivo = (): boolean => {
+    return true // DISABILITATO - Ritorna sempre true
+  }
+
+  // Controlla se l'utente è direttore tecnico
+  const isDirettoreTecnico = (): boolean => {
+    return true // DISABILITATO - Ritorna sempre true
+  }
+
+  // Controlla se l'utente è allenatore
+  const isAllenatore = (): boolean => {
+    return true // DISABILITATO - Ritorna sempre true
+  }
+
+  // Controlla se l'utente è team manager
+  const isTeamManager = (): boolean => {
+    return true // DISABILITATO - Ritorna sempre true
+  }
+
+  // Controlla se l'utente è accompagnatore
+  const isAccompagnatore = (): boolean => {
+    return true // DISABILITATO - Ritorna sempre true
+  }
+
+  // Controlla se l'utente è player
+  const isPlayer = (): boolean => {
+    return true // DISABILITATO - Ritorna sempre true
+  }
+
+  // Controlla se l'utente è preparatore
+  const isPreparatore = (): boolean => {
+    return true // DISABILITATO - Ritorna sempre true
+  }
+
+  // Controlla se l'utente è medico
+  const isMedico = (): boolean => {
+    return true // DISABILITATO - Ritorna sempre true
+  }
+
+  // Controlla se l'utente è fisio
+  const isFisio = (): boolean => {
+    return true // DISABILITATO - Ritorna sempre true
+  }
+
+  // Controlla se l'utente è famiglia
+  const isFamiglia = (): boolean => {
     return true // DISABILITATO - Ritorna sempre true
   }
 
@@ -134,9 +179,18 @@ export const usePermissions = () => {
     hasPermissionInCategory,
     hasAnyPermissionInCategory,
     isAdmin,
-    isCoach,
-    isMedic,
-    isDirector,
+    isDirigente,
+    isSegreteria,
+    isDirettoreSportivo,
+    isDirettoreTecnico,
+    isAllenatore,
+    isTeamManager,
+    isAccompagnatore,
+    isPlayer,
+    isPreparatore,
+    isMedico,
+    isFisio,
+    isFamiglia,
     reloadPermissions: loadUserPermissions
   }
 }
