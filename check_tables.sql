@@ -26,3 +26,4 @@ SELECT 'player_positions' as tabella, count(*) as count FROM player_positions;
 
 
 
+

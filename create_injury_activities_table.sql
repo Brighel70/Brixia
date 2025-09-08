@@ -34,3 +34,4 @@ COMMENT ON COLUMN injury_activities.duration_minutes IS 'Durata in minuti (per f
 COMMENT ON COLUMN injury_activities.amount IS 'Importo per spese, rimborsi o acquisti';
 COMMENT ON COLUMN injury_activities.currency IS 'Valuta (default EUR)';
 
+

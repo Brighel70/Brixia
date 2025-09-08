@@ -63,3 +63,4 @@ SET
     player_positions = null
 WHERE id = 'person-uuid-here';
 */
+

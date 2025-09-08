@@ -8,3 +8,4 @@ COMMENT ON COLUMN public.players.player_position_id_2 IS 'Ruolo secondario in ca
 
 
 
+

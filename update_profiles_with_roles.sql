@@ -147,3 +147,4 @@ LEFT JOIN profiles p ON ur.id = p.user_role_id
 GROUP BY ur.name, ur.position_order
 ORDER BY ur.position_order;
 
+

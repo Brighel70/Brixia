@@ -27,3 +27,4 @@ WHERE table_name = 'tutors'
   AND column_name IN ('is_sponsor_potential', 'is_club_useful')
 ORDER BY ordinal_position;
 
+

@@ -78,6 +78,7 @@ export default function PeopleView() {
     setFilteredPeople(filtered)
   }, [people, searchTerm, roleFilter, statusFilter, ageFilter])
 
+
   const loadPeople = async () => {
     try {
       setLoading(true)
@@ -88,7 +89,10 @@ export default function PeopleView() {
         .select('*')
         .order('family_name', { ascending: true })
 
-      if (peopleError) throw peopleError
+      if (peopleError) {
+        console.error('Errore nel caricamento people:', peopleError)
+        throw peopleError
+      }
 
       // Carica i giocatori per determinare i ruoli
       const { data: playersData } = await supabase
@@ -127,21 +131,27 @@ export default function PeopleView() {
         let role = 'Persona'
         let categories: string[] = []
 
-        // Controlla se è un giocatore
+        // Controlla se è un giocatore (dal campo is_player o dalla tabella players)
         const player = playersData?.find(p => p.person_id === person.id)
-        if (player) {
+        if (person.is_player || player) {
           role = 'Giocatore'
           // Carica le categorie dal campo player_categories della tabella people
           if (person.player_categories && person.player_categories.length > 0) {
-            const playerCategoryNames = person.player_categories.map(categoryId => {
-              const category = allCategoriesData?.find(c => c.id === categoryId)
-              return category?.name || ''
-            }).filter(Boolean)
-            categories = playerCategoryNames
+            // Se le categorie sono già stringhe (es. "U16", "U18"), usale direttamente
+            if (typeof person.player_categories[0] === 'string') {
+              categories = person.player_categories
+            } else {
+              // Se sono ID, mappali ai nomi
+              const playerCategoryNames = person.player_categories.map(categoryId => {
+                const category = allCategoriesData?.find(c => c.id === categoryId)
+                return category?.name || ''
+              }).filter(Boolean)
+              categories = playerCategoryNames
+            }
           } else {
             // Fallback: cerca nelle categorie legacy se il nuovo campo è vuoto
-            const playerCategories = categoriesData?.filter(c => c.player_id === player.person_id) || []
-            categories = playerCategories.map(c => c.categories?.name || '').filter(Boolean)
+            const playerCategories = categoriesData?.filter(c => c.player_id === player?.person_id) || []
+            categories = playerCategories.map(c => (c.categories as any)?.name || '').filter(Boolean)
           }
         }
 
@@ -189,15 +199,11 @@ export default function PeopleView() {
 
   const loadRoles = async () => {
     try {
-      console.log('🔄 Caricamento ruoli dal database...')
-      
       // Carica solo i ruoli delle persone dalla tabella user_roles
       const { data: userRolesData, error: userRolesError } = await supabase
         .from('user_roles')
         .select('name')
         .order('position_order')
-
-      console.log('👥 Ruoli persone:', userRolesData, 'Errore:', userRolesError)
 
       if (userRolesError) throw userRolesError
 
@@ -209,14 +215,12 @@ export default function PeopleView() {
 
       // Ordina i ruoli
       const sortedRoles = allRoles.sort()
-      console.log('✅ Ruoli finali caricati:', sortedRoles)
       setAvailableRoles(sortedRoles)
 
     } catch (error) {
-      console.error('❌ Errore nel caricamento ruoli:', error)
+      console.error('Errore nel caricamento ruoli:', error)
       // In caso di errore, usa i ruoli di default
       const fallbackRoles = ['Admin', 'Dirigente', 'Allenatore', 'Medico', 'Amministratore', 'Persona']
-      console.log('🔄 Usando ruoli di fallback:', fallbackRoles)
       setAvailableRoles(fallbackRoles)
     }
   }
@@ -271,6 +275,27 @@ export default function PeopleView() {
       case 'Medicina': return 'bg-red-100 text-red-800'
       default: return 'bg-gray-100 text-gray-800'
     }
+  }
+
+  // Funzione per ottenere il colore della categoria (stesso stile della pagina Activities)
+  const getCategoryColor = (categoryName: string) => {
+    const colorMap: { [key: string]: string } = {
+      'U6': 'bg-emerald-100 text-emerald-700',
+      'U8': 'bg-emerald-100 text-emerald-700',
+      'U10': 'bg-emerald-100 text-emerald-700',
+      'U12': 'bg-emerald-100 text-emerald-700',
+      'U14': 'bg-blue-100 text-blue-700',
+      'U16': 'bg-blue-100 text-blue-700',
+      'U18': 'bg-blue-100 text-blue-700',
+      'SERIE_C': 'bg-blue-100 text-blue-700',
+      'SERIE_B': 'bg-blue-100 text-blue-700',
+      'SENIORES': 'bg-blue-100 text-blue-700',
+      'GUSSAGOLD': 'bg-amber-100 text-amber-700',
+      'PODEROSA': 'bg-amber-100 text-amber-700',
+      'BRIXIAOLD': 'bg-amber-100 text-amber-700',
+      'LEONESSE': 'bg-rose-100 text-rose-700'
+    }
+    return colorMap[categoryName] || 'bg-gray-100 text-gray-700'
   }
 
   if (loading) {
@@ -370,28 +395,40 @@ export default function PeopleView() {
         </div>
 
         {/* Statistiche */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-6">
           <div className="bg-white p-4 rounded-lg shadow-sm border">
-            <div className="text-2xl font-bold text-blue-600">{people.length}</div>
-            <div className="text-sm text-gray-600">Totale Persone</div>
+            <div className="text-2xl font-bold text-blue-600">{filteredPeople.length}</div>
+            <div className="text-sm text-gray-600">Totale Anagrafiche</div>
           </div>
           <div className="bg-white p-4 rounded-lg shadow-sm border">
             <div className="text-2xl font-bold text-green-600">
-              {people.filter(p => p.status === 'active').length}
+              {filteredPeople.filter(p => p.role === 'Giocatore' && !p.is_minor).length}
             </div>
-            <div className="text-sm text-gray-600">Attive</div>
-          </div>
-          <div className="bg-white p-4 rounded-lg shadow-sm border">
-            <div className="text-2xl font-bold text-orange-600">
-              {people.filter(p => p.is_minor).length}
-            </div>
-            <div className="text-sm text-gray-600">Minorenni</div>
+            <div className="text-sm text-gray-600">Giocatori Maggiorenni</div>
           </div>
           <div className="bg-white p-4 rounded-lg shadow-sm border">
             <div className="text-2xl font-bold text-purple-600">
-              {people.filter(p => p.role === 'Giocatore').length}
+              {filteredPeople.filter(p => p.role === 'Giocatore' && p.categories && p.categories.includes('SENIORES')).length}
             </div>
-            <div className="text-sm text-gray-600">Giocatori</div>
+            <div className="text-sm text-gray-600">Seniores</div>
+          </div>
+          <div className="bg-white p-4 rounded-lg shadow-sm border">
+            <div className="text-2xl font-bold text-orange-600">
+              {filteredPeople.filter(p => p.is_minor).length}
+            </div>
+            <div className="text-sm text-gray-600">Totale Minorenni</div>
+          </div>
+          <div className="bg-white p-4 rounded-lg shadow-sm border">
+            <div className="text-2xl font-bold text-red-600">
+              {filteredPeople.filter(p => p.role === 'Allenatore').length}
+            </div>
+            <div className="text-sm text-gray-600">Totale Allenatori</div>
+          </div>
+          <div className="bg-white p-4 rounded-lg shadow-sm border">
+            <div className="text-2xl font-bold text-gray-600">
+              {filteredPeople.filter(p => p.role === 'Persona').length}
+            </div>
+            <div className="text-sm text-gray-600">Totale Persone</div>
           </div>
         </div>
 
@@ -469,7 +506,7 @@ export default function PeopleView() {
                             {person.categories.map((category, index) => (
                               <span 
                                 key={index}
-                                className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800"
+                                className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getCategoryColor(category)}`}
                               >
                                 {category}
                               </span>

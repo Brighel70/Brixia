@@ -33,3 +33,4 @@ ORDER BY position_order;
 -- 4. Conta i ruoli inseriti
 SELECT COUNT(*) as total_roles FROM user_roles;
 
+

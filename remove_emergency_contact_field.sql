@@ -20,3 +20,4 @@ WHERE table_name = 'tutor_athlete_relations'
   AND table_schema = 'public'
 ORDER BY ordinal_position;
 
+

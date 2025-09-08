@@ -27,3 +27,4 @@ WHERE table_name = 'people'
   AND column_name IN ('is_player', 'is_staff')
 ORDER BY ordinal_position;
 
+

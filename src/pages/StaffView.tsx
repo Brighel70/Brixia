@@ -44,17 +44,34 @@ export default function StaffView() {
     try {
       setLoading(true)
       
+      // Prima carica i ruoli per mappare gli ID ai nomi
+      const { data: userRolesData, error: rolesError } = await supabase
+        .from('user_roles')
+        .select('id, name')
+      
+      if (rolesError) throw rolesError
+      
+      // Carica anche le categorie per mappare gli ID ai nomi
+      const { data: categoriesData, error: categoriesError } = await supabase
+        .from('categories')
+        .select('id, name, code')
+      
+      if (categoriesError) throw categoriesError
+      
+      // Poi carica le persone staff con le loro categorie
       const { data, error } = await supabase
-        .from('profiles')
+        .from('people')
         .select(`
           id,
           full_name,
           email,
           phone,
-          fir_code,
-          role,
+          fiscal_code,
+          staff_roles,
+          staff_categories,
           created_at
         `)
+        .eq('is_staff', true) // Filtra solo le persone con checkbox staff attivato
         .not('full_name', 'is', null)
         .neq('full_name', '')
         .order('full_name', { ascending: true })
@@ -63,15 +80,36 @@ export default function StaffView() {
 
       // Formatta i dati con controlli di sicurezza
       const formattedStaff = (data || []).map(member => {
+        // Mappa gli ID dei ruoli ai nomi
+        const roleNames = []
+        if (member.staff_roles && Array.isArray(member.staff_roles)) {
+          member.staff_roles.forEach(roleId => {
+            const role = userRolesData?.find(r => r.id === roleId)
+            if (role) roleNames.push(role.name)
+          })
+        }
+        
+        // Mappa gli ID delle categorie ai nomi
+        const categoryNames = []
+        if (member.staff_categories && Array.isArray(member.staff_categories)) {
+          member.staff_categories.forEach(categoryId => {
+            const category = categoriesData?.find(c => c.id === categoryId)
+            if (category) {
+              // Usa il nome della categoria (es. "Under 18") invece del codice
+              categoryNames.push(category.name)
+            }
+          })
+        }
+        
         const formatted = {
           id: member.id,
           full_name: member.full_name || '',
           email: member.email || '',
           phone: member.phone || '',
-          fir_code: member.fir_code || '',
+          fir_code: member.fiscal_code || '', // Usa fiscal_code come fir_code
           created_at: member.created_at,
-          role: member.role || null,
-          categories: [] // Temporaneamente vuoto fino a quando non risolviamo la foreign key
+          role: roleNames, // Array di nomi dei ruoli
+          categories: categoryNames // Array di nomi delle categorie
         }
         
         return formatted
@@ -93,7 +131,9 @@ export default function StaffView() {
       // Conta ruoli unici
       const uniqueRoles = new Set()
       formattedStaff.forEach(member => {
-        if (member.role && member.role.name) uniqueRoles.add(member.role.name)
+        if (member.role && Array.isArray(member.role)) {
+          member.role.forEach(role => uniqueRoles.add(role))
+        }
       })
       
       setStats({
@@ -165,16 +205,37 @@ export default function StaffView() {
   // Formatta nomi categorie con controllo di sicurezza
   const getCategoryNames = (categories: any[]) => {
     if (!categories || categories.length === 0) return '-'
+    
+    // Se è un array di stringhe (nomi delle categorie)
+    if (Array.isArray(categories)) {
+      return categories
+        .filter(Boolean)
+        .join(', ')
+    }
+    
+    // Se è un array di oggetti (compatibilità con vecchia struttura)
     return categories
       .map((cat: any) => cat?.code || cat?.name || '')
       .filter(Boolean)
       .join(', ')
   }
 
-  // Formatta nome ruolo con controllo di sicurezza
-  const getRoleName = (role: any) => {
-    if (!role || !role.name) return '-'
-    return role.name
+  // Formatta nome ruolo con controllo di sicurezza (ora gestisce array di ruoli)
+  const getRoleName = (roles: any) => {
+    if (!roles) return '-'
+    
+    // Se è un array (staff_roles dalla tabella people)
+    if (Array.isArray(roles)) {
+      if (roles.length === 0) return '-'
+      return roles.join(', ')
+    }
+    
+    // Se è un oggetto (compatibilità con vecchia struttura)
+    if (roles && roles.name) {
+      return roles.name
+    }
+    
+    return '-'
   }
 
   return (
@@ -233,7 +294,7 @@ export default function StaffView() {
             </p>
           </div>
           <button
-            onClick={() => navigate('/create-user')}
+            onClick={() => navigate('/people/new')}
             className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center gap-2"
           >
             <span className="text-xl">➕</span>

@@ -30,3 +30,4 @@ WHERE injured_place IS NOT NULL
 GROUP BY injured_place
 ORDER BY injured_place;
 
+

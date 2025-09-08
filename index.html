@@ -4,6 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0B1B3B" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <!-- Disabilita tracking esterni -->
     <meta name="disable-bugsnag" content="true" />
     <meta name="disable-analytics" content="true" />
@@ -86,30 +89,17 @@
         }
       }, true);
       
-      // Disabilita Service Worker
+      // Registra Service Worker per PWA
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function(registrations) {
-          for(let registration of registrations) {
-            registration.unregister();
-            console.log('🚫 Service Worker disabilitato:', registration);
-          }
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/sw.js')
+            .then(function(registration) {
+              console.log('✅ Service Worker registrato con successo:', registration.scope);
+            })
+            .catch(function(error) {
+              console.log('❌ Registrazione Service Worker fallita:', error);
+            });
         });
-        
-        // Blocca registrazione futura
-        navigator.serviceWorker.register = function() {
-          console.log('🚫 Registrazione Service Worker bloccata');
-          return Promise.resolve({});
-        };
-        
-        // Blocca errori del service worker
-        window.addEventListener('error', function(e) {
-          if (e.message && (e.message.includes('sw.js') || e.message.includes('ServiceWorker'))) {
-            e.preventDefault();
-            e.stopPropagation();
-            console.log('🚫 Blocco errore Service Worker:', e.message);
-            return false;
-          }
-        }, true);
       }
     </script>
     

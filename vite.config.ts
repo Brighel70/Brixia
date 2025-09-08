@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 
 export default defineConfig({
+  base: '/',
   plugins: [react()],
   server: { 
     host: 'localhost',
@@ -19,5 +20,17 @@ export default defineConfig({
   },
   optimizeDeps: {
     force: true
+  },
+  build: {
+    target: 'es2015',
+    minify: 'terser',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          supabase: ['@supabase/supabase-js']
+        }
+      }
+    }
   }
 })

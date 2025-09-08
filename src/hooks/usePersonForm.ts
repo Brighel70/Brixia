@@ -230,11 +230,23 @@ export const usePersonForm = () => {
         if (error) throw error
       } else {
         // Crea nuova persona
-        const { error } = await supabase
+        const { data: newPerson, error } = await supabase
           .from('people')
           .insert(personData)
+          .select('id')
+          .single()
 
         if (error) throw error
+        
+        // Aggiorna l'URL con l'ID della persona appena creata
+        if (newPerson?.id) {
+          const newUrl = new URL(window.location.href)
+          newUrl.searchParams.set('edit', newPerson.id)
+          window.history.replaceState({}, '', newUrl.toString())
+          
+          // Naviga alla stessa pagina con il nuovo ID per aggiornare i parametri
+          navigate(newUrl.pathname + newUrl.search, { replace: true })
+        }
         // navigate('/people') // Rimosso redirect automatico
       }
     } catch (error) {

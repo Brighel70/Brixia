@@ -19,3 +19,4 @@ SELECT id, full_name, injured
 FROM public.people 
 LIMIT 5;
 
+

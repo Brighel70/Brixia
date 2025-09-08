@@ -25,3 +25,4 @@ SELECT id, injury_type, current_status, is_closed, injury_closed_date, injury_da
 FROM public.injuries 
 LIMIT 5;
 
+

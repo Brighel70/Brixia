@@ -67,6 +67,30 @@ const InjuryEditModal: React.FC<InjuryEditModalProps> = ({ isOpen, onClose, inju
       return
     }
 
+    // Verifica che personId sia valido
+    if (!personId || personId === '') {
+      alert('Errore: ID persona non valido. Salva prima la persona.')
+      return
+    }
+
+    // Verifica che la persona esista nel database
+    try {
+      const { data: personExists, error: personError } = await supabase
+        .from('people')
+        .select('id')
+        .eq('id', personId)
+        .single()
+
+      if (personError || !personExists) {
+        alert('Errore: Persona non trovata nel database. Salva prima la persona.')
+        return
+      }
+    } catch (error) {
+      console.error('Errore nella verifica persona:', error)
+      alert('Errore nella verifica persona. Riprova.')
+      return
+    }
+
     try {
       setLoading(true)
       

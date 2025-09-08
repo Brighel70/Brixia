@@ -40,3 +40,4 @@ SELECT '✅ RLS disabilitato su user_roles! Ora dovresti vedere tutti i ruoli ne
 
 
 
+

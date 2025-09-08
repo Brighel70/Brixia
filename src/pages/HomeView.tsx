@@ -3,6 +3,25 @@ import { useAuth } from '@/store/auth'
 import { getBrandConfig, getBrandClasses } from '@/config/brand'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import {
+  useSortable,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 export default function HomeView() {
   const { profile, signOut } = useAuth()
@@ -28,6 +47,17 @@ export default function HomeView() {
     missingDocuments: 0
   })
   const [loadingStats, setLoadingStats] = useState(true)
+  
+  // Stato per gestire l'ordine delle card drag & drop
+  const [cardOrder, setCardOrder] = useState<number[]>([])
+  
+  // Sensori per il drag & drop
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
 
   const loadUpcomingEvents = async () => {
     try {
@@ -63,10 +93,12 @@ export default function HomeView() {
     try {
       setLoadingStats(true)
       
+      console.log('🔄 Caricamento statistiche dalla tabella people...')
+      
       // Carica statistiche del sistema people
       const [
-        { count: totalPeople },
-        { count: minors },
+        { count: totalPeople, error: totalPeopleError },
+        { count: minors, error: minorsError },
         { count: guardians },
         { count: consentsSigned },
         { count: validCertificates },
@@ -107,6 +139,13 @@ export default function HomeView() {
         Promise.resolve({ count: 0 })
       ])
 
+      console.log('📊 Statistiche people caricate:', {
+        totalPeople: totalPeople || 0,
+        minors: minors || 0,
+        totalPeopleError,
+        minorsError
+      })
+
       setPeopleStats({
         totalPeople: totalPeople || 0,
         minors: minors || 0,
@@ -127,6 +166,47 @@ export default function HomeView() {
       console.error('Errore nel caricamento statistiche:', error)
     } finally {
       setLoadingStats(false)
+    }
+  }
+
+  // Carica l'ordine delle card dal localStorage
+  useEffect(() => {
+    const savedOrder = localStorage.getItem('dashboard-card-order')
+    if (savedOrder) {
+      try {
+        const parsedOrder = JSON.parse(savedOrder)
+        if (Array.isArray(parsedOrder) && parsedOrder.length === 6) {
+          setCardOrder(parsedOrder)
+        } else {
+          // Se l'ordine salvato non è valido, usa l'ordine di default
+          setCardOrder([0, 1, 2, 3, 4, 5])
+        }
+      } catch (error) {
+        console.error('Errore nel caricamento ordine card:', error)
+        setCardOrder([0, 1, 2, 3, 4, 5])
+      }
+    } else {
+      // Ordine di default se non c'è nulla salvato
+      setCardOrder([0, 1, 2, 3, 4, 5])
+    }
+  }, [])
+
+  // Salva l'ordine delle card nel localStorage
+  const saveCardOrder = (newOrder: number[]) => {
+    setCardOrder(newOrder)
+    localStorage.setItem('dashboard-card-order', JSON.stringify(newOrder))
+  }
+
+  // Gestisce il drop delle card
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+
+    if (over && active.id !== over.id) {
+      const oldIndex = cardOrder.indexOf(active.id as number)
+      const newIndex = cardOrder.indexOf(over.id as number)
+
+      const newOrder = arrayMove(cardOrder, oldIndex, newIndex)
+      saveCardOrder(newOrder)
     }
   }
 
@@ -178,7 +258,7 @@ export default function HomeView() {
   }
 
   // Card di navigazione principali (aggiornate con sistema people)
-  const navigationCards = [
+  const navigationCardsData = [
     {
       title: "Attività",
       description: "Presenze e sessioni allenamento",
@@ -248,6 +328,86 @@ export default function HomeView() {
       badge: alerts.expiringCertificates > 0 ? `${alerts.expiringCertificates} in scadenza` : null
     }
   ]
+
+  // Ottiene le card ordinate secondo l'ordine salvato
+  const getOrderedCards = () => {
+    return cardOrder.map(index => navigationCardsData[index]).filter(Boolean)
+  }
+
+  // Componente per card sortabile
+  const SortableCard = ({ card, index }: { card: any, index: number }) => {
+    const {
+      attributes,
+      listeners,
+      setNodeRef,
+      transform,
+      transition,
+      isDragging,
+    } = useSortable({ id: cardOrder[index] })
+
+    const style = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+    }
+
+    return (
+      <div
+        ref={setNodeRef}
+        style={style}
+        {...attributes}
+        className={`card p-6 ${card.color} transition-all duration-200 hover:scale-105 shadow-lg relative ${
+          isDragging ? 'rotate-2 scale-105 shadow-2xl z-50' : ''
+        }`}
+      >
+        {/* Indicatore drag - solo questa parte è draggable */}
+        <div 
+          {...listeners}
+          className="absolute top-2 right-2 text-white/60 text-lg cursor-grab active:cursor-grabbing z-10"
+        >
+          ⋮⋮
+        </div>
+        
+        {/* Badge per alert */}
+        {card.badge && (
+          <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full font-bold">
+            {card.badge}
+          </div>
+        )}
+        
+        {/* Contenuto cliccabile per navigazione */}
+        <div 
+          className="cursor-pointer"
+          onClick={() => navigate(card.route)}
+        >
+          <div className="flex items-center mb-4">
+            <div className="text-3xl mr-4">{card.icon}</div>
+            <div>
+              <div className="text-2xl font-bold text-white">{card.title}</div>
+              <div className="text-sm text-white/80">{card.description}</div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Quick Actions */}
+        {card.quickActions && (
+          <div className="space-y-2">
+            {card.quickActions.map((action: any, actionIndex: number) => (
+              <button
+                key={actionIndex}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  action.action()
+                }}
+                className="w-full text-left px-3 py-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-sm text-white/90 hover:text-white"
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen relative">
@@ -323,51 +483,25 @@ export default function HomeView() {
             <p className="text-gray-600">
               Dashboard principale per la gestione completa della società sportiva
             </p>
+            <p className="text-sm text-gray-500 mt-2">
+              💡 Trascina le card per riorganizzare il dashboard come preferisci
+            </p>
           </div>
 
-          {/* Quick Actions - Card di navigazione principali */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-            {navigationCards.map((card, index) => (
-              <div 
-                key={index}
-                className={`card p-6 ${card.color} cursor-pointer transition-all duration-200 hover:scale-105 shadow-lg relative`}
-                onClick={() => navigate(card.route)}
-              >
-                {/* Badge per alert */}
-                {card.badge && (
-                  <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full font-bold">
-                    {card.badge}
-                  </div>
-                )}
-                
-                <div className="flex items-center mb-4">
-                  <div className="text-3xl mr-4">{card.icon}</div>
-                  <div>
-                    <div className="text-2xl font-bold text-white">{card.title}</div>
-                    <div className="text-sm text-white/80">{card.description}</div>
-                  </div>
-                </div>
-                
-                {/* Quick Actions */}
-                {card.quickActions && (
-                  <div className="space-y-2">
-                    {card.quickActions.map((action, actionIndex) => (
-                      <button
-                        key={actionIndex}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          action.action()
-                        }}
-                        className="w-full text-left px-3 py-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-sm text-white/90 hover:text-white"
-                      >
-                        {action.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
+          {/* Quick Actions - Card di navigazione principali con Drag & Drop */}
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext items={cardOrder} strategy={verticalListSortingStrategy}>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                {getOrderedCards().map((card, index) => (
+                  <SortableCard key={cardOrder[index]} card={card} index={index} />
+                ))}
               </div>
-            ))}
-          </div>
+            </SortableContext>
+          </DndContext>
 
           {/* Sezione informazioni rapide */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

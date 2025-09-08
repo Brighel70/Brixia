@@ -66,3 +66,4 @@ JOIN information_schema.constraint_column_usage AS ccu
 WHERE tc.constraint_type = 'FOREIGN KEY'
   AND tc.table_name = 'person_staff_roles';
 
+

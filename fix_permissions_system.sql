@@ -245,3 +245,4 @@ LEFT JOIN permissions p ON rp.permission_id = p.id
 GROUP BY ur.name, p.category, ur.position_order
 ORDER BY ur.position_order, p.category;
 
+

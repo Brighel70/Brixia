@@ -21,6 +21,14 @@ const CreatePersonView: React.FC = () => {
   const editId = searchParams.get('edit')
   const isEditing = !!editId
   const navigate = useNavigate()
+  
+  // Stato locale per l'editId che si aggiorna quando cambia l'URL
+  const [currentEditId, setCurrentEditId] = useState(editId)
+  
+  // Sincronizza currentEditId con editId quando cambia l'URL
+  useEffect(() => {
+    setCurrentEditId(editId)
+  }, [editId])
 
   const {
     form,
@@ -211,30 +219,30 @@ const CreatePersonView: React.FC = () => {
     setInjuryRefreshTrigger(prev => prev + 1)
     
     // Controlla se ci sono infortuni aperti per questo giocatore e aggiorna lo stato injured
-    if (editId) {
+    if (currentEditId) {
       try {
         const { data: openInjuries } = await supabase
           .from('injuries')
           .select('id')
-          .eq('person_id', editId)
+          .eq('person_id', currentEditId)
           .eq('is_closed', false)
         
         const hasOpenInjuries = openInjuries && openInjuries.length > 0
         
         // Aggiorna lo stato injured basato sulla presenza di infortuni aperti
         setForm(prev => ({ ...prev, injured: hasOpenInjuries }))
-        await saveInjuredStatus(editId, hasOpenInjuries)
+        await saveInjuredStatus(currentEditId, hasOpenInjuries)
       } catch (error) {
         // Fallback: se i campi is_closed non esistono ancora, usa current_status
         console.warn('Campi is_closed non disponibili, uso current_status come fallback')
         const { data: injuries } = await supabase
           .from('injuries')
           .select('id, current_status')
-          .eq('person_id', editId)
+          .eq('person_id', currentEditId)
         
         const hasOpenInjuries = injuries && injuries.some(injury => injury.current_status === 'In corso')
         setForm(prev => ({ ...prev, injured: hasOpenInjuries }))
-        await saveInjuredStatus(editId, hasOpenInjuries)
+        await saveInjuredStatus(currentEditId, hasOpenInjuries)
       }
     }
   }
@@ -270,30 +278,30 @@ const CreatePersonView: React.FC = () => {
       setInjuryRefreshTrigger(prev => prev + 1) // Refresh la lista
       
       // Controlla se ci sono ancora infortuni aperti dopo l'eliminazione
-      if (editId) {
+      if (currentEditId) {
         try {
           const { data: openInjuries } = await supabase
             .from('injuries')
             .select('id')
-            .eq('person_id', editId)
+            .eq('person_id', currentEditId)
             .eq('is_closed', false)
           
           const hasOpenInjuries = openInjuries && openInjuries.length > 0
           
           // Aggiorna lo stato injured basato sulla presenza di infortuni aperti
           setForm(prev => ({ ...prev, injured: hasOpenInjuries }))
-          await saveInjuredStatus(editId, hasOpenInjuries)
+          await saveInjuredStatus(currentEditId, hasOpenInjuries)
         } catch (error) {
           // Fallback: se i campi is_closed non esistono ancora, usa current_status
           console.warn('Campi is_closed non disponibili, uso current_status come fallback')
           const { data: injuries } = await supabase
             .from('injuries')
             .select('id, current_status')
-            .eq('person_id', editId)
+            .eq('person_id', currentEditId)
           
           const hasOpenInjuries = injuries && injuries.some(injury => injury.current_status === 'In corso')
           setForm(prev => ({ ...prev, injured: hasOpenInjuries }))
-          await saveInjuredStatus(editId, hasOpenInjuries)
+          await saveInjuredStatus(currentEditId, hasOpenInjuries)
         }
       }
       
@@ -419,7 +427,7 @@ const CreatePersonView: React.FC = () => {
 
   // Carica i ruoli staff esistenti per questa persona
   const loadExistingStaffRoles = async () => {
-    if (!editId) return
+    if (!currentEditId) return
 
     try {
       // I ruoli staff sono ora caricati direttamente dal form tramite usePersonForm
@@ -594,11 +602,11 @@ const CreatePersonView: React.FC = () => {
           if (injuryError) throw injuryError
 
           // Aggiorna lo stato del giocatore (injured = false)
-          if (editId) {
+          if (currentEditId) {
             const { error: personError } = await supabase
               .from('people')
               .update({ injured: false })
-              .eq('id', editId)
+              .eq('id', currentEditId)
 
             if (personError) throw personError
             
@@ -721,8 +729,8 @@ const CreatePersonView: React.FC = () => {
     }
 
     // Se cambia lo stato di infortunio, salva automaticamente
-    if (field === 'injured' && editId) {
-      saveInjuredStatus(editId, value)
+    if (field === 'injured' && currentEditId) {
+      saveInjuredStatus(currentEditId, value)
     }
   }
 
@@ -752,10 +760,10 @@ const CreatePersonView: React.FC = () => {
 
   // Carica le note quando si è in modalità modifica
   useEffect(() => {
-    if (isEditing && editId) {
+    if (isEditing && currentEditId) {
       loadNotes()
     }
-  }, [isEditing, editId])
+  }, [isEditing, currentEditId])
 
   // Carica sempre i ruoli staff all'avvio
   useEffect(() => {
@@ -764,10 +772,10 @@ const CreatePersonView: React.FC = () => {
 
   // Carica i ruoli staff esistenti quando si carica una persona
   useEffect(() => {
-    if (editId && !loading) {
+    if (currentEditId && !loading) {
       loadExistingStaffRoles()
     }
-  }, [editId, loading])
+  }, [currentEditId, loading])
 
   // Controlla se è minorenne al caricamento e quando cambia la data di nascita
   useEffect(() => {
@@ -779,10 +787,10 @@ const CreatePersonView: React.FC = () => {
 
   // Controlla se ha tutor quando si carica la pagina
   useEffect(() => {
-    if (editId && !loading) {
+    if (currentEditId && !loading) {
       checkTutors()
     }
-  }, [editId, loading])
+  }, [currentEditId, loading])
 
   // Disabilitato popup automatico - mostrato solo quando si naviga tra tab
   // useEffect(() => {
@@ -803,7 +811,7 @@ const CreatePersonView: React.FC = () => {
       const { data, error } = await supabase
         .from('tutor_athlete_relations')
         .select('id')
-        .eq('athlete_id', editId)
+        .eq('athlete_id', currentEditId)
         .limit(1)
 
       if (error) throw error
@@ -831,14 +839,14 @@ const CreatePersonView: React.FC = () => {
   }
 
   const loadNotes = async () => {
-    if (!isEditing || !editId) return
+    if (!isEditing || !currentEditId) return
     
     try {
       setLoadingNotes(true)
       const { data, error } = await supabase
         .from('notes')
         .select('*')
-        .eq('person_id', editId)
+        .eq('person_id', currentEditId)
         .order('created_at', { ascending: false })
 
       if (error) {
@@ -864,14 +872,14 @@ const CreatePersonView: React.FC = () => {
 
   // Funzione per aggiungere una nota
   const handleAddNote = async () => {
-    if (!newNote.content.trim() || !editId) return
+    if (!newNote.content.trim() || !currentEditId) return
 
     try {
       setLoadingNotes(true)
       const { error } = await supabase
         .from('notes')
           .insert({
-          person_id: editId,
+          person_id: currentEditId,
           content: newNote.content.trim(),
           type: newNote.type,
           created_by: 'Sistema' // TODO: Sostituire con l'utente corrente
@@ -1783,8 +1791,8 @@ const CreatePersonView: React.FC = () => {
     notes: renderNotesTab(),
     injuries: (
       <MemoInjuriesTab
-        personId={editId || ''}
-        canEdit={Boolean(editId && form.is_player)}
+        personId={currentEditId || ''}
+        canEdit={Boolean(currentEditId && form.is_player)}
         onNoteAdded={loadNotes}
         onAddInjury={() => openInjuryModal(null)}
         onOpenInjuryModal={openInjuryModal}
@@ -1795,30 +1803,30 @@ const CreatePersonView: React.FC = () => {
         refreshTrigger={injuryRefreshTrigger}
         onInjuryCreated={async () => {
           // Controlla se ci sono infortuni aperti per questo giocatore
-          if (editId) {
+          if (currentEditId) {
             try {
               const { data: openInjuries } = await supabase
                 .from('injuries')
                 .select('id')
-                .eq('person_id', editId)
+                .eq('person_id', currentEditId)
                 .eq('is_closed', false)
               
               const hasOpenInjuries = openInjuries && openInjuries.length > 0
               
               // Aggiorna lo stato injured basato sulla presenza di infortuni aperti
               setForm(prev => ({ ...prev, injured: hasOpenInjuries }))
-              await saveInjuredStatus(editId, hasOpenInjuries)
+              await saveInjuredStatus(currentEditId, hasOpenInjuries)
             } catch (error) {
               // Fallback: se i campi is_closed non esistono ancora, usa current_status
               console.warn('Campi is_closed non disponibili, uso current_status come fallback')
               const { data: injuries } = await supabase
                 .from('injuries')
                 .select('id, current_status')
-                .eq('person_id', editId)
+                .eq('person_id', currentEditId)
               
               const hasOpenInjuries = injuries && injuries.some(injury => injury.current_status === 'In corso')
               setForm(prev => ({ ...prev, injured: hasOpenInjuries }))
-              await saveInjuredStatus(editId, hasOpenInjuries)
+              await saveInjuredStatus(currentEditId, hasOpenInjuries)
             }
           }
         }}
@@ -1826,7 +1834,7 @@ const CreatePersonView: React.FC = () => {
     ),
     tutor: (
       <TutorTab
-        athleteId={editId || ''}
+        athleteId={currentEditId || ''}
         athleteName={form.full_name || 'Atleta'}
         isMinor={isMinor}
         onTutorAdded={handleTutorAdded}
@@ -2052,7 +2060,7 @@ const CreatePersonView: React.FC = () => {
         onClose={closeInjuryModal}
         injury={editingInjury}
         onSave={handleInjurySaved}
-        personId={editId || ''}
+        personId={currentEditId || ''}
       />
 
       {/* Modal di conferma eliminazione infortuni */}

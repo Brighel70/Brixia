@@ -107,3 +107,4 @@ COMMENT ON COLUMN public.professional_categories.is_sponsor_potential IS 'Catego
 COMMENT ON COLUMN public.professional_categories.is_club_useful IS 'Categoria utile per il club';
 COMMENT ON COLUMN public.tutors.is_sponsor_potential IS 'Tutor con potenziale sponsor';
 COMMENT ON COLUMN public.tutors.is_club_useful IS 'Tutor utile per il club';
+TO IL CHECKBOX.  HAI CAPITO?TISCE LA CHIUSURA DELL'INFORTUNIO?

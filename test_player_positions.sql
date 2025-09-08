@@ -12,3 +12,4 @@ SELECT 'Test accesso diretto:' as info, name FROM player_positions WHERE name = 
 
 
 
+

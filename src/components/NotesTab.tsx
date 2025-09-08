@@ -320,3 +320,4 @@ const NotesTab: React.FC<NotesTabProps> = ({ personId, onNoteAdded }) => {
 
 export default NotesTab
 
+

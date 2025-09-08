@@ -54,3 +54,4 @@ WHERE fiscal_code IS NOT NULL
   AND fiscal_code != ''
   AND NOT public.is_valid_cf(fiscal_code)
 LIMIT 10;
+
