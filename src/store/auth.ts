@@ -1,7 +1,19 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabaseClient'
 
-type Profile = { id: string; full_name: string | null; role: 'Admin'|'Dirigente'|'Segreteria'|'Direttore Sportivo'|'Direttore Tecnico'|'Allenatore'|'Team Manager'|'Accompagnatore'|'Player'|'Preparatore'|'Medico'|'Fisio'|'Famiglia'; password: string; email: string }
+type Profile = { 
+  id: string; 
+  full_name: string | null; 
+  role: 'Admin'|'Dirigente'|'Segreteria'|'Direttore Sportivo'|'Direttore Tecnico'|'Allenatore'|'Team Manager'|'Accompagnatore'|'Player'|'Preparatore'|'Medico'|'Fisio'|'Famiglia'; 
+  password: string; 
+  email: string;
+  user_role_id?: string;
+  first_name?: string;
+  last_name?: string;
+  phone?: string;
+  birth_year?: number;
+  fir_code?: string;
+}
 
 interface AuthState {
   userId: string | null

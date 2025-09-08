@@ -82,3 +82,9 @@ SELECT 'RLS FORZATO A DISABILITATO su tutte le tabelle!' as status;
 SELECT 'Ora dovresti poter creare utenti e caricare lo staff senza errori!' as next_step;
 
 
+
+
+
+
+
+

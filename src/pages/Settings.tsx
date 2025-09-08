@@ -1,8 +1,10 @@
 import Header from '@/components/Header'
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabaseClient'
 import EmailTemplateViewer from '@/components/EmailTemplateViewer'
+import { PermissionsDebug } from '@/components/PermissionsDebug'
+import QueryPerformanceMonitor from '@/components/QueryPerformanceMonitor'
 import { useAuth } from '@/store/auth'
 
 interface Category {
@@ -12,6 +14,18 @@ interface Category {
   sort: number
   active: boolean
   created_at: string
+}
+
+interface ProfessionalCategory {
+  id: string
+  name: string
+  description?: string
+  is_sponsor_potential: boolean
+  is_club_useful: boolean
+  position_order: number
+  active: boolean
+  created_at: string
+  updated_at: string
 }
 
 interface TrainingLocation {
@@ -29,6 +43,7 @@ interface NewCategory {
 
 export default function Settings() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { profile } = useAuth()
   const [categories, setCategories] = useState<Category[]>([])
   const [newCategory, setNewCategory] = useState<NewCategory>({ 
@@ -38,23 +53,36 @@ export default function Settings() {
   })
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
-  const [activeTab, setActiveTab] = useState<'categories' | 'system' | 'emails' | 'permissions'>('categories')
+  const [activeTab, setActiveTab] = useState<'categories' | 'system' | 'emails' | 'permissions' | 'debug' | 'performance'>('system')
   const [editingCategory, setEditingCategory] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
   const [showEditModal, setShowEditModal] = useState(false)
   const [editingCategoryData, setEditingCategoryData] = useState<Category | null>(null)
   const [editingTrainingLocations, setEditingTrainingLocations] = useState<TrainingLocation[]>([])
   const [categoryTrainingLocations, setCategoryTrainingLocations] = useState<Record<string, TrainingLocation[]>>({})
+  
+  // Stati per le professioni lavorative
+  const [professionalCategories, setProfessionalCategories] = useState<ProfessionalCategory[]>([])
+  const [newProfessionalCategory, setNewProfessionalCategory] = useState({
+    name: '',
+    description: '',
+    is_sponsor_potential: false,
+    is_club_useful: false
+  })
+  const [showProfessionalCategoryModal, setShowProfessionalCategoryModal] = useState(false)
+  const [editingProfessionalCategory, setEditingProfessionalCategory] = useState<ProfessionalCategory | null>(null)
+  const [expandedProfessionalCategories, setExpandedProfessionalCategories] = useState(false)
 
   useEffect(() => {
     loadCategories()
+    loadProfessionalCategories()
     
     // Controlla se c'è un parametro tab nell'URL
     const urlParams = new URLSearchParams(window.location.search)
     const tabParam = urlParams.get('tab')
     
-    if (tabParam && ['categories', 'system', 'emails', 'permissions'].includes(tabParam)) {
-      setActiveTab(tabParam as 'categories' | 'system' | 'emails' | 'permissions')
+    if (tabParam && ['categories', 'system', 'emails', 'permissions', 'debug', 'performance'].includes(tabParam)) {
+      setActiveTab(tabParam as 'categories' | 'system' | 'emails' | 'permissions' | 'debug' | 'performance')
     }
   }, [])
 
@@ -79,6 +107,108 @@ export default function Settings() {
       await loadTrainingLocations(categoriesWithActive)
     } catch (error) {
       console.error('Errore nel caricamento categorie:', error)
+    }
+  }
+
+  const loadProfessionalCategories = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('professional_categories')
+        .select('*')
+        .order('name', { ascending: true })
+
+      if (error) throw error
+      setProfessionalCategories(data || [])
+    } catch (error) {
+      console.error('Errore nel caricamento professioni:', error)
+    }
+  }
+
+  const handleCreateProfessionalCategory = async () => {
+    if (!newProfessionalCategory.name.trim()) {
+      setMessage('Il nome della professione è obbligatorio')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('professional_categories')
+        .insert([{
+          name: newProfessionalCategory.name.trim(),
+          description: newProfessionalCategory.description.trim() || null,
+          is_sponsor_potential: newProfessionalCategory.is_sponsor_potential,
+          is_club_useful: newProfessionalCategory.is_club_useful,
+          position_order: professionalCategories.length
+        }])
+        .select()
+
+      if (error) throw error
+
+      setMessage('Professione creata con successo!')
+      setNewProfessionalCategory({
+        name: '',
+        description: '',
+        is_sponsor_potential: false,
+        is_club_useful: false
+      })
+      setShowProfessionalCategoryModal(false)
+      loadProfessionalCategories()
+    } catch (error) {
+      console.error('Errore nella creazione professione:', error)
+      setMessage('Errore nella creazione della professione')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDeleteProfessionalCategory = async (id: string) => {
+    if (!confirm('Sei sicuro di voler eliminare questa professione?')) return
+
+    setLoading(true)
+    try {
+      const { error } = await supabase
+        .from('professional_categories')
+        .delete()
+        .eq('id', id)
+
+      if (error) throw error
+
+      setMessage('Professione eliminata con successo!')
+      loadProfessionalCategories()
+    } catch (error) {
+      console.error('Errore nell\'eliminazione professione:', error)
+      setMessage('Errore nell\'eliminazione della professione')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleUpdateProfessionalCategory = async () => {
+    if (!editingProfessionalCategory) return
+
+    setLoading(true)
+    try {
+      const { error } = await supabase
+        .from('professional_categories')
+        .update({
+          name: editingProfessionalCategory.name.trim(),
+          description: editingProfessionalCategory.description?.trim() || null,
+          is_sponsor_potential: editingProfessionalCategory.is_sponsor_potential,
+          is_club_useful: editingProfessionalCategory.is_club_useful
+        })
+        .eq('id', editingProfessionalCategory.id)
+
+      if (error) throw error
+
+      setMessage('Professione aggiornata con successo!')
+      setEditingProfessionalCategory(null)
+      loadProfessionalCategories()
+    } catch (error) {
+      console.error('Errore nell\'aggiornamento professione:', error)
+      setMessage('Errore nell\'aggiornamento della professione')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -576,6 +706,32 @@ export default function Settings() {
           >
             🔐 I Tuoi Permessi
           </button>
+          <button
+            onClick={() => {
+              setActiveTab('debug')
+              navigate('/settings?tab=debug', { replace: true })
+            }}
+            className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
+              activeTab === 'debug'
+                ? 'bg-white text-sky-600 shadow-sm'
+                : 'text-gray-600 hover:text-gray-800'
+            }`}
+          >
+            🔧 Debug
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab('performance')
+              navigate('/settings?tab=performance', { replace: true })
+            }}
+            className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
+              activeTab === 'performance'
+                ? 'bg-white text-sky-600 shadow-sm'
+                : 'text-gray-600 hover:text-gray-800'
+            }`}
+          >
+            ⚡ Performance
+          </button>
         </div>
 
         {/* Tab Categorie */}
@@ -920,6 +1076,79 @@ export default function Settings() {
                   </button>
                 </div>
 
+                {/* Professioni Lavorative - ACCORDION */}
+                <div className="bg-emerald-50 rounded-lg overflow-hidden">
+                  {/* Header cliccabile */}
+                  <div 
+                    className="p-4 cursor-pointer transition-all duration-200 hover:bg-emerald-100/50 flex items-center justify-between"
+                    onClick={() => setExpandedProfessionalCategories(!expandedProfessionalCategories)}
+                  >
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-emerald-800 mb-1">💼 Professioni Lavorative</h3>
+                      <p className="text-sm text-emerald-700">
+                        Gestisci le professioni lavorative per categorizzare persone e identificare potenziali sponsor.
+                      </p>
+                    </div>
+                    
+                    {/* Pulsante Crea Nuova Professione */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setShowProfessionalCategoryModal(true)
+                      }}
+                      className="ml-4 bg-emerald-500 text-white px-3 py-2 text-sm rounded-lg hover:bg-emerald-600 transition-colors flex items-center gap-2"
+                    >
+                      <span>➕</span>
+                      <span>Crea Nuova</span>
+                    </button>
+                  </div>
+                  
+                  {/* Contenuto espandibile */}
+                  {expandedProfessionalCategories && (
+                    <div className="px-4 pb-4 border-t border-emerald-200/50">
+                      {/* Lista professioni esistenti */}
+                      <div className="space-y-2 mt-4">
+                        {professionalCategories.length > 0 ? (
+                          professionalCategories.map((profession) => (
+                            <div key={profession.id} className="flex items-center justify-between p-2 bg-white rounded border">
+                              <div className="flex-1">
+                                <div className="font-medium text-gray-800">{profession.name}</div>
+                                {profession.description && (
+                                  <div className="text-sm text-gray-600">{profession.description}</div>
+                                )}
+                                <div className="flex items-center gap-2 mt-1">
+                                  {profession.is_sponsor_potential && (
+                                    <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">💰 Sponsor</span>
+                                  )}
+                                  {profession.is_club_useful && (
+                                    <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">🏢 Utile Club</span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => setEditingProfessionalCategory(profession)}
+                                  className="text-blue-600 hover:text-blue-800 text-sm"
+                                >
+                                  ✏️
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteProfessionalCategory(profession.id)}
+                                  className="text-red-600 hover:text-red-800 text-sm"
+                                >
+                                  🗑️
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-gray-500 text-sm text-center py-4">Nessuna professione creata</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* I Tuoi Permessi - NUOVA FASCIA */}
                 <div className="p-4 bg-indigo-50 rounded-lg cursor-pointer transition-all duration-200 hover:scale-102 hover:bg-indigo-100"
                      onClick={() => setActiveTab('permissions')}>
@@ -1223,6 +1452,31 @@ export default function Settings() {
           </div>
         )}
 
+        {/* Tab Debug */}
+        {activeTab === 'debug' && (
+          <div className="space-y-8">
+            <div className="card p-6">
+              <h2 className="text-2xl font-bold text-navy mb-4">🔧 Debug Sistema Permessi</h2>
+              <p className="text-gray-600 mb-6">
+                Questo tab mostra lo stato del sistema di permessi per aiutare nel debugging.
+              </p>
+              <PermissionsDebug />
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'performance' && (
+          <div className="space-y-8">
+            <div className="card p-6">
+              <h2 className="text-2xl font-bold text-navy mb-4">⚡ Monitor Performance Query</h2>
+              <p className="text-gray-600 mb-6">
+                Monitora le performance delle query del database e la gestione della cache.
+              </p>
+              <QueryPerformanceMonitor />
+            </div>
+          </div>
+        )}
+
         {/* Messaggio */}
         {message && (
           <div className={`fixed bottom-6 right-6 p-4 rounded-lg shadow-lg max-w-sm ${
@@ -1231,6 +1485,166 @@ export default function Settings() {
               : 'bg-red-100 text-red-800 border border-red-200'
           }`}>
             {message}
+          </div>
+        )}
+
+        {/* Modal Crea Professione */}
+        {showProfessionalCategoryModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl shadow-xl max-w-md w-full mx-4">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900">💼 Crea Nuova Professione</h3>
+              </div>
+              
+              <div className="px-6 py-4 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Nome Professione *
+                  </label>
+                  <input
+                    type="text"
+                    value={newProfessionalCategory.name}
+                    onChange={(e) => setNewProfessionalCategory(prev => ({ ...prev, name: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    placeholder="es. Medico, Avvocato, Ingegnere..."
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Descrizione
+                  </label>
+                  <textarea
+                    value={newProfessionalCategory.description}
+                    onChange={(e) => setNewProfessionalCategory(prev => ({ ...prev, description: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    rows={3}
+                    placeholder="Descrizione opzionale della professione..."
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={newProfessionalCategory.is_sponsor_potential}
+                      onChange={(e) => setNewProfessionalCategory(prev => ({ ...prev, is_sponsor_potential: e.target.checked }))}
+                      className="mr-2"
+                    />
+                    <span className="text-sm text-gray-700">💰 Potenziale Sponsor</span>
+                  </label>
+                  
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={newProfessionalCategory.is_club_useful}
+                      onChange={(e) => setNewProfessionalCategory(prev => ({ ...prev, is_club_useful: e.target.checked }))}
+                      className="mr-2"
+                    />
+                    <span className="text-sm text-gray-700">🏢 Utile per il Club</span>
+                  </label>
+                </div>
+              </div>
+              
+              <div className="px-6 py-4 bg-gray-50 flex space-x-3">
+                <button
+                  onClick={() => {
+                    setShowProfessionalCategoryModal(false)
+                    setNewProfessionalCategory({
+                      name: '',
+                      description: '',
+                      is_sponsor_potential: false,
+                      is_club_useful: false
+                    })
+                  }}
+                  className="flex-1 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                >
+                  Annulla
+                </button>
+                <button
+                  onClick={handleCreateProfessionalCategory}
+                  disabled={loading}
+                  className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {loading ? 'Creazione...' : 'Crea Professione'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Modifica Professione */}
+        {editingProfessionalCategory && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl shadow-xl max-w-md w-full mx-4">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900">✏️ Modifica Professione</h3>
+              </div>
+              
+              <div className="px-6 py-4 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Nome Professione *
+                  </label>
+                  <input
+                    type="text"
+                    value={editingProfessionalCategory.name}
+                    onChange={(e) => setEditingProfessionalCategory(prev => prev ? { ...prev, name: e.target.value } : null)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Descrizione
+                  </label>
+                  <textarea
+                    value={editingProfessionalCategory.description || ''}
+                    onChange={(e) => setEditingProfessionalCategory(prev => prev ? { ...prev, description: e.target.value } : null)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    rows={3}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={editingProfessionalCategory.is_sponsor_potential}
+                      onChange={(e) => setEditingProfessionalCategory(prev => prev ? { ...prev, is_sponsor_potential: e.target.checked } : null)}
+                      className="mr-2"
+                    />
+                    <span className="text-sm text-gray-700">💰 Potenziale Sponsor</span>
+                  </label>
+                  
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={editingProfessionalCategory.is_club_useful}
+                      onChange={(e) => setEditingProfessionalCategory(prev => prev ? { ...prev, is_club_useful: e.target.checked } : null)}
+                      className="mr-2"
+                    />
+                    <span className="text-sm text-gray-700">🏢 Utile per il Club</span>
+                  </label>
+                </div>
+              </div>
+              
+              <div className="px-6 py-4 bg-gray-50 flex space-x-3">
+                <button
+                  onClick={() => setEditingProfessionalCategory(null)}
+                  className="flex-1 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                >
+                  Annulla
+                </button>
+                <button
+                  onClick={handleUpdateProfessionalCategory}
+                  disabled={loading}
+                  className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {loading ? 'Salvataggio...' : 'Salva Modifiche'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>

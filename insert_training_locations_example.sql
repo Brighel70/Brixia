@@ -49,3 +49,9 @@ JOIN categories c ON tl.category_id = c.id
 ORDER BY c.sort, tl.weekday;
 
 
+
+
+
+
+
+

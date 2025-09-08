@@ -35,3 +35,9 @@ CREATE INDEX IF NOT EXISTS idx_players_birth_date ON players(birth_date);
 -- ALTER TABLE players DROP COLUMN IF EXISTS birth_date;
 
 
+
+
+
+
+
+

@@ -11,30 +11,23 @@ export default function HomeView() {
   const [brandClasses, setBrandClasses] = useState(getBrandClasses())
   const [upcomingEvents, setUpcomingEvents] = useState<any[]>([])
   const [loadingEvents, setLoadingEvents] = useState(true)
-
-  // Carica gli eventi prossimi
-  useEffect(() => {
-    loadUpcomingEvents()
-  }, [])
-
-  // Aggiorna la configurazione quando cambia
-  useEffect(() => {
-    const updateConfig = () => {
-      setBrandConfig(getBrandConfig())
-      setBrandClasses(getBrandClasses())
-    }
-
-    // Ascolta i cambiamenti nel localStorage
-    window.addEventListener('storage', updateConfig)
-    
-    // Controlla periodicamente per cambiamenti
-    const interval = setInterval(updateConfig, 1000)
-    
-    return () => {
-      window.removeEventListener('storage', updateConfig)
-      clearInterval(interval)
-    }
-  }, [])
+  
+  // Nuovi stati per il sistema people
+  const [peopleStats, setPeopleStats] = useState({
+    totalPeople: 0,
+    minors: 0,
+    guardians: 0,
+    consentsSigned: 0,
+    validCertificates: 0,
+    documentsUploaded: 0
+  })
+  const [alerts, setAlerts] = useState({
+    expiredConsents: 0,
+    expiringCertificates: 0,
+    minorsWithoutGuardian: 0,
+    missingDocuments: 0
+  })
+  const [loadingStats, setLoadingStats] = useState(true)
 
   const loadUpcomingEvents = async () => {
     try {
@@ -66,6 +59,102 @@ export default function HomeView() {
     }
   }
 
+  const loadPeopleStats = async () => {
+    try {
+      setLoadingStats(true)
+      
+      // Carica statistiche del sistema people
+      const [
+        { count: totalPeople },
+        { count: minors },
+        { count: guardians },
+        { count: consentsSigned },
+        { count: validCertificates },
+        { count: documentsUploaded },
+        { count: expiredConsents },
+        { count: expiringCertificates },
+        { count: minorsWithoutGuardian },
+        { count: missingDocuments }
+      ] = await Promise.all([
+        // Totale persone
+        supabase.from('people').select('*', { count: 'exact', head: true }),
+        
+        // Minorenni
+        supabase.from('people').select('*', { count: 'exact', head: true }).eq('is_minor', true),
+        
+        // Tutori
+        supabase.from('guardians').select('*', { count: 'exact', head: true }),
+        
+        // Consensi firmati
+        supabase.from('person_consents').select('*', { count: 'exact', head: true }),
+        
+        // Certificati validi
+        supabase.from('medical_certificates').select('*', { count: 'exact', head: true }).eq('status', 'valid'),
+        
+        // Documenti caricati
+        supabase.from('documents').select('*', { count: 'exact', head: true }),
+        
+        // Consensi scaduti (placeholder - da implementare)
+        Promise.resolve({ count: 0 }),
+        
+        // Certificati in scadenza (placeholder - da implementare)
+        Promise.resolve({ count: 0 }),
+        
+        // Minorenni senza tutore (placeholder - da implementare)
+        Promise.resolve({ count: 0 }),
+        
+        // Documenti mancanti (placeholder - da implementare)
+        Promise.resolve({ count: 0 })
+      ])
+
+      setPeopleStats({
+        totalPeople: totalPeople || 0,
+        minors: minors || 0,
+        guardians: guardians || 0,
+        consentsSigned: consentsSigned || 0,
+        validCertificates: validCertificates || 0,
+        documentsUploaded: documentsUploaded || 0
+      })
+
+      setAlerts({
+        expiredConsents: expiredConsents || 0,
+        expiringCertificates: expiringCertificates || 0,
+        minorsWithoutGuardian: minorsWithoutGuardian || 0,
+        missingDocuments: missingDocuments || 0
+      })
+
+    } catch (error) {
+      console.error('Errore nel caricamento statistiche:', error)
+    } finally {
+      setLoadingStats(false)
+    }
+  }
+
+  // Carica gli eventi prossimi e statistiche
+  useEffect(() => {
+    loadUpcomingEvents()
+    loadPeopleStats()
+  }, [])
+
+  // Aggiorna la configurazione quando cambia
+  useEffect(() => {
+    const updateConfig = () => {
+      setBrandConfig(getBrandConfig())
+      setBrandClasses(getBrandClasses())
+    }
+
+    // Ascolta i cambiamenti nel localStorage
+    window.addEventListener('storage', updateConfig)
+    
+    // Controlla periodicamente per cambiamenti
+    const interval = setInterval(updateConfig, 1000)
+    
+    return () => {
+      window.removeEventListener('storage', updateConfig)
+      clearInterval(interval)
+    }
+  }, [])
+
   const formatEventDate = (dateString: string) => {
     const date = new Date(dateString)
     const options: Intl.DateTimeFormatOptions = { 
@@ -88,49 +177,75 @@ export default function HomeView() {
     return 'Buonasera'
   }
 
-  // Card di navigazione principali
+  // Card di navigazione principali (aggiornate con sistema people)
   const navigationCards = [
     {
       title: "Attività",
       description: "Presenze e sessioni allenamento",
       icon: "📊",
       route: "/activities",
-      color: "bg-gradient-to-r from-green-500 to-green-600 border-l-4 border-green-400"
+      color: "bg-gradient-to-r from-green-500 to-green-600 border-l-4 border-green-400",
+      quickActions: [
+        { label: "➕ Nuova Sessione", action: () => navigate("/start") },
+        { label: "📋 Presenze", action: () => navigate("/board") }
+      ]
     },
     {
       title: "Staff",
       description: "Allenatori, dirigenti e medici",
       icon: "👥",
       route: "/staff",
-      color: "bg-gradient-to-r from-orange-500 to-orange-600 border-l-4 border-orange-400"
+      color: "bg-gradient-to-r from-orange-500 to-orange-600 border-l-4 border-orange-400",
+      quickActions: [
+        { label: "➕ Nuovo Staff", action: () => navigate("/create-user") },
+        { label: "🔐 Gestione Permessi", action: () => navigate("/staff") }
+      ]
     },
     {
       title: "Giocatori",
       description: "Gestione anagrafica e categorie",
       icon: "🏉",
       route: "/players",
-      color: "bg-gradient-to-r from-blue-500 to-blue-600 border-l-4 border-blue-400"
+      color: "bg-gradient-to-r from-blue-500 to-blue-600 border-l-4 border-blue-400",
+      quickActions: [
+        { label: "➕ Nuovo Giocatore", action: () => navigate("/create-player") },
+        { label: "👥 Gestione Anagrafica", action: () => navigate("/players") }
+      ]
     },
     {
-      title: "Nuovo Giocatore",
-      description: "Registra nuovo atleta",
-      icon: "➕",
-      route: "/create-player",
-      color: "bg-gradient-to-r from-teal-500 to-teal-600 border-l-4 border-teal-400"
+      title: "Anagrafica",
+      description: "Gestione unificata di tutte le persone",
+      icon: "👥",
+      route: "/people",
+      color: "bg-gradient-to-r from-indigo-500 to-indigo-600 border-l-4 border-indigo-400",
+      quickActions: [
+        { label: "➕ Nuova Persona", action: () => navigate("/create-person") },
+        { label: "🔍 Gestione Persone", action: () => navigate("/people") }
+      ]
     },
     {
-      title: "Nuovo Staff",
-      description: "Crea account utente",
-      icon: "👤",
-      route: "/create-user",
-      color: "bg-gradient-to-r from-purple-500 to-purple-600 border-l-4 border-purple-400"
+      title: "Consensi",
+      description: "Gestione consensi e firme digitali",
+      icon: "📝",
+      route: "/consents",
+      color: "bg-gradient-to-r from-yellow-500 to-yellow-600 border-l-4 border-yellow-400",
+      quickActions: [
+        { label: "✍️ Firma Consensi", action: () => navigate("/consents") },
+        { label: "📋 Gestione Privacy", action: () => navigate("/consents") }
+      ],
+      badge: alerts.expiredConsents > 0 ? `${alerts.expiredConsents} scaduti` : null
     },
     {
-      title: "Impostazioni",
-      description: "Configurazioni e personalizzazione",
-      icon: "⚙️",
-      route: "/settings",
-      color: "bg-gradient-to-r from-gray-500 to-gray-600 border-l-4 border-gray-400"
+      title: "Documenti",
+      description: "Certificati e documenti anagrafici",
+      icon: "📄",
+      route: "/documents",
+      color: "bg-gradient-to-r from-purple-500 to-purple-600 border-l-4 border-purple-400",
+      quickActions: [
+        { label: "📤 Carica Documenti", action: () => navigate("/documents") },
+        { label: "🏥 Certificati Medici", action: () => navigate("/documents") }
+      ],
+      badge: alerts.expiringCertificates > 0 ? `${alerts.expiringCertificates} in scadenza` : null
     }
   ]
 
@@ -170,16 +285,27 @@ export default function HomeView() {
               <p className="text-white/80 text-xs">Stagione {brandConfig.season}</p>
             </div>
             
-            {/* Lato destro - Informazioni utente e logout */}
+            {/* Lato destro - Informazioni utente, settings e logout */}
             <div className="text-right">
               <p className="text-white/90 text-sm">{getGreeting()}</p>
               <p className="font-semibold">{profile?.full_name || 'Utente'}</p>
-              <button
-                onClick={handleLogout}
-                className="mt-2 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-sm"
-              >
-                Logout
-              </button>
+              <div className="mt-2 flex items-center gap-2 justify-end">
+                {/* Settings icon */}
+                <button
+                  onClick={() => navigate('/settings')}
+                  className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors text-xl"
+                  title="Impostazioni"
+                >
+                  ⚙️
+                </button>
+                {/* Logout button */}
+                <button
+                  onClick={handleLogout}
+                  className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-sm"
+                >
+                  Logout
+                </button>
+              </div>
             </div>
           </div>
         </header>
@@ -204,16 +330,41 @@ export default function HomeView() {
             {navigationCards.map((card, index) => (
               <div 
                 key={index}
-                className={`card p-6 ${card.color} cursor-pointer transition-all duration-200 hover:scale-105 shadow-lg`}
+                className={`card p-6 ${card.color} cursor-pointer transition-all duration-200 hover:scale-105 shadow-lg relative`}
                 onClick={() => navigate(card.route)}
               >
-                <div className="flex items-center">
+                {/* Badge per alert */}
+                {card.badge && (
+                  <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full font-bold">
+                    {card.badge}
+                  </div>
+                )}
+                
+                <div className="flex items-center mb-4">
                   <div className="text-3xl mr-4">{card.icon}</div>
                   <div>
                     <div className="text-2xl font-bold text-white">{card.title}</div>
                     <div className="text-sm text-white/80">{card.description}</div>
                   </div>
                 </div>
+                
+                {/* Quick Actions */}
+                {card.quickActions && (
+                  <div className="space-y-2">
+                    {card.quickActions.map((action, actionIndex) => (
+                      <button
+                        key={actionIndex}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          action.action()
+                        }}
+                        className="w-full text-left px-3 py-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-sm text-white/90 hover:text-white"
+                      >
+                        {action.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -291,6 +442,27 @@ export default function HomeView() {
                 <h3 className="text-lg font-semibold">Comunicazioni</h3>
               </div>
               <div className="space-y-3">
+                {alerts.expiredConsents > 0 && (
+                  <div className="p-3 bg-red-50 rounded-lg">
+                    <div className="font-medium text-red-900">Consensi scaduti</div>
+                    <div className="text-sm text-red-600">{alerts.expiredConsents} consensi da rinnovare</div>
+                    <div className="text-xs text-red-500 mt-1">Urgente</div>
+                  </div>
+                )}
+                {alerts.expiringCertificates > 0 && (
+                  <div className="p-3 bg-orange-50 rounded-lg">
+                    <div className="font-medium text-orange-900">Certificati in scadenza</div>
+                    <div className="text-sm text-orange-600">{alerts.expiringCertificates} certificati medici</div>
+                    <div className="text-xs text-orange-500 mt-1">Prossima scadenza</div>
+                  </div>
+                )}
+                {alerts.minorsWithoutGuardian > 0 && (
+                  <div className="p-3 bg-red-50 rounded-lg">
+                    <div className="font-medium text-red-900">Minorenni senza tutore</div>
+                    <div className="text-sm text-red-600">{alerts.minorsWithoutGuardian} atleti minorenni</div>
+                    <div className="text-xs text-red-500 mt-1">Azione richiesta</div>
+                  </div>
+                )}
                 <div className="p-3 bg-yellow-50 rounded-lg">
                   <div className="font-medium text-yellow-900">Nuovo allenatore U16</div>
                   <div className="text-sm text-yellow-600">Benvenuto Marco Rossi</div>
@@ -311,25 +483,77 @@ export default function HomeView() {
                 <h3 className="text-lg font-semibold">Statistiche</h3>
               </div>
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-600">Giocatori Totali</span>
-                  <span className="font-bold text-blue-600">156</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-600">Staff Attivo</span>
-                  <span className="font-bold text-green-600">23</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-600">Sessioni Oggi</span>
-                  <span className="font-bold text-orange-600">8</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-600">Presenze Media</span>
-                  <span className="font-bold text-purple-600">85%</span>
-                </div>
+                {loadingStats ? (
+                  <div className="text-center py-4">
+                    <div className="text-gray-500">Caricamento statistiche...</div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">Persone Totali</span>
+                      <span className="font-bold text-blue-600">{peopleStats.totalPeople}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">Minorenni</span>
+                      <span className="font-bold text-green-600">{peopleStats.minors}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">Tutori Attivi</span>
+                      <span className="font-bold text-orange-600">{peopleStats.guardians}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">Consensi Firmati</span>
+                      <span className="font-bold text-purple-600">{peopleStats.consentsSigned}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">Certificati Validi</span>
+                      <span className="font-bold text-teal-600">{peopleStats.validCertificates}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">Documenti Caricati</span>
+                      <span className="font-bold text-indigo-600">{peopleStats.documentsUploaded}</span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
+
+          {/* Alert Bar - Notifiche urgenti */}
+          {(alerts.expiredConsents > 0 || alerts.expiringCertificates > 0 || alerts.minorsWithoutGuardian > 0 || alerts.missingDocuments > 0) && (
+            <div className="mt-8 p-4 bg-gradient-to-r from-red-50 to-orange-50 border-l-4 border-red-400 rounded-lg">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="text-2xl">🚨</div>
+                <h3 className="text-lg font-semibold text-red-800">Alert & Notifiche</h3>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                {alerts.expiredConsents > 0 && (
+                  <div className="flex items-center gap-2 text-red-700">
+                    <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                    <span>{alerts.expiredConsents} consensi scaduti</span>
+                  </div>
+                )}
+                {alerts.expiringCertificates > 0 && (
+                  <div className="flex items-center gap-2 text-orange-700">
+                    <span className="w-2 h-2 bg-orange-500 rounded-full"></span>
+                    <span>{alerts.expiringCertificates} certificati in scadenza</span>
+                  </div>
+                )}
+                {alerts.minorsWithoutGuardian > 0 && (
+                  <div className="flex items-center gap-2 text-red-700">
+                    <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                    <span>{alerts.minorsWithoutGuardian} minorenni senza tutore</span>
+                  </div>
+                )}
+                {alerts.missingDocuments > 0 && (
+                  <div className="flex items-center gap-2 text-yellow-700">
+                    <span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
+                    <span>{alerts.missingDocuments} documenti mancanti</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </main>
       </div>
     </div>

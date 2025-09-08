@@ -23,14 +23,6 @@ export const usePermissions = () => {
   const [loading, setLoading] = useState(false)
 
   const loadUserPermissions = async () => {
-    // DISABILITATO TEMPORANEAMENTE - Ritorna sempre permessi vuoti
-    setLoading(true)
-    setPermissions([])
-    setUserRole(null)
-    setLoading(false)
-    
-    // Codice originale commentato
-    /*
     if (!profile?.user_role_id) {
       setPermissions([])
       setUserRole(null)
@@ -81,7 +73,6 @@ export const usePermissions = () => {
     } finally {
       setLoading(false)
     }
-    */
   }
 
   useEffect(() => {
@@ -90,85 +81,87 @@ export const usePermissions = () => {
 
   // Controlla se l'utente ha un permesso specifico
   const hasPermission = (permissionName: string): boolean => {
-    // DISABILITATO - Ritorna sempre true per permettere la navigazione
-    return true
+    if (!permissions || permissions.length === 0) return false
+    return permissions.some(permission => permission.name === permissionName)
   }
 
   // Controlla se l'utente ha un permesso in una categoria
   const hasPermissionInCategory = (category: string, permissionName: string): boolean => {
-    // DISABILITATO - Ritorna sempre true per permettere la navigazione
-    return true
+    if (!permissions || permissions.length === 0) return false
+    return permissions.some(permission => 
+      permission.category === category && permission.name === permissionName
+    )
   }
 
   // Controlla se l'utente ha almeno un permesso in una categoria
   const hasAnyPermissionInCategory = (category: string): boolean => {
-    // DISABILITATO - Ritorna sempre true per permettere la navigazione
-    return true
+    if (!permissions || permissions.length === 0) return false
+    return permissions.some(permission => permission.category === category)
   }
 
   // Controlla se l'utente è admin
   const isAdmin = (): boolean => {
-    return true // DISABILITATO - Ritorna sempre true
+    return userRole?.name === 'Admin'
   }
 
   // Controlla se l'utente è dirigente
   const isDirigente = (): boolean => {
-    return true // DISABILITATO - Ritorna sempre true
+    return userRole?.name === 'Dirigente'
   }
 
   // Controlla se l'utente è segreteria
   const isSegreteria = (): boolean => {
-    return true // DISABILITATO - Ritorna sempre true
+    return userRole?.name === 'Segreteria'
   }
 
   // Controlla se l'utente è direttore sportivo
   const isDirettoreSportivo = (): boolean => {
-    return true // DISABILITATO - Ritorna sempre true
+    return userRole?.name === 'Direttore Sportivo'
   }
 
   // Controlla se l'utente è direttore tecnico
   const isDirettoreTecnico = (): boolean => {
-    return true // DISABILITATO - Ritorna sempre true
+    return userRole?.name === 'Direttore Tecnico'
   }
 
   // Controlla se l'utente è allenatore
   const isAllenatore = (): boolean => {
-    return true // DISABILITATO - Ritorna sempre true
+    return userRole?.name === 'Allenatore'
   }
 
   // Controlla se l'utente è team manager
   const isTeamManager = (): boolean => {
-    return true // DISABILITATO - Ritorna sempre true
+    return userRole?.name === 'Team Manager'
   }
 
   // Controlla se l'utente è accompagnatore
   const isAccompagnatore = (): boolean => {
-    return true // DISABILITATO - Ritorna sempre true
+    return userRole?.name === 'Accompagnatore'
   }
 
   // Controlla se l'utente è player
   const isPlayer = (): boolean => {
-    return true // DISABILITATO - Ritorna sempre true
+    return userRole?.name === 'Player'
   }
 
   // Controlla se l'utente è preparatore
   const isPreparatore = (): boolean => {
-    return true // DISABILITATO - Ritorna sempre true
+    return userRole?.name === 'Preparatore'
   }
 
   // Controlla se l'utente è medico
   const isMedico = (): boolean => {
-    return true // DISABILITATO - Ritorna sempre true
+    return userRole?.name === 'Medico'
   }
 
   // Controlla se l'utente è fisio
   const isFisio = (): boolean => {
-    return true // DISABILITATO - Ritorna sempre true
+    return userRole?.name === 'Fisio'
   }
 
   // Controlla se l'utente è famiglia
   const isFamiglia = (): boolean => {
-    return true // DISABILITATO - Ritorna sempre true
+    return userRole?.name === 'Famiglia'
   }
 
   return {

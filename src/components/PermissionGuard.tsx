@@ -41,13 +41,12 @@ export const PermissionGuard: React.FC<PermissionGuardProps> = ({
     return <>{children}</>
   }
 
-  // Controllo ruolo richiesto - DISABILITATO TEMPORANEAMENTE
+  // Controllo ruolo richiesto
   if (requiredRole) {
-    // Tutti i ruoli sono permessi temporaneamente
-    // const hasRole = true
-    // if (!hasRole) {
-    //   return showFallback ? <>{fallback}</> : null
-    // }
+    const hasRole = userRole?.name === requiredRole
+    if (!hasRole) {
+      return showFallback ? <>{fallback}</> : null
+    }
   }
 
   // Controllo permesso specifico

@@ -15,6 +15,8 @@ import StartTraining from '@/pages/StartTraining'
 import CategoryActivities from '@/pages/CategoryActivities'
 import Events from '@/pages/Events'
 import CouncilManagement from '@/pages/CouncilManagement'
+import PeopleView from '@/pages/PeopleView'
+import CreatePersonView from '@/pages/CreatePersonView'
 import AuthLayout from '@/components/AuthLayout'
 import { PermissionGuard } from '@/components/PermissionGuard'
 import { PERMISSIONS } from '@/config/permissions'
@@ -152,6 +154,26 @@ export const router = createBrowserRouter([
       <AuthLayout requireAuth={true}>
         <PermissionGuard requiredPermission={PERMISSIONS.USERS.VIEW} fallback={<div className="p-6 text-center text-red-600">❌ Accesso negato: permesso insufficiente</div>}>
           <StaffView />
+        </PermissionGuard>
+      </AuthLayout>
+    )
+  },
+  {
+    path: '/people',
+    element: (
+      <AuthLayout requireAuth={true}>
+        <PermissionGuard requiredPermission={PERMISSIONS.USERS.VIEW} fallback={<div className="p-6 text-center text-red-600">❌ Accesso negato: permesso insufficiente</div>}>
+          <PeopleView />
+        </PermissionGuard>
+      </AuthLayout>
+    )
+  },
+  {
+    path: '/create-person',
+    element: (
+      <AuthLayout requireAuth={true}>
+        <PermissionGuard requiredPermission={PERMISSIONS.USERS.CREATE} fallback={<div className="p-6 text-center text-red-600">❌ Accesso negato: permesso insufficiente</div>}>
+          <CreatePersonView />
         </PermissionGuard>
       </AuthLayout>
     )

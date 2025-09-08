@@ -39,12 +39,10 @@ export default function PlayersView() {
   const loadPlayers = async () => {
     try {
       setLoading(true)
-      console.log('🚀 INIZIO loadPlayers') // Debug
       
       // APPROCCIO DIVERSO: Carica giocatori e categorie separatamente
       
       // 1. Carica tutti i giocatori
-      console.log('🔍 Caricamento giocatori...') // Debug
       const { data: playersData, error: playersError } = await supabase
         .from('players')
         .select('*')
@@ -52,10 +50,7 @@ export default function PlayersView() {
 
       if (playersError) throw playersError
 
-      console.log('🔍 Giocatori caricati:', playersData?.length) // Debug
-
       // 2. Carica tutte le associazioni giocatori-categorie
-      console.log('🔍 Inizio caricamento associazioni...') // Debug
       
       let associationsData = []
       let associationsError = null
@@ -76,7 +71,6 @@ export default function PlayersView() {
         associationsData = result.data
         associationsError = result.error
         
-        console.log('🔍 Risultato query associazioni:', { associationsData, associationsError }) // Debug
       } catch (error) {
         console.error('❌ Errore nel caricamento associazioni:', error)
         associationsError = error
@@ -88,8 +82,6 @@ export default function PlayersView() {
         associationsData = []
       }
 
-      console.log('🔍 Associazioni caricate:', associationsData?.length) // Debug
-      console.log('🔍 Prime 3 associazioni:', associationsData?.slice(0, 3)) // Debug
 
       // 3. Crea una mappa delle categorie per giocatore
       const categoriesMap = new Map()
@@ -102,7 +94,6 @@ export default function PlayersView() {
         }
       })
 
-      console.log('🔍 Mappa categorie creata:', categoriesMap.size, 'giocatori con categorie') // Debug
 
       // 4. SOLUZIONE TEMPORANEA: Assegna categorie basandosi sul codice FIR
       const formattedPlayers = (playersData || []).map(player => {
@@ -149,8 +140,6 @@ export default function PlayersView() {
           categories: categories
         }
         
-        console.log('👤 Giocatore formattato:', formatted) // Debug
-        console.log('👤 Categorie del giocatore (da FIR):', categories) // Debug
         return formatted
       })
 
@@ -177,13 +166,6 @@ export default function PlayersView() {
         }
       })
       
-      console.log('📊 Statistiche calcolate:', {
-        totalPlayers,
-        injuredPlayers,
-        newPlayers,
-        categoriesCount: uniqueCategories.size,
-        uniqueCategories: Array.from(uniqueCategories)
-      }) // Debug
       
       setStats({
         totalPlayers,

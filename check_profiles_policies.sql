@@ -41,3 +41,9 @@ FROM public.profiles p
 WHERE p.id = auth.uid();
 
 
+
+
+
+
+
+

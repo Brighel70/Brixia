@@ -27,3 +27,9 @@ WHERE tc.constraint_type = 'FOREIGN KEY'
 SELECT 'Foreign key aggiunta con successo!' as status;
 
 
+
+
+
+
+
+
