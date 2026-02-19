@@ -2,35 +2,41 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
+// https://vitejs.dev/config/
 export default defineConfig({
-  base: '/',
-  plugins: [react()],
-  server: { 
-    host: 'localhost',
-    port: 3000,
-    strictPort: true,
-    hmr: {
-      port: 3001
-    }
-  },
+  plugins: [
+    react()
+  ],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src')
+      '@': path.resolve(__dirname, './src'),
+      '@brixia/shared': path.resolve(__dirname, './packages/shared/src/index.ts')
     }
   },
   optimizeDeps: {
-    force: true
+    include: ['@brixia/shared']
   },
   build: {
-    target: 'es2015',
-    minify: 'terser',
+    chunkSizeWarningLimit: 2500,
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom'],
-          supabase: ['@supabase/supabase-js']
+        manualChunks: (id) => {
+          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) return 'react'
+          if (id.includes('node_modules/@supabase')) return 'supabase'
+          // Non raggruppare @react-pdf con jspdf/html2canvas per evitare "Cannot access before initialization"
+          if (id.includes('node_modules/xlsx')) return 'xlsx'
         }
       }
+    }
+  },
+  server: {
+    port: 3000,
+    strictPort: true,
+    hmr: {
+      overlay: false
+    },
+    watch: {
+      ignored: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/.vite/**']
     }
   }
 })
