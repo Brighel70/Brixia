@@ -1,0 +1,263 @@
+{
+  "name": "event-summary-premium-wide",
+  "purpose": "Sostituire il modal attuale del sunto evento per tornei e feste del rugby con una vista larga, premium, leggibile e interattiva.",
+  "target": {
+    "primaryFile": "src/pages/Events.tsx",
+    "currentArea": "Modal dettagli evento renderizzato quando showEventModal && selectedEvent",
+    "doNotChange": [
+      "logica database",
+      "query Supabase",
+      "creazione/modifica/eliminazione evento",
+      "generazione PDF",
+      "helper esistenti per formattazione e partecipanti"
+    ]
+  },
+  "modal": {
+    "width": "min(1380px, calc(100vw - 48px))",
+    "height": "min(820px, calc(100vh - 48px))",
+    "borderRadius": 28,
+    "background": "#F5F8FC",
+    "layout": "header + content grid + action footer",
+    "contentColumns": [
+      {
+        "name": "navigation",
+        "width": 300
+      },
+      {
+        "name": "mainContent",
+        "width": "flex"
+      }
+    ]
+  },
+  "header": {
+    "height": "compact, about 25% lower than first mockup",
+    "background": "linear-gradient(135deg, #071226 0%, #102451 58%, #183A78 100%)",
+    "left": {
+      "badge": {
+        "text": "event type label",
+        "example": "Festa del Rugby",
+        "style": "small uppercase pill"
+      },
+      "title": {
+        "text": "selectedEvent.title",
+        "example": "Due Laghi",
+        "fontSize": "large, bold"
+      },
+      "remove": [
+        "subtitle under title",
+        "logo in top-left"
+      ]
+    },
+    "rightCards": [
+      {
+        "label": "Data",
+        "value": "formatted selectedEvent.event_date",
+        "subValue": "start_time - end_time",
+        "example": {
+          "value": "Dom 5 luglio",
+          "subValue": "10:00 - 13:00"
+        }
+      },
+      {
+        "label": "Luogo",
+        "value": "selectedEvent.location or selectedEvent.away_location",
+        "subValue": "Casa or Trasferta",
+        "example": {
+          "value": "Brescia",
+          "subValue": "Casa"
+        }
+      },
+      {
+        "label": "Formato",
+        "value": "[numero squadre] Squadre",
+        "subValue": "[squadre per girone] /Teams per [numero gironi] gironi",
+        "example": {
+          "value": "32 Squadre",
+          "subValue": "4 /Teams per 8 gironi"
+        }
+      },
+      {
+        "type": "logo",
+        "source": "brandConfig.assets.logo || /brixia-logo.svg",
+        "note": "Occupa lo spazio della quarta card a destra."
+      }
+    ]
+  },
+  "navigation": {
+    "title": "Navigazione",
+    "tabs": [
+      {
+        "id": "overview",
+        "label": "Panoramica",
+        "rightLabel": "evento",
+        "default": true
+      },
+      {
+        "id": "groups",
+        "label": "Gironi",
+        "rightLabel": "[numero gironi]"
+      },
+      {
+        "id": "teams",
+        "label": "Squadre",
+        "rightLabel": "[numero squadre]"
+      }
+    ],
+    "search": {
+      "placeholder": "Cerca squadra o girone...",
+      "behavior": "Cerca per nome squadra e nome girone.",
+      "emptyState": "Se il campo e vuoto non mostrare nessuna societa trovata. Mostra solo una frase neutra: Digita per cercare una societa o un girone."
+    }
+  },
+  "views": {
+    "overview": {
+      "title": "[selectedEvent.title] in sintesi",
+      "counter": "[numero squadre] squadre",
+      "removeCards": [
+        "card blu Due Laghi in sintesi",
+        "card Uso dei pulsanti",
+        "metriche Data/Orario/Squadre/Gironi dentro la sintesi"
+      ],
+      "content": [
+        {
+          "type": "timeline",
+          "items": [
+            {
+              "time": "09:30",
+              "label": "Accoglienza squadre e briefing staff"
+            },
+            {
+              "time": "10:00",
+              "label": "Inizio attivita in campo"
+            },
+            {
+              "time": "13:00",
+              "label": "Fine attivita"
+            }
+          ],
+          "note": "Non mostrare titolo Programma rapido."
+        },
+        {
+          "type": "groupsPreview",
+          "title": "Anteprima gironi",
+          "layout": "grid",
+          "card": {
+            "borderLeftColor": "group accent color",
+            "content": [
+              "girone.name",
+              "[girone.teams.length] squadre"
+            ]
+          },
+          "interaction": "Click su un girone passa alla vista Gironi e seleziona quel girone."
+        }
+      ]
+    },
+    "groups": {
+      "title": "Vista gironi",
+      "counter": "[numero squadre] squadre",
+      "layout": "responsive grid, 4 colonne su desktop largo",
+      "card": {
+        "borderColor": "accent color del girone",
+        "header": {
+          "background": "#071226",
+          "height": "compact",
+          "leftText": "girone.name",
+          "rightText": "[girone.teams.length] squadre",
+          "fontSize": "smaller than original mockup",
+          "remove": "numero grande/circle 01"
+        },
+        "accentLine": {
+          "position": "attaccata sotto la base dell'header",
+          "color": "accent color del girone"
+        },
+        "teams": {
+          "showAllTeams": true,
+          "rowStyle": "rounded light row with small colored dot",
+          "text": "team name"
+        }
+      }
+    },
+    "teams": {
+      "title": "Vista squadre",
+      "counter": "[numero squadre] squadre",
+      "layout": "grid di card societa",
+      "card": {
+        "title": "team name",
+        "pill": "girone.name with accent color"
+      },
+      "interaction": "Click su una squadra passa alla vista Gironi e seleziona il suo girone."
+    }
+  },
+  "actions": {
+    "position": "footer sticky/bottom of modal",
+    "buttons": [
+      {
+        "label": "PDF",
+        "color": "#0F766E",
+        "existingHandler": "generateEventPresentationPdf"
+      },
+      {
+        "label": "Modifica",
+        "color": "#2D5FB8",
+        "existingHandler": "handleEditEvent(selectedEvent)"
+      },
+      {
+        "label": "Elimina",
+        "color": "#8F3456",
+        "existingHandler": "handleDeleteEvent(selectedEvent.id)"
+      },
+      {
+        "label": "Chiudi",
+        "color": "#F8FAFC",
+        "existingHandler": "handleCloseEventModal"
+      }
+    ]
+  },
+  "colors": {
+    "navy": "#071226",
+    "navy2": "#102451",
+    "blue": "#2F6DF6",
+    "cyan": "#42C8FF",
+    "teal": "#10B7A6",
+    "gold": "#F4B740",
+    "pink": "#D14F83",
+    "panel": "#F5F8FC",
+    "line": "#DBE5F0",
+    "ink": "#071226",
+    "muted": "#667085"
+  },
+  "sampleData": {
+    "title": "Due Laghi",
+    "eventType": "festa_del_rugby",
+    "date": "domenica 5 luglio",
+    "startTime": "10:00",
+    "endTime": "13:00",
+    "location": "Brescia",
+    "isHome": true,
+    "teamsCount": 32,
+    "groupsCount": 8,
+    "teamsPerGroup": 4,
+    "groups": [
+      {
+        "name": "Girone 1",
+        "accent": "#2F6DF6",
+        "teams": ["CASALE", "BERGAMO", "CUS MILANO", "LYONS PIACENZA"]
+      },
+      {
+        "name": "Girone 2",
+        "accent": "#10B7A6",
+        "teams": ["CALVISANO", "CASTELLANA", "GUSSAGO", "CENTURIONI"]
+      },
+      {
+        "name": "Girone 3",
+        "accent": "#F4B740",
+        "teams": ["BRESCIA", "FRANCIACORTA", "PETRARCA", "BASSA BRESCIANA"]
+      },
+      {
+        "name": "Girone 4",
+        "accent": "#D14F83",
+        "teams": ["PIEVE DI CENTO", "MOGLIANO", "PARABIAGO", "FELTRE"]
+      }
+    ]
+  }
+}

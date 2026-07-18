@@ -1,3 +1,4 @@
+-- DEPRECATED: usare people. Script diagnostico legacy.
 -- Script per debuggare il problema dell'ID persona
 -- Verifichiamo se l'ID esiste e dove
 

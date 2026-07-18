@@ -5,10 +5,11 @@ const statusDescriptions: { [key: string]: string } = {
   'P': 'Presente - Il giocatore è presente all\'allenamento',
   'A': 'Assente - Il giocatore non è presente',
   'INF': 'Infortunato - Il giocatore è infortunato',
-  'M': 'Malato - Il giocatore è malato'
+  'M': 'Malato - Il giocatore è malato',
+  'G': 'Giustificato - Il giocatore ha un permesso'
 }
 
-export default function StatusPill({ label, active, onClick }:{ label: string; active?: boolean; onClick?: () => void }){
+export default function StatusPill({ label, active, onClick, dark }: { label: string; active?: boolean; onClick?: () => void; dark?: boolean }){
   const [showTooltip, setShowTooltip] = useState(false)
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 })
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -47,6 +48,14 @@ export default function StatusPill({ label, active, onClick }:{ label: string; a
     }
   }, [])
 
+  const activeColorByLabel: Record<string, string> = {
+    P: 'bg-emerald-600 text-white border-emerald-600 shadow-emerald-600/20',
+    A: 'bg-rose-600 text-white border-rose-600 shadow-rose-600/20',
+    INF: 'bg-amber-500 text-white border-amber-500 shadow-amber-500/20',
+    M: 'bg-orange-500 text-white border-orange-500 shadow-orange-500/20',
+    G: 'bg-blue-600 text-white border-blue-600 shadow-blue-600/20'
+  }
+
   return (
     <>
       <button 
@@ -54,7 +63,16 @@ export default function StatusPill({ label, active, onClick }:{ label: string; a
         onClick={onClick} 
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        className={clsx('pill border', active ? 'bg-sky text-white border-sky' : 'bg-white text-navy border-navy/20')}
+        className={clsx(
+        'min-w-8 rounded-full border px-3 py-1.5 text-xs font-bold leading-none shadow-sm transition-all hover:-translate-y-px',
+        dark
+          ? active
+            ? activeColorByLabel[label] || 'bg-blue-600 text-white border-blue-500'
+            : 'bg-slate-700 text-slate-200 border-slate-500 hover:bg-slate-600'
+          : active
+            ? activeColorByLabel[label] || 'bg-blue-600 text-white border-blue-600'
+            : 'bg-white text-slate-700 border-slate-300 hover:border-slate-400 hover:bg-slate-50'
+      )}
       >
         {label}
       </button>

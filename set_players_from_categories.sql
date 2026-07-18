@@ -65,3 +65,4 @@ SELECT
 FROM public.people 
 WHERE is_player = true
 LIMIT 10;
+

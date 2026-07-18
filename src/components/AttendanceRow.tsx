@@ -1,3 +1,4 @@
+import { clsx } from 'clsx'
 import StatusPill from './StatusPill'
 import { useData, type InjuredPlace } from '@/store/data'
 import { useState } from 'react'
@@ -6,57 +7,73 @@ const statuses = [
   { key: 'PRESENTE', short: 'P' },
   { key: 'ASSENTE', short: 'A' },
   { key: 'INFORTUNATO', short: 'INF' },
-  { key: 'PERMESSO', short: 'PR' },
   { key: 'MALATO', short: 'M' },
+  { key: 'PERMESSO', short: 'G' },
 ] as const
 
 export default function AttendanceRow({ 
   player, 
+  sessionId,
   onExpandPopup, 
-  onCollapsePopup 
+  onCollapsePopup,
+  variant = 'light'
 }: {
-  player: { id:string; first_name:string; last_name:string; injured:boolean }
+  player: { id:string; given_name:string; family_name:string; injured:boolean }
+  sessionId: string
   onExpandPopup?: () => void
   onCollapsePopup?: () => void
+  variant?: 'light' | 'dark'
 }){
-  const { attendance, setAttendance } = useData()
-  const current = attendance[player.id]
+  const { attendance, setAttendance, removeAttendance } = useData()
+  const current = attendance[`${sessionId}-${player.id}`]
   const [showInfMenu, setShowInfMenu] = useState(false)
 
+  const dark = variant === 'dark'
   return (
-    <div className="relative grid grid-cols-[auto,1fr,auto] items-center gap-2 py-1 px-2 border-b border-white/50">
-      <div className="w-8 h-8 rounded-full bg-white/60 grid place-items-center font-semibold text-navy">{player.last_name[0]}</div>
+    <div className={clsx('relative grid grid-cols-[auto,1fr,auto] items-center gap-3 px-4 py-2.5 transition-colors', dark ? 'hover:bg-slate-700/40' : 'hover:bg-slate-50')}>
+      <div className={clsx('w-9 h-9 rounded-xl grid place-items-center text-sm font-bold shadow-sm', dark ? 'bg-slate-600 text-slate-100' : 'bg-slate-100 text-slate-700 ring-1 ring-slate-200')}>{(player.family_name || '')[0]}</div>
       <div className="truncate leading-tight">
-        <div className={`font-semibold ${
-          current?.status === 'PRESENTE' 
-            ? 'text-green-600' 
-            : current?.status === 'ASSENTE' || current?.status === 'MALATO' || current?.status === 'PERMESSO'
-            ? 'text-red-600'
-            : current?.status === 'INFORTUNATO' && current?.injured_place === 'CASA'
-            ? 'text-red-600'
-            : current?.status === 'INFORTUNATO' && current?.injured_place === 'PALESTRA'
-            ? 'text-orange-600'
-            : 'text-navy'
-        }`}>
-          {player.last_name} {player.first_name}
+        <div className={clsx('text-sm font-bold', dark ? (
+          current?.status === 'PRESENTE' ? 'text-green-400' : current?.status === 'ASSENTE' || current?.status === 'MALATO' || current?.status === 'PERMESSO' ? 'text-red-400' : current?.status === 'INFORTUNATO' && current?.injured_place === 'CASA' ? 'text-red-400' : current?.status === 'INFORTUNATO' && current?.injured_place === 'PALESTRA' ? 'text-orange-400' : 'text-slate-200'
+        ) : (
+          current?.status === 'PRESENTE' ? 'text-emerald-700' : current?.status === 'ASSENTE' || current?.status === 'MALATO' || current?.status === 'PERMESSO' ? 'text-rose-700' : current?.status === 'INFORTUNATO' && current?.injured_place === 'CASA' ? 'text-rose-700' : current?.status === 'INFORTUNATO' && current?.injured_place === 'PALESTRA' ? 'text-amber-700' : 'text-slate-900'
+        ))}>
+          {player.family_name} {player.given_name}
         </div>
         {current?.status === 'INFORTUNATO' && (
-          <div className="text-xs opacity-70">{current.injured_place === 'PALESTRA' ? 'Palestra' : 'Casa'}</div>
+          <div className={clsx('text-xs font-medium opacity-75', dark ? 'text-slate-400' : 'text-slate-500')}>{current.injured_place === 'PALESTRA' ? 'Palestra' : 'Casa'}</div>
         )}
       </div>
-      <div className="flex gap-1">
+      <div className="flex gap-1.5">
         {statuses.map(s => (
           <StatusPill key={s.key}
             label={s.short}
             active={current?.status === s.key}
+            dark={dark}
             onClick={() => {
+              // TOGGLE: Se clicco sullo status già selezionato, lo rimuovo
+              if (current?.status === s.key) {
+                if (sessionId) {
+                  removeAttendance(sessionId, player.id)
+                } else {
+                  console.error('❌ SessionId mancante nel componente AttendanceRow')
+                }
+                setShowInfMenu(false)
+                onCollapsePopup?.()
+                return
+              }
+              
               if (s.key === 'INFORTUNATO') {
                 // Mostra il menu di selezione Campo/Casa
                 setShowInfMenu(true)
                 onExpandPopup?.() // Espandi il popup
               } else {
-                // Per tutti gli altri status, imposta sempre il nuovo status
-                setAttendance(player.id, s.key as any)
+                // Per tutti gli altri status, imposta il nuovo status
+                if (sessionId) {
+                  setAttendance(sessionId, player.id, s.key as any)
+                } else {
+                  console.error('❌ SessionId mancante nel componente AttendanceRow')
+                }
                 setShowInfMenu(false) // Chiudi il menu se aperto
                 onCollapsePopup?.() // Collassa il popup
               }
@@ -68,15 +85,19 @@ export default function AttendanceRow({
       {/* Menu di selezione per INFORTUNATO - Popup separato */}
       {showInfMenu && (
         <div className="fixed inset-0 bg-black bg-opacity-20 flex items-center justify-center z-[60]">
-          <div className="bg-white border border-gray-300 rounded-lg shadow-lg w-[200px]">
+          <div className={clsx('border rounded-lg shadow-lg w-[200px]', dark ? 'bg-slate-800 border-slate-600' : 'bg-white border-gray-300')}>
             <div className="p-3">
-              <div className="text-sm text-gray-700 mb-3 text-center">
+              <div className={clsx('text-sm mb-3 text-center', dark ? 'text-slate-200' : 'text-gray-700')}>
                 Dove si trova?
               </div>
               <div className="space-y-2">
                 <button
                   onClick={() => {
-                    setAttendance(player.id, 'INFORTUNATO', 'PALESTRA')
+                    if (sessionId) {
+                      setAttendance(sessionId, player.id, 'INFORTUNATO', 'PALESTRA')
+                    } else {
+                      console.error('❌ SessionId mancante nel componente AttendanceRow')
+                    }
                     setShowInfMenu(false)
                     onCollapsePopup?.()
                   }}
@@ -87,7 +108,11 @@ export default function AttendanceRow({
                 </button>
                 <button
                   onClick={() => {
-                    setAttendance(player.id, 'INFORTUNATO', 'CASA')
+                    if (sessionId) {
+                      setAttendance(sessionId, player.id, 'INFORTUNATO', 'CASA')
+                    } else {
+                      console.error('❌ SessionId mancante nel componente AttendanceRow')
+                    }
                     setShowInfMenu(false)
                     onCollapsePopup?.()
                   }}
@@ -101,7 +126,7 @@ export default function AttendanceRow({
                     setShowInfMenu(false)
                     onCollapsePopup?.()
                   }}
-                  className="w-full px-3 py-1 bg-gray-100 text-gray-600 rounded text-xs hover:bg-gray-200 transition-colors"
+                  className={clsx('w-full px-3 py-1 rounded text-xs transition-colors', dark ? 'bg-slate-600 text-slate-300 hover:bg-slate-500' : 'bg-gray-100 text-gray-600 hover:bg-gray-200')}
                 >
                   Annulla
                 </button>

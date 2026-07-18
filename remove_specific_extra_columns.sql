@@ -1,3 +1,4 @@
+-- DEPRECATED: usare people. Script legacy people/people3.
 -- ========================================
 -- RIMUOVI LE 2 COLONNE EXTRA SPECIFICHE DA PEOPLE
 -- ========================================
@@ -79,3 +80,4 @@ SELECT
   injured
 FROM public.people 
 LIMIT 5;
+

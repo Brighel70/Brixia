@@ -35,20 +35,21 @@ const InjuryEditModal: React.FC<InjuryEditModalProps> = ({ isOpen, onClose, inju
   })
   const [loading, setLoading] = useState(false)
 
-  // Popola il form quando si apre
+  // Popola il form quando si apre il modal (solo quando isOpen=true per evitare race)
   useEffect(() => {
-    if (injury) {
+    if (!isOpen) return
+    if (injury && injury.id) {
+      const raw = injury as Record<string, unknown>
       setFormData({
-        injury_type: injury.injury_type || '',
-        severity: injury.severity || 'Lieve',
-        body_part: injury.body_part || '',
-        cause: injury.cause || '',
-        current_status: injury.current_status || 'In corso',
-        expected_weeks_off: injury.expected_weeks_off?.toString() || '',
-        injury_date: injury.injury_date ? injury.injury_date.split('T')[0] : new Date().toISOString().split('T')[0]
+        injury_type: String(raw.injury_type ?? ''),
+        severity: (raw.severity as 'Lieve' | 'Moderato' | 'Grave') || 'Lieve',
+        body_part: String(raw.body_part ?? ''),
+        cause: String(raw.cause ?? ''),
+        current_status: (raw.current_status as 'In corso' | 'Guarito' | 'Ricaduta') || 'In corso',
+        expected_weeks_off: raw.expected_weeks_off != null ? String(raw.expected_weeks_off) : '',
+        injury_date: raw.injury_date ? String(raw.injury_date).split('T')[0] : new Date().toISOString().split('T')[0]
       })
     } else {
-      // Reset per nuovo infortunio
       setFormData({
         injury_type: '',
         severity: 'Lieve',
@@ -178,12 +179,12 @@ const InjuryEditModal: React.FC<InjuryEditModalProps> = ({ isOpen, onClose, inju
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Tipologia Infortunio *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Tipologia Infortunio <span className="text-red-500">*</span></label>
             <input
               type="text"
               value={formData.injury_type}
               onChange={(e) => setFormData({ ...formData, injury_type: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Es. Distorsione, Frattura, Strappo..."
             />
           </div>
@@ -193,7 +194,7 @@ const InjuryEditModal: React.FC<InjuryEditModalProps> = ({ isOpen, onClose, inju
             <select
               value={formData.severity}
               onChange={(e) => setFormData({ ...formData, severity: e.target.value as any })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="Lieve">Lieve</option>
               <option value="Moderato">Moderato</option>
@@ -202,22 +203,22 @@ const InjuryEditModal: React.FC<InjuryEditModalProps> = ({ isOpen, onClose, inju
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Parte del Corpo *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Parte del Corpo <span className="text-red-500">*</span></label>
             <input
               type="text"
               value={formData.body_part}
               onChange={(e) => setFormData({ ...formData, body_part: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Es. Ginocchio DX, Spalla SX..."
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Causa *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Causa <span className="text-red-500">*</span></label>
             <select
               value={formData.cause}
               onChange={(e) => setFormData({ ...formData, cause: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Seleziona causa</option>
               <option value="Allenamento">Allenamento</option>
@@ -232,7 +233,7 @@ const InjuryEditModal: React.FC<InjuryEditModalProps> = ({ isOpen, onClose, inju
             <select
               value={formData.current_status}
               onChange={(e) => setFormData({ ...formData, current_status: e.target.value as any })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="In corso">In corso</option>
               <option value="Guarito">Guarito</option>
@@ -246,17 +247,17 @@ const InjuryEditModal: React.FC<InjuryEditModalProps> = ({ isOpen, onClose, inju
               type="date"
               value={formData.injury_date}
               onChange={(e) => setFormData({ ...formData, injury_date: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Previsione Stop (Giorni)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Previsione gg Stop</label>
             <input
               type="number"
               value={formData.expected_weeks_off}
               onChange={(e) => setFormData({ ...formData, expected_weeks_off: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Es. 28 (4 settimane)"
             />
           </div>

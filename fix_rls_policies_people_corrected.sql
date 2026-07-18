@@ -1,3 +1,4 @@
+-- DEPRECATED: usare people. Script legacy people/people3.
 -- ========================================
 -- FIX RLS POLICIES PER ACCESSO COMPLETO A PEOPLE (CORRETTO)
 -- ========================================
@@ -154,3 +155,4 @@ SELECT
     status
 FROM public.people 
 LIMIT 10;
+

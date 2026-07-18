@@ -1,3 +1,4 @@
+-- DEPRECATED: usare people. Script legacy people/people3.
 -- ========================================
 -- SOLUZIONE COMPLETA PER LA TABELLA PEOPLE
 -- ========================================
@@ -160,3 +161,4 @@ JOIN information_schema.constraint_column_usage AS ccu
 WHERE tc.constraint_type = 'FOREIGN KEY'
     AND ccu.table_name = 'people'
 ORDER BY tc.table_name;
+

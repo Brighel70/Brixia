@@ -1,3 +1,4 @@
+-- DEPRECATED: usare people. Script legacy people/people3.
 -- ========================================
 -- AGGIUNGI SOLO I CAMPI VERAMENTE MANCANTI A PEOPLE
 -- ========================================

@@ -1,0 +1,8 @@
+<svg width="120" height="40" viewBox="0 0 120 40" xmlns="http://www.w3.org/2000/svg">
+  <!-- TeamFlow: "Team" azzurro originale, "Flow" blu originale, colori pieni -->
+  <text x="60" y="22" font-family="Arial, sans-serif" font-size="18" font-weight="600" text-anchor="middle">
+    <tspan fill="#5AC8FA">Team</tspan><tspan fill="#007AFF">Flow</tspan>
+  </text>
+  <!-- Underline in blu Flow -->
+  <line x1="10" y1="28" x2="110" y2="28" stroke="#007AFF" stroke-width="2"/>
+</svg>

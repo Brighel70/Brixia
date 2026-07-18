@@ -17,8 +17,13 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// Fetch event
+// Fetch event - Disabilitato per sviluppo
 self.addEventListener('fetch', (event) => {
+  // Solo per sviluppo - non fare cache
+  if (event.request.url.includes('localhost')) {
+    return; // Non gestire richieste localhost
+  }
+  
   event.respondWith(
     caches.match(event.request)
       .then((response) => {
@@ -26,7 +31,10 @@ self.addEventListener('fetch', (event) => {
         if (response) {
           return response;
         }
-        return fetch(event.request);
+        return fetch(event.request).catch(() => {
+          // Se fetch fallisce, non fare nulla
+          return new Response('Offline', { status: 503 });
+        });
       }
     )
   );

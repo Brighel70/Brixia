@@ -35,3 +35,4 @@ COMMENT ON COLUMN injury_activities.amount IS 'Importo per spese, rimborsi o acq
 COMMENT ON COLUMN injury_activities.currency IS 'Valuta (default EUR)';
 
 
+

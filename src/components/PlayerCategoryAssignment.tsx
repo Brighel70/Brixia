@@ -1,14 +1,13 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 
 interface Player {
   id: string
   first_name: string
   last_name: string
-  birth_date: string
+  date_of_birth: string
   fir_code: string
   injured: boolean
-  aggregated_seniores: boolean
   categories: string[]
 }
 
@@ -35,6 +34,15 @@ const PlayerCategoryAssignment: React.FC<PlayerCategoryAssignmentProps> = ({ cat
   const [searchTerm, setSearchTerm] = useState('')
   const [filterInjured, setFilterInjured] = useState(false)
   const [filterAggregated, setFilterAggregated] = useState(false)
+  
+  const aggregatedCategoryCodes = useMemo(() => new Set(['CADETTA', 'PRIMA']), [])
+  const categoryCodeById = useMemo(
+    () => new Map(categories.map(category => [category.id, category.code])),
+    [categories]
+  )
+
+  const isAggregatedSeniores = (player: Player) =>
+    player.categories.some(categoryId => aggregatedCategoryCodes.has(categoryCodeById.get(categoryId) || ''))
 
   useEffect(() => {
     if (categoryId) {
@@ -211,7 +219,7 @@ const PlayerCategoryAssignment: React.FC<PlayerCategoryAssignmentProps> = ({ cat
       player.fir_code.toLowerCase().includes(searchTerm.toLowerCase())
 
     const matchesInjured = !filterInjured || player.injured
-    const matchesAggregated = !filterAggregated || player.aggregated_seniores
+    const matchesAggregated = !filterAggregated || isAggregatedSeniores(player)
 
     return matchesSearch && matchesInjured && matchesAggregated
   })
@@ -372,9 +380,9 @@ const PlayerCategoryAssignment: React.FC<PlayerCategoryAssignmentProps> = ({ cat
                     {player.first_name} {player.last_name}
                   </div>
                   <div className="text-sm text-gray-500">
-                    {player.fir_code} • {calculateAge(player.birth_date)} anni
+                    {player.fir_code} • {calculateAge(player.date_of_birth)} anni
                     {player.injured && <span className="ml-2 text-red-600">🏥 Infortunato</span>}
-                    {player.aggregated_seniores && <span className="ml-2 text-blue-600">⭐ Aggregato</span>}
+                    {isAggregatedSeniores(player) && <span className="ml-2 text-blue-600">⭐ Aggregato</span>}
                   </div>
                 </div>
                 <button
@@ -388,7 +396,7 @@ const PlayerCategoryAssignment: React.FC<PlayerCategoryAssignmentProps> = ({ cat
             ))}
             {playersInCategory.length === 0 && (
               <div className="text-center py-8 text-gray-500">
-                <div className="text-4xl mb-2">⚽</div>
+                <div className="text-4xl mb-2">🏉</div>
                 <p>Nessun giocatore in questa categoria</p>
               </div>
             )}
@@ -408,9 +416,9 @@ const PlayerCategoryAssignment: React.FC<PlayerCategoryAssignmentProps> = ({ cat
                     {player.first_name} {player.last_name}
                   </div>
                   <div className="text-sm text-gray-500">
-                    {player.fir_code} • {calculateAge(player.birth_date)} anni
+                    {player.fir_code} • {calculateAge(player.date_of_birth)} anni
                     {player.injured && <span className="ml-2 text-red-600">🏥 Infortunato</span>}
-                    {player.aggregated_seniores && <span className="ml-2 text-blue-600">⭐ Aggregato</span>}
+                    {isAggregatedSeniores(player) && <span className="ml-2 text-blue-600">⭐ Aggregato</span>}
                   </div>
                 </div>
                 <button
@@ -436,5 +444,6 @@ const PlayerCategoryAssignment: React.FC<PlayerCategoryAssignmentProps> = ({ cat
 }
 
 export default PlayerCategoryAssignment
+
 
 

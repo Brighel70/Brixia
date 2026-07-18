@@ -1,3 +1,4 @@
+-- DEPRECATED: usare people. Script diagnostico legacy.
 -- Script per trovare l'ID persona mancante
 -- ID: b6480b58-931b-4feb-8c88-e29fe4044953
 

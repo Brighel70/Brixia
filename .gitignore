@@ -138,3 +138,6 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vercel
+
+# Supabase CLI (project ref salvato dallo script di deploy)
+.supabase-project-ref

@@ -34,3 +34,4 @@ ORDER BY position_order;
 SELECT COUNT(*) as total_roles FROM user_roles;
 
 
+

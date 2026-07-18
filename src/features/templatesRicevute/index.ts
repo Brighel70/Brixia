@@ -1,0 +1,6 @@
+export { TemplatesRicevuteSection } from './components/TemplatesRicevuteSection'
+export { ReceiptHeaderForm } from './components/ReceiptHeaderForm'
+export type { TemplateName, TemplateDocumentoRow, RicevutaTemplateData } from './types'
+export { TEMPLATE_NAMES, TEMPLATE_LABELS } from './constants'
+export { RICEVUTA_PLACEHOLDERS } from './utils/placeholders'
+export { DEFAULT_TEMPLATES } from './utils/defaultTemplates'

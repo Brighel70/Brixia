@@ -43,3 +43,4 @@ SELECT
     COUNT(CASE WHEN is_minor = false AND EXTRACT(YEAR FROM AGE(CURRENT_DATE, date_of_birth)) < 18 THEN 1 END) as errori_maggiorenni_falsi
 FROM public.people 
 WHERE date_of_birth IS NOT NULL;
+

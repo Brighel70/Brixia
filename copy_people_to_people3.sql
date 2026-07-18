@@ -1,3 +1,4 @@
+-- DEPRECATED: usare people. people3 è archivio/deprecata.
 -- ========================================
 -- COPIA DATI DA PEOPLE A PEOPLE3
 -- ========================================
@@ -122,3 +123,4 @@ SELECT
     COUNT(CASE WHEN full_name IS NOT NULL THEN 1 END) as with_name,
     COUNT(CASE WHEN email IS NOT NULL THEN 1 END) as with_email
 FROM public.people3;
+

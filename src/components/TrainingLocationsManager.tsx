@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
+import TrainingVenueSelect from './TrainingVenueSelect'
 
 interface TrainingLocation {
   id: string
@@ -31,14 +32,6 @@ const WEEKDAYS = [
   { value: 'friday', label: 'Venerdì' },
   { value: 'saturday', label: 'Sabato' },
   { value: 'sunday', label: 'Domenica' }
-]
-
-const LOCATIONS = [
-  'Brescia',
-  'Gussago',
-  'Ospitaletto',
-  'Trasferta',
-  'Altro'
 ]
 
 const TrainingLocationsManager: React.FC<TrainingLocationsManagerProps> = ({ categoryId, onClose }) => {
@@ -304,17 +297,13 @@ const TrainingLocationsManager: React.FC<TrainingLocationsManagerProps> = ({ cat
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Sede *
                 </label>
-                <select
-                  value={newLocation.location}
-                  onChange={(e) => setNewLocation(prev => ({ ...prev, location: e.target.value }))}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                <TrainingVenueSelect
                   required
-                >
-                  <option value="">Seleziona sede</option>
-                  {LOCATIONS.map(location => (
-                    <option key={location} value={location}>{location}</option>
-                  ))}
-                </select>
+                  scheduleOnly
+                  value={newLocation.location}
+                  onChange={(value) => setNewLocation(prev => ({ ...prev, location: value }))}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
               </div>
 
               <div>
@@ -446,5 +435,6 @@ const TrainingLocationsManager: React.FC<TrainingLocationsManagerProps> = ({ cat
 }
 
 export default TrainingLocationsManager
+
 
 

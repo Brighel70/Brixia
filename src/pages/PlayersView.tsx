@@ -29,7 +29,7 @@ export default function PlayersView() {
 
   // Paginazione
   const [currentPage, setCurrentPage] = useState(1)
-  const [playersPerPage] = useState(20)
+  const [playersPerPage] = useState(30)
 
   // Carica i giocatori
   useEffect(() => {
@@ -49,6 +49,32 @@ export default function PlayersView() {
         .order('last_name', { ascending: true })
 
       if (playersError) throw playersError
+
+      // 1.5. Carica le persone (injured + date_of_birth per Anno)
+      const { data: peopleData, error: peopleError } = await supabase
+        .from('people')
+        .select('id, injured, is_player, date_of_birth')
+        .eq('is_player', true)
+
+      if (peopleError) {
+        console.error('Errore nel caricamento people:', peopleError)
+      }
+
+      const peopleMap = new Map()
+      peopleData?.forEach((person: { id: string; injured?: boolean; date_of_birth?: string }) => {
+        peopleMap.set(person.id, { injured: person.injured, date_of_birth: person.date_of_birth })
+      })
+
+      // 1.6. Carica le posizioni (ruolo in campo) per mappare role_on_field al nome
+      let positionsMap = new Map<string, { id: string; name: string }>()
+      try {
+        const { data: positionsData } = await supabase
+          .from('player_positions')
+          .select('id, name')
+        positionsData?.forEach((p: { id: string; name: string }) => {
+          positionsMap.set(p.id, p)
+        })
+      } catch (_) {}
 
       // 2. Carica tutte le associazioni giocatori-categorie
       
@@ -95,52 +121,63 @@ export default function PlayersView() {
       })
 
 
-      // 4. SOLUZIONE TEMPORANEA: Assegna categorie basandosi sul codice FIR
-      const formattedPlayers = (playersData || []).map(player => {
-        let categories = []
-        
-        // Estrai la categoria dal codice FIR
-        if (player.fir_code) {
+      // 4. Formatta i giocatori: Anno (people/players o stimato da FIR), Categoria (player_categories o FIR), Ruolo (position_id o role_on_field + player_positions)
+      const categoryMapping: Record<string, { id: string; code: string; name: string }> = {
+        'U6': { id: 'temp-u6', code: 'U6', name: 'Under 6' },
+        'U8': { id: 'temp-u8', code: 'U8', name: 'Under 8' },
+        'U10': { id: 'temp-u10', code: 'U10', name: 'Under 10' },
+        'U12': { id: 'temp-u12', code: 'U12', name: 'Under 12' },
+        'U14': { id: 'temp-u14', code: 'U14', name: 'Under 14' },
+        'U16': { id: 'temp-u16', code: 'U16', name: 'Under 16' },
+        'U18': { id: 'temp-u18', code: 'U18', name: 'Under 18' },
+        'SC': { id: 'temp-sc', code: 'SERIE_C', name: 'Serie C' },
+        'SB': { id: 'temp-sb', code: 'SERIE_B', name: 'Serie B' },
+        'POD': { id: 'temp-pod', code: 'PODEROSA', name: 'Poderosa' },
+        'GUS': { id: 'temp-gus', code: 'GUSSAGOLD', name: 'GussagOld' },
+        'BRI': { id: 'temp-bri', code: 'BRIXIAOLD', name: 'Brixia Old' },
+        'LEO': { id: 'temp-leo', code: 'LEONESSE', name: 'Leonesse' }
+      }
+
+      type PlayerRow = {
+        id: string
+        person_id: string
+        first_name?: string
+        last_name?: string
+        date_of_birth?: string
+        birth_date?: string
+        fir_code?: string
+        created_at?: string
+        role_on_field?: string
+        position_id?: string
+      }
+
+      const formattedPlayers = (playersData || []).map((player: PlayerRow) => {
+        // Categoria: da player_categories (player_id = players.id) o da FIR
+        let categories = (categoriesMap.get(player.id) || categoriesMap.get(player.person_id) || []) as { id?: string; code?: string; name?: string }[]
+        if (categories.length === 0 && player.fir_code) {
           const firParts = player.fir_code.split('-')
           if (firParts.length >= 2) {
-            const categoryCode = firParts[1] // Es: FIR-U6-LR-001 -> U6
-            
-            // Mappa i codici alle categorie
-            const categoryMapping = {
-              'U6': { id: 'temp-u6', code: 'U6', name: 'Under 6' },
-              'U8': { id: 'temp-u8', code: 'U8', name: 'Under 8' },
-              'U10': { id: 'temp-u10', code: 'U10', name: 'Under 10' },
-              'U12': { id: 'temp-u12', code: 'U12', name: 'Under 12' },
-              'U14': { id: 'temp-u14', code: 'U14', name: 'Under 14' },
-              'U16': { id: 'temp-u16', code: 'U16', name: 'Under 16' },
-              'U18': { id: 'temp-u18', code: 'U18', name: 'Under 18' },
-              'SC': { id: 'temp-sc', code: 'SERIE_C', name: 'Serie C' },
-              'SB': { id: 'temp-sb', code: 'SERIE_B', name: 'Serie B' },
-              'POD': { id: 'temp-pod', code: 'PODEROSA', name: 'Poderosa' },
-              'GUS': { id: 'temp-gus', code: 'GUSSAGOLD', name: 'GussagOld' },
-              'BRI': { id: 'temp-bri', code: 'BRIXIAOLD', name: 'Brixia Old' },
-              'LEO': { id: 'temp-leo', code: 'LEONESSE', name: 'Leonesse' }
-            }
-            
-            if (categoryMapping[categoryCode]) {
-              categories = [categoryMapping[categoryCode]]
-            }
+            const categoryCode = firParts[1]
+            if (categoryMapping[categoryCode]) categories = [categoryMapping[categoryCode]]
           }
         }
-        
-        const formatted = {
+
+        const personInfo = peopleMap.get(player.person_id)
+        const birthDate = personInfo?.date_of_birth || player.birth_date || player.date_of_birth || ''
+        const roleId = player.position_id || player.role_on_field
+        const position = roleId ? positionsMap.get(roleId) : null
+
+        return {
           id: player.id,
           first_name: player.first_name || '',
           last_name: player.last_name || '',
-          birth_date: player.birth_date || '',
+          date_of_birth: birthDate,
           fir_code: player.fir_code || '',
-          injured: player.injured || false,
+          injured: personInfo?.injured ?? false,
           created_at: player.created_at,
-          role: null, // Per ora non carichiamo i ruoli
-          categories: categories
+          role: position ? { id: position.id, name: position.name } : (roleId ? { id: roleId, name: String(roleId) } : null),
+          categories
         }
-        
-        return formatted
       })
 
       setPlayers(formattedPlayers)
@@ -148,7 +185,31 @@ export default function PlayersView() {
       
       // Calcola statistiche
       const totalPlayers = formattedPlayers.length
-      const injuredPlayers = formattedPlayers.filter(p => p.injured).length
+      
+      // CALCOLO CORRETTO INFORTUNATI: Cerca davvero nelle persone con infortuni aperti
+      let injuredPlayers = 0
+      try {
+        // Carica tutte le persone con infortuni aperti
+        const { data: injuredPeople } = await supabase
+          .from('people')
+          .select('id, is_player')
+          .eq('is_player', true)
+          .eq('injured', true)
+        
+        injuredPlayers = injuredPeople?.length || 0
+        
+        // DEBUG: Log per verificare il calcolo
+        console.log('🔍 DEBUG INFORTUNATI:', {
+          totalPlayers,
+          injuredFromPeople: injuredPeople?.length || 0,
+          injuredFromPlayers: formattedPlayers.filter(p => p.injured).length
+        })
+      } catch (error) {
+        console.error('Errore nel calcolo infortunati:', error)
+        // Fallback: usa il calcolo precedente
+        injuredPlayers = formattedPlayers.filter(p => p.injured).length
+      }
+      
       const newPlayers = formattedPlayers.filter(p => {
         const createdDate = new Date(p.created_at)
         const thirtyDaysAgo = new Date()
@@ -180,15 +241,28 @@ export default function PlayersView() {
     }
   }
 
-  // Estrai anno dalla data di nascita
-  const getBirthYear = (birthDate: string) => {
-    if (!birthDate) return 'N/A'
-    try {
-      const date = new Date(birthDate)
-      return date.getFullYear().toString()
-    } catch {
-      return 'N/A'
+  // Anno stimato dalla categoria (es. U16 = under 16 → nato ~2010)
+  const categoryToMaxAge: Record<string, number> = {
+    U6: 6, U8: 8, U10: 10, U12: 12, U14: 14, U16: 16, U18: 18
+  }
+
+  // Estrai anno dalla data di nascita; se manca, stima dalla categoria (da FIR o player_categories)
+  const getBirthYear = (player: { date_of_birth?: string; categories?: { code?: string }[] }) => {
+    if (player.date_of_birth) {
+      try {
+        const date = new Date(player.date_of_birth)
+        return date.getFullYear().toString()
+      } catch {
+        // fallback sotto
+      }
     }
+    const code = player.categories?.[0]?.code
+    if (code && categoryToMaxAge[code]) {
+      const currentYear = new Date().getFullYear()
+      const estimatedYear = currentYear - categoryToMaxAge[code]
+      return `~${estimatedYear}`
+    }
+    return 'N/A'
   }
 
   // Filtra i giocatori
@@ -214,7 +288,7 @@ export default function PlayersView() {
     }
     if (columnFilters.birthYear) {
       filtered = filtered.filter(player => 
-        player.birth_date?.toString().includes(columnFilters.birthYear)
+        player.date_of_birth?.toString().includes(columnFilters.birthYear)
       )
     }
     if (columnFilters.category) {
@@ -269,7 +343,7 @@ export default function PlayersView() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header title="Gestione Giocatori" showBack={true} />
+      <Header title="Gestione Giocatori" showBack={true} hideCenterLogo={true} />
       
       <div className="max-w-7xl mx-auto p-6">
         {/* Dashboard interno con statistiche */}
@@ -409,15 +483,32 @@ export default function PlayersView() {
                   </tr>
                 ) : (
                   currentPlayers.map((player) => (
-                    <tr key={player.id} className="hover:bg-gray-50 transition-colors">
+                    <tr 
+                      key={player.id} 
+                      className={`transition-colors ${
+                        player.injured 
+                          ? 'bg-red-50 hover:bg-red-100 border-l-4 border-red-400' 
+                          : 'hover:bg-gray-50'
+                      }`}
+                    >
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
-                          {player.last_name} {player.first_name}
+                        <div className="flex items-center">
+                          <div className="text-sm font-medium text-gray-900">
+                            {player.last_name} {player.first_name}
+                          </div>
+                          {player.injured && (
+                            <div className="ml-2 flex items-center">
+                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none">
+                                <rect x="9" y="3" width="6" height="18" fill="#DC2626"/>
+                                <rect x="3" y="9" width="18" height="6" fill="#DC2626"/>
+                              </svg>
+                            </div>
+                          )}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
-                          {getBirthYear(player.birth_date)}
+                          {getBirthYear(player)}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">

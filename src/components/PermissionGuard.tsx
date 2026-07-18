@@ -20,6 +20,7 @@ export const PermissionGuard: React.FC<PermissionGuardProps> = ({
 }) => {
   const { 
     permissions,
+    userRole,
     hasPermission, 
     hasPermissionInCategory, 
     hasAnyPermissionInCategory,
@@ -35,10 +36,28 @@ export const PermissionGuard: React.FC<PermissionGuardProps> = ({
     return <>{children}</>
   }
 
-  // Se non ci sono permessi (utente non autenticato o senza permessi), 
-  // mostra i children per permettere la navigazione base
-  if (!permissions || permissions.length === 0) {
+  // BYPASS COMPLETO PER ADMIN - Gli admin possono accedere a tutto
+  if (isAdmin()) {
     return <>{children}</>
+  }
+
+  // Se non ci sono permessi (utente non autenticato o senza permessi), 
+  // blocca l'accesso per sicurezza
+  if (!permissions || permissions.length === 0) {
+    return showFallback ? <>{fallback}</> : (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center p-8 bg-white rounded-lg shadow-md">
+          <div className="text-6xl mb-4">🔒</div>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Accesso Negato</h2>
+          <p className="text-gray-600 mb-4">
+            Non hai i permessi necessari per accedere a questa sezione.
+          </p>
+          <p className="text-sm text-gray-500">
+            Contatta l'amministratore per ottenere l'accesso.
+          </p>
+        </div>
+      </div>
+    )
   }
 
   // Controllo ruolo richiesto

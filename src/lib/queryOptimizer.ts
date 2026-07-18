@@ -82,7 +82,6 @@ class QueryOptimizer {
           fir_code,
           role_on_field,
           injured,
-          aggregated_seniores,
           created_at,
           player_categories (
             category_id,
@@ -468,5 +467,6 @@ export const optimizedQueries = {
 }
 
 export default queryOptimizer
+
 
 

@@ -1,3 +1,4 @@
+-- DEPRECATED: usare people. Script migrazione legacy.
 -- ========================================
 -- COPIA DATI DA PEOPLE3 A PEOPLE
 -- ========================================
@@ -136,3 +137,4 @@ SELECT
   phone
 FROM public.people 
 LIMIT 5;
+

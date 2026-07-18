@@ -1,3 +1,4 @@
+-- DEPRECATED: usare people. Script vecchio (rename), non usare.
 -- ========================================
 -- MIGRAZIONE: Rinomina people3 in people
 -- ========================================
@@ -41,3 +42,4 @@ AND ccu.table_name = 'people';
 
 console.log('✅ Script di migrazione creato!')
 console.log('📋 Copia e incolla nel SQL Editor di Supabase')
+

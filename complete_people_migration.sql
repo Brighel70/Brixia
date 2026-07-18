@@ -1,3 +1,4 @@
+-- DEPRECATED: usare people. Script migrazione legacy.
 -- ========================================
 -- MIGRAZIONE COMPLETA DA PEOPLE3 A PEOPLE
 -- ========================================

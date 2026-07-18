@@ -1,29 +1,23 @@
--- Verifica le tabelle esistenti
+-- Script per controllare le tabelle esistenti nel database
+
+-- Lista tutte le tabelle nel database
 SELECT table_name 
 FROM information_schema.tables 
 WHERE table_schema = 'public' 
-AND table_name IN ('roles', 'player_positions')
+AND table_type = 'BASE TABLE'
 ORDER BY table_name;
 
--- Verifica la struttura della tabella roles
-SELECT column_name, data_type, is_nullable
+-- Cerca tabelle che contengono "fee" o "assignment"
+SELECT table_name 
+FROM information_schema.tables 
+WHERE table_schema = 'public' 
+AND table_type = 'BASE TABLE'
+AND (table_name LIKE '%fee%' OR table_name LIKE '%assignment%')
+ORDER BY table_name;
+
+-- Controlla anche le colonne per trovare la tabella corretta
+SELECT table_name, column_name, data_type
 FROM information_schema.columns 
 WHERE table_schema = 'public' 
-AND table_name = 'roles'
-ORDER BY ordinal_position;
-
--- Verifica la struttura della tabella player_positions
-SELECT column_name, data_type, is_nullable
-FROM information_schema.columns 
-WHERE table_schema = 'public' 
-AND table_name = 'player_positions'
-ORDER BY ordinal_position;
-
--- Verifica i dati esistenti
-SELECT 'roles' as tabella, count(*) as count FROM roles
-UNION ALL
-SELECT 'player_positions' as tabella, count(*) as count FROM player_positions;
-
-
-
-
+AND (column_name LIKE '%fee%' OR column_name LIKE '%assignment%' OR column_name LIKE '%installment%')
+ORDER BY table_name, column_name;

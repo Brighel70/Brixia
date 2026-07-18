@@ -2,7 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: light dark; }
+:root { 
+  color-scheme: light dark;
+  /* Variabili brand (sovrascritte da Personalizzazione Brand) */
+  --brixia-primary: #0b1f4d;
+  --brixia-secondary: #4aa3ff;
+  --brixia-accent: #f7f7f5;
+  --brixia-success: #10b981;
+  --brixia-warning: #f59e0b;
+  --brixia-danger: #ef4444;
+  --brixia-info: #3b82f6;
+}
 
 /* stile Apple‑like morbido */
 .card {
@@ -13,4 +23,13 @@
 }
 .btn {
   @apply rounded-2xl px-3 py-2 font-semibold shadow hover:opacity-90 active:scale-95 transition;
+}
+
+/* Nasconde la scrollbar mantenendo lo scroll */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
 }

@@ -1,23 +1,51 @@
-import { createBrowserRouter } from 'react-router-dom'
+import { createBrowserRouter, Navigate, useLocation, useSearchParams } from 'react-router-dom'
+
+/** Redirige /agenda/nuovo e /infortuni/nuovo → /infortuni con add=1 (apre il modal nuovo) */
+function RedirectAgendaNuovo() {
+  const location = useLocation()
+  const params = new URLSearchParams(location.search)
+  params.set('add', '1')
+  return <Navigate to={`/infortuni?${params.toString()}`} replace />
+}
+
+function RedirectOriginClubsToClubs() {
+  const location = useLocation()
+  return <Navigate to="/clubs" replace state={location.state} />
+}
 import LoginView from '@/pages/LoginView'
 import HomeView from '@/pages/HomeView'
 
 import AttendanceBoard from '@/pages/AttendanceBoard'
 import CreatePlayer from '@/pages/CreatePlayer'
+import CreateStaff from '@/pages/CreateStaff'
 import CreateUser from '@/pages/CreateUser'
 import BrandCustomization from '@/pages/BrandCustomization'
 import Settings from '@/pages/Settings'
 import PlayersView from '@/pages/PlayersView'
 import StaffView from '@/pages/StaffView'
 import Activities from '@/pages/Activities'
-import StartTraining from '@/pages/StartTraining'
+import StartTrainingQR from '@/pages/StartTrainingQR'
 
 import CategoryActivities from '@/pages/CategoryActivities'
 import Events from '@/pages/Events'
+import EventsHistory from '@/pages/EventsHistory'
 import CouncilManagement from '@/pages/CouncilManagement'
+import ClubsManagement from '@/pages/ClubsManagement'
 import PeopleView from '@/pages/PeopleView'
 import CreatePersonView from '@/pages/CreatePersonView'
+import AgendaView from '@/pages/AgendaView'
+import FeesManagement from '@/pages/FeesManagement'
+import AlertsPage from '@/pages/AlertsPage'
+import ResocontoSettimanale from '@/pages/ResocontoSettimanale'
+import MemoPage from '@/pages/MemoPage'
+import BirthdaysPage from '@/pages/BirthdaysPage'
+import UsersManagement from '@/pages/UsersManagement'
+import EditUser from '@/pages/EditUser'
+import RolePermissionsManagement from '@/pages/RolePermissionsManagement'
+import InfortuniAssicurazioneSettings from '@/pages/InfortuniAssicurazioneSettings'
+import MobileAttendance from '@/components/MobileAttendance'
 import AuthLayout from '@/components/AuthLayout'
+import DashboardLayout from '@/components/DashboardLayout'
 import { PermissionGuard } from '@/components/PermissionGuard'
 import { PERMISSIONS } from '@/config/permissions'
 
@@ -27,22 +55,12 @@ export const router = createBrowserRouter([
     element: <AuthLayout requireAuth={false}><LoginView /></AuthLayout>
   },
   {
-    path: '/login',
-    element: <AuthLayout requireAuth={false}><LoginView /></AuthLayout>
-  },
-  {
     path: '/home',
     element: (
       <AuthLayout requireAuth={true}>
-        <HomeView />
-      </AuthLayout>
-    )
-  },
-  {
-    path: '/dashboard',
-    element: (
-      <AuthLayout requireAuth={true}>
-        <HomeView />
+        <DashboardLayout>
+          <HomeView />
+        </DashboardLayout>
       </AuthLayout>
     )
   },
@@ -51,15 +69,17 @@ export const router = createBrowserRouter([
     path: '/activities',
     element: (
       <AuthLayout requireAuth={true}>
-        <Activities />
+        <DashboardLayout>
+          <Activities embedInLayout />
+        </DashboardLayout>
       </AuthLayout>
     )
   },
   {
-    path: '/start',
+    path: '/start-qr',
     element: (
       <AuthLayout requireAuth={true}>
-        <StartTraining />
+        <StartTrainingQR />
       </AuthLayout>
     )
   },
@@ -68,7 +88,9 @@ export const router = createBrowserRouter([
     path: '/category-activities',
     element: (
       <AuthLayout requireAuth={true}>
-        <CategoryActivities />
+        <DashboardLayout>
+          <CategoryActivities embedInLayout />
+        </DashboardLayout>
       </AuthLayout>
     )
   },
@@ -76,7 +98,106 @@ export const router = createBrowserRouter([
     path: '/events',
     element: (
       <AuthLayout requireAuth={true}>
-        <Events />
+        <DashboardLayout>
+          <Events embedInLayout />
+        </DashboardLayout>
+      </AuthLayout>
+    )
+  },
+  {
+    path: '/events-history',
+    element: (
+      <AuthLayout requireAuth={true}>
+        <EventsHistory />
+      </AuthLayout>
+    )
+  },
+  {
+    path: '/council-management',
+    element: (
+      <AuthLayout requireAuth={true}>
+        <PermissionGuard requiredPermission={PERMISSIONS.CAN_MANAGE_COUNCIL}>
+          <DashboardLayout>
+            <CouncilManagement embedInLayout />
+          </DashboardLayout>
+        </PermissionGuard>
+      </AuthLayout>
+    )
+  },
+  {
+    path: '/clubs',
+    element: (
+      <AuthLayout requireAuth={true}>
+        <DashboardLayout>
+          <ClubsManagement embedInLayout />
+        </DashboardLayout>
+      </AuthLayout>
+    )
+  },
+  {
+    path: '/origin-clubs',
+    element: <RedirectOriginClubsToClubs />
+  },
+  {
+    path: '/people',
+    element: (
+      <AuthLayout requireAuth={true}>
+        <DashboardLayout>
+          <PeopleView embedInLayout />
+        </DashboardLayout>
+      </AuthLayout>
+    )
+  },
+  {
+    path: '/create-person',
+    element: (
+      <AuthLayout requireAuth={true}>
+        <DashboardLayout>
+          <CreatePersonView embedInLayout />
+        </DashboardLayout>
+      </AuthLayout>
+    )
+  },
+  {
+    path: '/infortuni',
+    element: (
+      <AuthLayout requireAuth={true}>
+        <DashboardLayout>
+          <AgendaView embedInLayout />
+        </DashboardLayout>
+      </AuthLayout>
+    )
+  },
+  {
+    path: '/infortuni/nuovo',
+    element: <RedirectAgendaNuovo />
+  },
+  /* Redirect vecchi URL /agenda → /infortuni (per app mobile e bookmark) */
+  {
+    path: '/agenda',
+    element: <Navigate to="/infortuni" replace />
+  },
+  {
+    path: '/agenda/nuovo',
+    element: <RedirectAgendaNuovo />
+  },
+  {
+    path: '/fees',
+    element: (
+      <AuthLayout requireAuth={true}>
+        <DashboardLayout>
+          <FeesManagement embedInLayout />
+        </DashboardLayout>
+      </AuthLayout>
+    )
+  },
+  {
+    path: '/attendance',
+    element: (
+      <AuthLayout requireAuth={true}>
+        <DashboardLayout>
+          <AttendanceBoard embedInLayout />
+        </DashboardLayout>
       </AuthLayout>
     )
   },
@@ -89,12 +210,50 @@ export const router = createBrowserRouter([
     )
   },
   {
+    path: '/board-hybrid',
+    element: (
+      <AuthLayout requireAuth={true}>
+        <AttendanceBoard variant="hybrid" />
+      </AuthLayout>
+    )
+  },
+  {
+    path: '/mobile-attendance',
+    element: (
+      <AuthLayout requireAuth={true}>
+        <MobileAttendance />
+      </AuthLayout>
+    )
+  },
+  {
+    path: '/players',
+    element: (
+      <AuthLayout requireAuth={true}>
+        <PlayersView />
+      </AuthLayout>
+    )
+  },
+  {
     path: '/create-player',
     element: (
       <AuthLayout requireAuth={true}>
-        <PermissionGuard requiredPermission={PERMISSIONS.PLAYERS.CREATE} fallback={<div className="p-6 text-center text-red-600">❌ Accesso negato: permesso insufficiente</div>}>
-          <CreatePlayer />
-        </PermissionGuard>
+        <CreatePlayer />
+      </AuthLayout>
+    )
+  },
+  {
+    path: '/create-staff',
+    element: (
+      <AuthLayout requireAuth={true}>
+        <CreateStaff />
+      </AuthLayout>
+    )
+  },
+  {
+    path: '/staff',
+    element: (
+      <AuthLayout requireAuth={true}>
+        <StaffView />
       </AuthLayout>
     )
   },
@@ -102,8 +261,10 @@ export const router = createBrowserRouter([
     path: '/create-user',
     element: (
       <AuthLayout requireAuth={true}>
-        <PermissionGuard requiredPermission={PERMISSIONS.USERS.CREATE} fallback={<div className="p-6 text-center text-red-600">❌ Accesso negato: permesso insufficiente</div>}>
-          <CreateUser />
+        <PermissionGuard requiredPermission={PERMISSIONS.USERS.CREATE}>
+          <DashboardLayout>
+            <CreateUser embedInLayout />
+          </DashboardLayout>
         </PermissionGuard>
       </AuthLayout>
     )
@@ -112,8 +273,10 @@ export const router = createBrowserRouter([
     path: '/brand-customization',
     element: (
       <AuthLayout requireAuth={true}>
-        <PermissionGuard requiredPermission={PERMISSIONS.SETTINGS.EDIT} fallback={<div className="p-6 text-center text-red-600">❌ Accesso negato: permesso insufficiente</div>}>
-          <BrandCustomization />
+        <PermissionGuard requiredPermission={PERMISSIONS.BRAND.MANAGE}>
+          <DashboardLayout>
+            <BrandCustomization embedInLayout />
+          </DashboardLayout>
         </PermissionGuard>
       </AuthLayout>
     )
@@ -122,76 +285,86 @@ export const router = createBrowserRouter([
     path: '/settings',
     element: (
       <AuthLayout requireAuth={true}>
-        <PermissionGuard requiredPermission={PERMISSIONS.SETTINGS.EDIT} fallback={<div className="p-6 text-center text-red-600">❌ Accesso negato: permesso insufficiente</div>}>
-          <Settings />
-        </PermissionGuard>
+        <DashboardLayout>
+          <Settings embedInLayout />
+        </DashboardLayout>
       </AuthLayout>
     )
   },
   {
-    path: '/council-management',
+    path: '/infortuni-assicurazione',
     element: (
       <AuthLayout requireAuth={true}>
-        <PermissionGuard requiredPermission={PERMISSIONS.SETTINGS.EDIT} fallback={<div className="p-6 text-center text-red-600">❌ Accesso negato: permesso insufficiente</div>}>
-          <CouncilManagement />
-        </PermissionGuard>
+        <InfortuniAssicurazioneSettings />
       </AuthLayout>
     )
   },
   {
-    path: '/players',
+    path: '/alerts',
     element: (
       <AuthLayout requireAuth={true}>
-        <PermissionGuard requiredPermission={PERMISSIONS.PLAYERS.VIEW} fallback={<div className="p-6 text-center text-red-600">❌ Accesso negato: permesso insufficiente</div>}>
-          <PlayersView />
-        </PermissionGuard>
+        <DashboardLayout>
+          <AlertsPage embedInLayout />
+        </DashboardLayout>
       </AuthLayout>
     )
   },
   {
-    path: '/staff',
+    path: '/resoconto-settimanale',
     element: (
       <AuthLayout requireAuth={true}>
-        <PermissionGuard requiredPermission={PERMISSIONS.USERS.VIEW} fallback={<div className="p-6 text-center text-red-600">❌ Accesso negato: permesso insufficiente</div>}>
-          <StaffView />
-        </PermissionGuard>
+        <DashboardLayout>
+          <ResocontoSettimanale embedInLayout />
+        </DashboardLayout>
       </AuthLayout>
     )
   },
   {
-    path: '/people',
+    path: '/memo',
     element: (
       <AuthLayout requireAuth={true}>
-        <PermissionGuard requiredPermission={PERMISSIONS.USERS.VIEW} fallback={<div className="p-6 text-center text-red-600">❌ Accesso negato: permesso insufficiente</div>}>
-          <PeopleView />
-        </PermissionGuard>
+        <DashboardLayout>
+          <MemoPage embedInLayout />
+        </DashboardLayout>
       </AuthLayout>
     )
   },
   {
-    path: '/create-person',
+    path: '/birthdays',
     element: (
       <AuthLayout requireAuth={true}>
-        <PermissionGuard requiredPermission={PERMISSIONS.USERS.CREATE} fallback={<div className="p-6 text-center text-red-600">❌ Accesso negato: permesso insufficiente</div>}>
-          <CreatePersonView />
-        </PermissionGuard>
+        <DashboardLayout>
+          <BirthdaysPage embedInLayout />
+        </DashboardLayout>
       </AuthLayout>
     )
   },
   {
-    path: '*',
+    path: '/users-management',
     element: (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-4xl font-bold text-red-600 mb-4">404</h1>
-          <p className="text-gray-600 mb-4">Pagina non trovata</p>
-          <a href="/home" className="text-blue-600 hover:underline">Torna alla Home</a>
-        </div>
-      </div>
+      <AuthLayout requireAuth={true}>
+        <DashboardLayout>
+          <UsersManagement embedInLayout />
+        </DashboardLayout>
+      </AuthLayout>
+    )
+  },
+  {
+    path: '/edit-user/:userId',
+    element: (
+      <AuthLayout requireAuth={true}>
+        <DashboardLayout>
+          <EditUser embedInLayout />
+        </DashboardLayout>
+      </AuthLayout>
+    )
+  },
+  {
+    path: '/role-permissions',
+    element: (
+      <AuthLayout requireAuth={true}>
+        <RolePermissionsManagement />
+      </AuthLayout>
     )
   }
-], {
-  future: {
-    v7_startTransition: true
-  }
-})
+])

@@ -1,3 +1,4 @@
+-- DEPRECATED: usare people. Script fix FK legacy.
 -- Script per correggere la foreign key della tabella injuries
 -- Il constraint sta ancora puntando a people3 invece di people
 

@@ -50,3 +50,4 @@ FROM information_schema.columns
 WHERE table_name = 'injury_activities'
 AND column_name IN ('can_play_field', 'can_play_gym', 'expected_stop_days');
 
+

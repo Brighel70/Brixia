@@ -33,7 +33,7 @@ export default function StaffView() {
 
   // Paginazione
   const [currentPage, setCurrentPage] = useState(1)
-  const [staffPerPage] = useState(20)
+  const [staffPerPage] = useState(30)
 
   // Carica lo staff
   useEffect(() => {
@@ -240,7 +240,7 @@ export default function StaffView() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header title="Gestione Staff" showBack={true} />
+      <Header title="Gestione Staff" showBack={true} hideCenterLogo={true} />
       
       <div className="max-w-7xl mx-auto p-6">
         {/* Dashboard interno con statistiche */}
@@ -294,7 +294,7 @@ export default function StaffView() {
             </p>
           </div>
           <button
-            onClick={() => navigate('/people/new')}
+            onClick={() => navigate('/create-person?staff=true')}
             className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center gap-2"
           >
             <span className="text-xl">➕</span>

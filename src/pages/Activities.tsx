@@ -3,7 +3,36 @@ import { useNavigate } from 'react-router-dom'
 import { useData } from '@/store/data'
 import { supabase } from '@/lib/supabaseClient'
 import Header from '@/components/Header'
-import AttendanceRow from '@/components/AttendanceRow'
+import AttendancePopup from '@/components/AttendancePopup'
+import { createAutomaticSession, createMultipleAutomaticSessions } from '@/lib/sessionScheduler'
+import { sortNamesBySurname } from '@/lib/sortNames'
+import { BarChart2, Trophy, CheckCircle, Layers, Calendar, Rocket, Dumbbell, ChevronDown, ChevronRight, ArrowUp, ArrowDown, RotateCcw, Pencil } from 'lucide-react'
+import { getPositionDisplayName } from '@/utils/personUtils'
+import { getBrandConfig } from '@/config/brand'
+import { getCategoryBgClass, getCategoryCircleClass, getCategoryTextClass } from '@/config/categoryColors'
+import { getCategorySortOrder } from '@/config/categories'
+import TrainingVenueSelect from '@/components/TrainingVenueSelect'
+import { useTrainingVenues } from '@/hooks/useTrainingVenues'
+
+/** Palette Goleee – allineata a Memo, Eventi, Infermeria */
+const GOLEE = {
+  surface: '#FFFFFF',
+  surfaceMuted: '#F4F6F8',
+  pageBg: '#E3F2FC',
+  gridBg: '#D6EBF7',
+  border: '#E8ECF0',
+  text: '#1A2332',
+  textMuted: '#6B7280',
+  accent: '#00C48C',
+  accentSoft: '#E6FAF3',
+  accentHover: '#00A876',
+  info: '#3B82F6',
+  infoSoft: '#EFF6FF',
+  warning: '#F59E0B',
+  warningSoft: '#FEF3C7',
+  success: '#10B981',
+  successSoft: '#ECFDF5',
+} as const
 
 interface Session {
   id: string
@@ -21,6 +50,26 @@ interface Session {
   }
 }
 
+/** Chiave slot: stessa categoria + giorno + orario inizio = stesso allenamento */
+function sessionSlotKey(session: Session, startTime?: string) {
+  const start = startTime ?? session.start_time
+  const time = start ? String(start).substring(0, 5) : ''
+  return `${session.category_id}|${session.session_date}|${time}`
+}
+
+/** Tieni una sola sessione per slot (la più recente per created_at) */
+function dedupeSessionsBySlot(items: Session[]): Session[] {
+  const byKey = new Map<string, Session>()
+  for (const session of items) {
+    const key = sessionSlotKey(session)
+    const existing = byKey.get(key)
+    if (!existing || session.created_at > existing.created_at) {
+      byKey.set(key, session)
+    }
+  }
+  return Array.from(byKey.values())
+}
+
 interface Event {
   id: string
   title: string
@@ -34,7 +83,8 @@ interface Event {
   away_location?: string
   is_home: boolean
   opponent?: string
-  opponents?: string[]
+  is_championship?: boolean
+  is_friendly?: boolean
   description?: string
   participants?: string[]
   invited?: string[]
@@ -46,9 +96,14 @@ interface Event {
   }
 }
 
-export default function Activities() {
+interface ActivitiesProps {
+  embedInLayout?: boolean
+}
+
+export default function Activities({ embedInLayout = false }: ActivitiesProps) {
   const navigate = useNavigate()
-  const { currentCategory, pickCategory, loadPlayers, players, startSession, attendance, setCurrentSession } = useData()
+  const { requiresAwayDetail } = useTrainingVenues()
+  const { currentCategory, currentSession, pickCategory, loadPlayers, players, startSession, attendance, setCurrentSession } = useData()
   const [sessions, setSessions] = useState<Session[]>([])
   const [events, setEvents] = useState<Event[]>([])
   const [categories, setCategories] = useState<any[]>([])
@@ -91,6 +146,43 @@ export default function Activities() {
   // Modal per i dettagli dell'evento
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null)
   const [showEventModal, setShowEventModal] = useState(false)
+  const [pastEventsAccordionOpen, setPastEventsAccordionOpen] = useState(false)
+
+  // Tab Allenamenti / Prossimi Eventi / Giocatori
+  const [activitiesTab, setActivitiesTab] = useState<'allenamenti' | 'eventi' | 'giocatori'>('allenamenti')
+  // Filtro categorie multi-selezione sotto i tab (vuoto = tutte)
+  const [selectedCategoryFilters, setSelectedCategoryFilters] = useState<string[]>([])
+  const hasCategoryFilter = selectedCategoryFilters.length > 0
+
+  const toggleCategoryFilter = (categoryId: string) => {
+    setSelectedCategoryFilters((prev) =>
+      prev.includes(categoryId) ? prev.filter((id) => id !== categoryId) : [...prev, categoryId]
+    )
+  }
+
+  const sessionMatchesCategoryFilter = (categoryId: string) =>
+    !hasCategoryFilter || selectedCategoryFilters.includes(categoryId)
+  // Elenco giocatori per tab Giocatori
+  const [allPlayersList, setAllPlayersList] = useState<Array<{
+    id: string
+    full_name: string
+    birthYear: number | null
+    categoryItems: Array<{ id: string; name: string; code?: string }>
+    roleLabel: string
+    injured: boolean
+    disqualified: boolean
+    disqualification_end_date: string | null
+  }>>([])
+  const [allPlayersLoading, setAllPlayersLoading] = useState(false)
+  // Tab Giocatori: ordinamento colonne (null = nessuno, 'asc' | 'desc')
+  const [playersTableSort, setPlayersTableSort] = useState<{ column: string; direction: 'asc' | 'desc' } | null>(null)
+  // Tab Giocatori: ricerca per nome, cognome, anno, ruolo
+  const [playersTableSearch, setPlayersTableSearch] = useState('')
+
+  // Conteggio giocatori in base al filtro categoria (per label tab "Giocatori (N)")
+  const playersCountByFilter = hasCategoryFilter
+    ? allPlayersList.filter((p) => p.categoryItems.some((c) => selectedCategoryFilters.includes(c.id))).length
+    : allPlayersList.length
 
   useEffect(() => {
     const loadData = async () => {
@@ -140,20 +232,43 @@ export default function Activities() {
     loadSessionTimes()
   }, [sessions])
 
+  // Funzione helper per determinare il colore di sfondo della sessione (stile coerente con home)
+  const getSessionBackgroundColor = (sessionId: string, light = false) => {
+    const status = sessionAttendanceStatus[sessionId]
+    
+    if (status?.isComplete) {
+      const percentage = status.totalPlayers > 0 
+        ? Math.round((status.presentCount / status.totalPlayers) * 100)
+        : 0
+      
+      if (light) {
+        if (percentage >= 75) return 'bg-emerald-50 border-emerald-200'
+        if (percentage >= 60) return 'bg-amber-50 border-amber-200'
+        return 'bg-red-50 border-red-200'
+      }
+      if (percentage >= 75) {
+        return 'bg-emerald-900 border-emerald-600'
+      } else if (percentage >= 60) {
+        return 'bg-amber-900 border-amber-600'
+      } else {
+        return 'bg-red-900 border-red-600'
+      }
+    }
+    
+    return light ? 'bg-white border-slate-200' : 'bg-[var(--brixia-primary)] border-[var(--brixia-secondary)]'
+  }
+
   const loadSessions = async () => {
     try {
-
-      
-      // Calcola range settimana corrente
+      // Range: dalla settimana scorsa (14 giorni indietro) fino a 3 settimane avanti, per vedere anche gli allenamenti passati
       const today = new Date()
-      const startOfWeek = new Date(today)
-      const endOfWeek = new Date(today)
-      endOfWeek.setDate(today.getDate() + 7) // 7 giorni in avanti
+      const startDateObj = new Date(today)
+      startDateObj.setDate(today.getDate() - 14)
+      const endDate = new Date(today)
+      endDate.setDate(today.getDate() + 21)
       
-      const startDate = startOfWeek.toISOString().split('T')[0]
-      const endDate = endOfWeek.toISOString().split('T')[0]
-      
-
+      const startDate = startDateObj.toISOString().split('T')[0]
+      const endDateStr = endDate.toISOString().split('T')[0]
       
       const { data, error } = await supabase
         .from('sessions')
@@ -163,11 +278,13 @@ export default function Activities() {
           session_date,
           location,
           away_place,
+          start_time,
+          end_time,
           created_at,
           categories(id, code, name)
         `)
         .gte('session_date', startDate)
-        .lte('session_date', endDate)
+        .lte('session_date', endDateStr)
         .order('session_date', { ascending: true })
 
       if (error) {
@@ -181,14 +298,19 @@ export default function Activities() {
         categories: (session.categories as any) || null
       }))
 
-      setSessions(transformedSessions)
+      const dedupedSessions = dedupeSessionsBySlot(transformedSessions)
+      if (dedupedSessions.length < transformedSessions.length) {
+        console.warn(
+          `⚠️ Sessioni duplicate nascoste: ${transformedSessions.length - dedupedSessions.length} (stessa categoria/giorno/orario)`
+        )
+      }
+
+      setSessions(dedupedSessions)
       
       // Aggiorna solo le statistiche delle sessioni
-      const totalSessions = data?.length || 0
-      const activeSessions = totalSessions // Tutte le sessioni caricate sono della settimana corrente
+      const totalSessions = dedupedSessions.length
+      const activeSessions = totalSessions // Tutte le sessioni caricate sono future
       const completedSessions = 0 // Non abbiamo sessioni completate in questa logica
-      
-
       
       setStats(prevStats => ({
         ...prevStats,
@@ -203,15 +325,19 @@ export default function Activities() {
     }
   }
 
+  // Stagione sportiva: 1° luglio – 30 giugno (come in FeesManagement)
+  const getSeasonStartDate = () => {
+    const now = new Date()
+    const year = now.getMonth() < 6 ? now.getFullYear() - 1 : now.getFullYear()
+    return `${year}-07-01`
+  }
+
   const loadEvents = async () => {
     try {
-
       const today = new Date()
-      
-      // Filtro per 30 giorni (per tutti gli eventi)
       const endDate = new Date(today)
       endDate.setDate(today.getDate() + 30)
-      const startDate = today.toISOString().split('T')[0]
+      const startDate = getSeasonStartDate()
       const endDateStr = endDate.toISOString().split('T')[0]
       
 
@@ -231,7 +357,8 @@ export default function Activities() {
           away_location,
           is_home,
           opponent,
-          opponents,
+          is_championship,
+          is_friendly,
           description,
           created_at,
           categories(id, code, name)
@@ -240,17 +367,62 @@ export default function Activities() {
         .lte('event_date', endDateStr)
         .order('event_date', { ascending: true })
 
+      // DEBUG: Stampa SUBITO i dati grezzi
+      console.log('🔍 SUPABASE RAW DATA:', {
+        hasData: !!data,
+        dataLength: data?.length,
+        firstThree: data?.slice(0, 3)
+      })
+
+      // DEBUG: Stampa i valori di orario SEMPLICI
+      if (data && data.length > 0) {
+        console.log('🔍 ORARI SEMPLICI - Primo evento:', data[0].title, 'start_time:', data[0].start_time, 'event_time:', data[0].event_time)
+        console.log('🔍 ORARI SEMPLICI - Secondo evento:', data[1].title, 'start_time:', data[1].start_time, 'event_time:', data[1].event_time)
+      }
+
       if (error) {
         console.error('Errore nel caricamento eventi:', error)
         return
       }
 
+      // Trasforma i dati per gestire l'array categories e convertire i campi time
+      const transformedEvents = (data || []).map(event => {
+        // Converti i campi time - potrebbero essere stringhe, oggetti Date, o altro
+        const formatTime = (timeValue: any) => {
+          if (!timeValue) return null
+          if (typeof timeValue === 'string') return timeValue
+          if (timeValue instanceof Date) return timeValue.toISOString().substring(11, 19) // HH:MM:SS
+          // Se è un oggetto, prova a convertirlo
+          return String(timeValue)
+        }
+        
+        return {
+          ...event,
+          event_time: formatTime(event.event_time),
+          start_time: formatTime(event.start_time),
+          end_time: formatTime(event.end_time),
+          categories: (event.categories as any) || null
+        }
+      })
 
-      // Trasforma i dati per gestire l'array categories
-      const transformedEvents = (data || []).map(event => ({
-        ...event,
-        categories: (event.categories as any) || null
-      }))
+      // DEBUG: Verifica i primi 3 eventi caricati dal database
+      if (transformedEvents.length > 0) {
+        console.log('🔍 DATABASE DEBUG - Primi 3 eventi caricati:', transformedEvents.slice(0, 3).map(e => ({
+          title: e.title,
+          event_date: e.event_date,
+          event_time: e.event_time,
+          event_time_type: typeof e.event_time,
+          start_time: e.start_time,
+          start_time_type: typeof e.start_time,
+          end_time: e.end_time
+        })))
+      }
+
+      // DEBUG: Stampa i valori DOPO trasformazione SEMPLICI
+      if (transformedEvents.length > 0) {
+        console.log('🔍 DOPO TRASFORMAZIONE - Primo evento:', transformedEvents[0].title, 'start_time:', transformedEvents[0].start_time, 'event_time:', transformedEvents[0].event_time)
+        console.log('🔍 DOPO TRASFORMAZIONE - Secondo evento:', transformedEvents[1].title, 'start_time:', transformedEvents[1].start_time, 'event_time:', transformedEvents[1].event_time)
+      }
 
       setEvents(transformedEvents)
       
@@ -363,7 +535,7 @@ export default function Activities() {
 
 
 
-      // Filtra e ordina usando BRIXIA_CATEGORIES
+      // Filtra e ordina: dal più piccolo al più grande (Serie C prima di Serie B)
       const brixiaCategories = [
         { code: 'U6', name: 'Under 6', sort: 1 },
         { code: 'U8', name: 'Under 8', sort: 2 },
@@ -411,7 +583,66 @@ export default function Activities() {
     }
   }
 
+  const loadAllPlayers = async () => {
+    setAllPlayersLoading(true)
+    try {
+      const { data: positionsData } = await supabase
+        .from('player_positions')
+        .select('id, name')
+        .order('position_order')
+      const positionsMap = Object.fromEntries((positionsData || []).map((p: { id: string; name: string }) => [p.id, p.name]))
 
+      const { data: peopleData, error: peopleError } = await supabase
+        .from('people')
+        .select('id, given_name, family_name, full_name, date_of_birth, player_categories, player_positions, injured, disqualified, disqualification_end_date')
+        .or('is_player.eq.true,player_categories.neq.[]')
+        .order('family_name', { ascending: true })
+
+      if (peopleError) {
+        console.error('Errore nel caricamento giocatori:', peopleError)
+        setAllPlayersList([])
+        return
+      }
+
+      const list = (peopleData || []).filter((p: any) => {
+        const cats = p.player_categories
+        return Array.isArray(cats) && cats.length > 0
+      }).map((p: any) => {
+        const birthYear = p.date_of_birth ? new Date(p.date_of_birth).getFullYear() : null
+        const categoryIds = Array.isArray(p.player_categories) ? p.player_categories : []
+        const categoryItems = categoryIds
+          .map((id: string) => {
+            const cat = categories.find(c => c.id === id)
+            return cat ? { id: cat.id, name: cat.name, code: cat.code } : null
+          })
+          .filter((c): c is { id: string; name: string; code?: string } => c != null)
+        const positionIds = Array.isArray(p.player_positions) ? p.player_positions : []
+        const roleLabel = positionIds.map((id: string) => getPositionDisplayName(positionsMap[id] || id)).filter(Boolean).join(', ') || '—'
+        return {
+          id: p.id,
+          full_name: p.full_name || [p.given_name, p.family_name].filter(Boolean).join(' ') || '—',
+          birthYear,
+          categoryItems,
+          roleLabel,
+          injured: !!p.injured,
+          disqualified: !!p.disqualified,
+          disqualification_end_date: p.disqualification_end_date || null
+        }
+      })
+      setAllPlayersList(list)
+    } catch (e) {
+      console.error('Errore loadAllPlayers:', e)
+      setAllPlayersList([])
+    } finally {
+      setAllPlayersLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (activitiesTab === 'giocatori' && categories.length > 0) {
+      loadAllPlayers()
+    }
+  }, [activitiesTab, categories.length])
 
   // Carica le sedi di allenamento per le categorie
   const loadTrainingLocations = async (categoryIds: string[]) => {
@@ -531,6 +762,13 @@ export default function Activities() {
     setShowSessionTypeModal(true)
   }
 
+  // Ascolta l'evento dal pulsante nell'header ( quando embedInLayout )
+  useEffect(() => {
+    const handler = () => setShowSessionTypeModal(true)
+    window.addEventListener('open-new-session', handler)
+    return () => window.removeEventListener('open-new-session', handler)
+  }, [])
+
 
 
   // Funzione per selezionare una categoria e procedere con il tipo di sessione
@@ -574,97 +812,61 @@ export default function Activities() {
   // Funzione per creare sessioni multiple
   const createBulkSessions = async (category: any, sessionType: string, note: string = '') => {
     try {
-      // Carica le sedi di allenamento per la categoria
-      const trainingLocations = await loadTrainingLocations([category.id])
-      const categoryLocations = trainingLocations[category.id] || []
-
-      if (categoryLocations.length === 0) {
-        alert('Nessuna sede di allenamento configurata per questa categoria')
-        return
-      }
-
-      const sessionsToCreate = []
-      const today = new Date()
-      const weekdayOrder = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica']
-
+      console.log('🚀 Creazione sessioni con nuovo sistema automatico...')
+      
       if (sessionType === 'single') {
-        // Singolo allenamento - prossimo giorno disponibile
-        const nextDay = getNextAvailableTrainingDay(categoryLocations, today)
-        // Mappa i valori di location per la tabella sessions
-        const locationMap: { [key: string]: string } = {
-          'Brescia': 'Brescia',
-          'Ospitaletto': 'Ospitaletto', 
-          'Gussago': 'Gussago'
+        // Singola sessione automatica
+        const session = await createAutomaticSession(category.id)
+        
+        if (!session) {
+          alert('❌ Impossibile creare la sessione. Verifica la configurazione training_locations.')
+          return
         }
         
-        sessionsToCreate.push({
-          category_id: category.id,
-          session_date: nextDay.date.toISOString().split('T')[0],
-          location: locationMap[nextDay.location.location] || nextDay.location.location,
-          away_place: null
-        })
+        console.log('✅ Sessione singola creata:', session)
+        alert(`✅ Sessione creata per ${session.session_date} (${session.location})`)
+        
       } else {
-        // Calcola quante settimane
-        const weeks = sessionType === 'weekly' ? 1 : sessionType === 'biweekly' ? 2 : 4
-        
-        // Per ogni settimana, crea sessioni per tutti i giorni di allenamento
-        for (let week = 0; week < weeks; week++) {
-          // Per ogni giorno di allenamento della categoria
-          for (const location of categoryLocations) {
-            // Calcola la data per questo giorno della settimana
-            const sessionDate = new Date(today)
-            const dayIndex = weekdayOrder.indexOf(location.weekday)
-            const todayIndex = today.getDay() === 0 ? 6 : today.getDay() - 1 // Converti domenica da 0 a 6
-            
-            // Calcola quanti giorni aggiungere per arrivare al prossimo giorno di allenamento
-            let daysToAdd = (dayIndex - todayIndex + 7) % 7
-            if (daysToAdd === 0) daysToAdd = 7 // Se è oggi, vai alla prossima settimana
-            
-            // Aggiungi i giorni per la settimana corrente
-                                      daysToAdd += (week * 7)
-                          
-                          sessionDate.setDate(today.getDate() + daysToAdd)
-            
-            // Mappa i valori di location per la tabella sessions
-            const locationMap: { [key: string]: string } = {
-              'Brescia': 'Brescia',
-              'Ospitaletto': 'Ospitaletto', 
-              'Gussago': 'Gussago'
-            }
-            
-            sessionsToCreate.push({
-              category_id: category.id,
-              session_date: sessionDate.toISOString().split('T')[0],
-              location: locationMap[location.location] || location.location,
-              away_place: null
-            })
-          }
+        // Calcola quante sessioni creare
+        let sessionCount: number
+        switch (sessionType) {
+          case 'weekly':
+            sessionCount = 3 // Assumendo 3 giorni configurati per settimana
+            break
+          case 'biweekly':
+            sessionCount = 6 // 2 settimane
+            break
+          case 'monthly':
+            sessionCount = 12 // 4 settimane
+            break
+          default:
+            sessionCount = 3
         }
-      }
-
-      // Crea tutte le sessioni
-      if (sessionsToCreate.length > 0) {
-        const { error } = await supabase
-          .from('sessions')
-          .insert(sessionsToCreate)
-
-        if (error) {
-          console.error('❌ Errore inserimento sessioni:', error)
-          throw error
-        }
-
-        alert(`✅ Create ${sessionsToCreate.length} sessioni per ${category.name}`)
         
-        // Chiudi modal e ricarica
-        setShowCreateModal(false)
-        setSelectedCategoryForSession(null)
-        setSessionType(null)
-        setBulkSessionNote('')
-        await loadSessions()
+        console.log(`📅 Creando ${sessionCount} sessioni per ${sessionType}...`)
+        
+        const sessions = await createMultipleAutomaticSessions(category.id, sessionCount)
+        
+        if (!sessions || sessions.length === 0) {
+          alert('❌ Impossibile creare le sessioni. Verifica la configurazione training_locations.')
+          return
+        }
+        
+        console.log('✅ Sessioni create:', sessions)
+        alert(`✅ ${sessions.length} sessioni create con successo!`)
       }
+      
+      // Ricarica le sessioni
+      await loadSessions()
+      
+      // Chiudi il modal
+      setShowSessionTypeModal(false)
+      setSessionType(null)
+      setBulkSessionNote('')
+      
     } catch (error) {
-      console.error('Errore nella creazione sessioni multiple:', error)
-      alert('Errore nella creazione delle sessioni')
+      console.error('❌ Errore nella creazione sessioni:', error)
+      alert('❌ Errore nella creazione delle sessioni: ' + (error as Error).message)
     }
   }
 
@@ -694,57 +896,39 @@ export default function Activities() {
   // Funzione per caricare lo status delle presenze per una sessione
   const loadSessionAttendanceStatus = async (sessionId: string, categoryId: string) => {
     try {
-      // Carica la categoria per ottenere il codice
-      const { data: categoryData, error: categoryError } = await supabase
-        .from('categories')
-        .select('code')
-        .eq('id', categoryId)
+      const { data: sessionData } = await supabase
+        .from('sessions')
+        .select('session_date')
+        .eq('id', sessionId)
         .single()
+      const sessionDate = sessionData?.session_date || null
+      const sessionDateOnly = sessionDate ? new Date(sessionDate).toISOString().split('T')[0] : null
 
-      if (categoryError || !categoryData) {
-        console.error('Errore nel caricamento categoria:', categoryError)
-        return
-      }
-
-      // Carica tutti i giocatori
+      // Carica tutti i giocatori con player_categories e created_at
       const { data: allPlayers, error: playersError } = await supabase
-        .from('players')
-        .select('id, first_name, last_name, fir_code')
-        .order('last_name', { ascending: true })
+        .from('people')
+        .select('id, given_name, family_name, fir_code, player_categories, created_at')
+        .order('family_name', { ascending: true })
 
       if (playersError) {
         console.error('Errore nel caricamento giocatori:', playersError)
         return
       }
 
-      // Filtra i giocatori per categoria basandosi sul FIR code
+      // Filtra i giocatori per categoria e per data inserimento (solo chi era in rosa alla data della sessione)
       const players = (allPlayers || []).filter((player: any) => {
-        if (!player.fir_code) return false
-        
-        const firParts = player.fir_code.split('-')
-        if (firParts.length < 2) return false
-        
-        const categoryCode = firParts[1] // Es: FIR-U6-LR-001 -> U6
-        
-        // Mappa i codici alle categorie
-        const categoryMapping = {
-          'U6': 'U6',
-          'U8': 'U8', 
-          'U10': 'U10',
-          'U12': 'U12',
-          'U14': 'U14',
-          'U16': 'U16',
-          'U18': 'U18',
-          'SC': 'SERIE_C',
-          'SB': 'SERIE_B',
-          'POD': 'PODEROSA',
-          'GUS': 'GUSSAGOLD',
-          'BRI': 'BRIXIAOLD',
-          'LEO': 'LEONESSE'
+        if (!player.player_categories) return false
+        const categories = Array.isArray(player.player_categories) 
+          ? player.player_categories 
+          : (() => { try { return JSON.parse(player.player_categories || '[]') } catch { return [] } })()
+        if (!categories.includes(categoryId)) return false
+        if (sessionDateOnly && player.created_at) {
+          try {
+            const playerCreated = new Date(player.created_at).toISOString().split('T')[0]
+            if (playerCreated > sessionDateOnly) return false
+          } catch (_) {}
         }
-        
-        const mappedCategory = categoryMapping[categoryCode]
-        return mappedCategory === categoryData.code
+        return true
       })
 
       if (!players || players.length === 0) {
@@ -762,7 +946,11 @@ export default function Activities() {
         .select('player_id, status')
         .eq('session_id', sessionId)
 
-
+      console.log('🔍 [loadSessionAttendanceStatus] Attendance Data:', {
+        sessionId,
+        attendanceData,
+        attendanceError
+      })
 
       if (attendanceError) {
         console.error('Errore nel caricamento presenze:', attendanceError)
@@ -775,6 +963,8 @@ export default function Activities() {
         return acc
       }, {} as Record<string, string>)
 
+      console.log('🔍 [loadSessionAttendanceStatus] Attendance Map:', attendanceMap)
+
       // Calcola lo status
       const unassignedCount = players.filter(player => !attendanceMap[player.id]).length
       const hasUnassigned = unassignedCount > 0
@@ -783,7 +973,6 @@ export default function Activities() {
       const totalPlayers = players.length
 
       const newStatus = { hasUnassigned, unassignedCount, isComplete, presentCount, totalPlayers }
-
       
       setSessionAttendanceStatus(prev => ({
         ...prev,
@@ -809,11 +998,7 @@ export default function Activities() {
       const { data: sessionData, error: sessionError } = await supabase
         .from('sessions')
         .select(`
-          id,
-          category_id,
-          session_date,
-          location,
-          away_place,
+          *,
           categories(id, code, name)
         `)
         .eq('id', sessionId)
@@ -821,20 +1006,30 @@ export default function Activities() {
 
       if (sessionError) {
         console.error('Errore nel caricamento sessione:', sessionError)
-        // Ripristina lo scroll in caso di errore
         document.body.style.overflow = 'unset'
         return
       }
 
+      const existingSession = sessions.find(s => s.id === sessionId)
+      const times = sessionTimes[sessionId]
+
       // Imposta la categoria e la sessione nello store
       if (sessionData.categories) {
-        pickCategory(sessionData.categories)
-        setCurrentSession(sessionData)
+        const categoryData = Array.isArray(sessionData.categories)
+          ? sessionData.categories[0]
+          : sessionData.categories
+        pickCategory(categoryData)
+        setCurrentSession({
+          ...sessionData,
+          start_time: sessionData.start_time ?? existingSession?.start_time ?? times?.start_time,
+          end_time: sessionData.end_time ?? existingSession?.end_time ?? times?.end_time,
+          categories: Array.isArray(sessionData.categories) ? sessionData.categories : [categoryData],
+        })
 
-        // Carica i giocatori della categoria
-        await loadPlayers(sessionData.categories.id)
+        await loadPlayers(categoryData.id, sessionId)
       } else {
         console.error('Nessuna categoria trovata per la sessione')
+        document.body.style.overflow = 'unset'
         return
       }
       
@@ -850,13 +1045,17 @@ export default function Activities() {
   }
 
   const handleCloseAttendancePopup = () => {
-    // Ripristina lo scroll della pagina
     document.body.style.overflow = 'unset'
-    
     setShowAttendancePopup(false)
     setSelectedSessionId(null)
     setPopupExpanded(false)
     setIsOpeningPopup(false)
+  }
+
+  const handleSaveAndExitAttendance = async () => {
+    if (currentSession?.id && currentSession.category_id) {
+      await loadSessionAttendanceStatus(currentSession.id, currentSession.category_id)
+    }
   }
 
   const handleExpandPopup = () => {
@@ -874,19 +1073,62 @@ export default function Activities() {
     })
   }
 
+  // Helper: Ottiene gli ID delle categorie da includere quando "Seniores" è selezionato
+  const getCategoryIdsForSeniores = () => {
+    const serieB = categories.find(cat => cat.code === 'SERIE_B' || cat.name === 'Serie B')
+    const serieC = categories.find(cat => cat.code === 'SERIE_C' || cat.name === 'Serie C')
+    const categoryIds: string[] = []
+    if (serieB) categoryIds.push(serieB.id)
+    if (serieC) categoryIds.push(serieC.id)
+    return categoryIds
+  }
+
+  // Helper: Verifica se un evento appartiene alla categoria selezionata (considerando "Seniores")
+  const eventBelongsToSelectedCategory = (event: Event, selectedCategoryId: string | null) => {
+    if (!selectedCategoryId) return true // Nessuna categoria selezionata = mostra tutti
+    
+    // Se "Seniores" è selezionato (per nome o ID), include Serie B e Serie C
+    const selectedCategory = categories.find(cat => cat.id === selectedCategoryId)
+    if (selectedCategory && (selectedCategory.name === 'Seniores' || selectedCategory.code === 'SENIORES')) {
+      const senioresCategoryIds = getCategoryIdsForSeniores()
+      return senioresCategoryIds.includes(event.category_id)
+    }
+    
+    // Altrimenti, filtro normale per categoria
+    return event.category_id === selectedCategoryId
+  }
+
   // Filtra eventi per tipo e periodo
-  const getFilteredEvents = (eventType: string, days: number) => {
+  const getFilteredEvents = (eventType: string, days: number, selectedCategoryId: string | null = null) => {
     const today = new Date()
     const endDate = new Date(today)
     endDate.setDate(today.getDate() + days)
     const endDateStr = endDate.toISOString().split('T')[0]
     
+    console.log('🔍 getFilteredEvents chiamata con:', { eventType, days, endDateStr, selectedCategoryId })
+    console.log('🔍 Eventi disponibili:', events.length)
+    
     return events.filter(event => {
-      const isCorrectType = eventType === 'partite_tornei' 
-        ? (event.event_type === 'partita' || event.event_type === 'torneo')
-        : (event.event_type !== 'partita' && event.event_type !== 'torneo')
+      let isCorrectType = false
       
-      return isCorrectType && event.event_date <= endDateStr
+      if (eventType === 'all') {
+        // Per 'all' includi TUTTI gli eventi (partite, tornei, altri)
+        isCorrectType = true
+      } else if (eventType === 'partite_tornei') {
+        // Solo partite e tornei
+        isCorrectType = (event.event_type === 'partita' || event.event_type === 'torneo')
+      } else if (eventType === 'altri') {
+        // Solo eventi che NON sono partite o tornei
+        isCorrectType = (event.event_type !== 'partita' && event.event_type !== 'torneo')
+      }
+      
+      const isInDateRange = event.event_date <= endDateStr
+      const isCorrectCategory = selectedCategoryId ? eventBelongsToSelectedCategory(event, selectedCategoryId) : true
+      const result = isCorrectType && isInDateRange && isCorrectCategory
+      
+      console.log(`🔍 Evento "${event.title}" (${event.event_type}): ${result ? 'INCLUSO' : 'ESCLUSO'} - Tipo: ${isCorrectType}, Data: ${isInDateRange}, Categoria: ${isCorrectCategory}`)
+      
+      return result
     })
   }
 
@@ -943,13 +1185,19 @@ export default function Activities() {
       const weekday = weekdays[sessionDate.getDay()]
       
       // Cerca negli orari di allenamento per questa categoria e giorno
-      const { data, error } = await supabase
+      let query = supabase
         .from('training_locations')
         .select('start_time, end_time')
         .eq('category_id', session.category_id)
         .eq('weekday', weekday)
-        .eq('location', session.location)
-        .limit(1)
+      
+      if (requiresAwayDetail(session.location)) {
+        // Trasferta: orario solo per giorno, senza filtrare per sede fisica
+      } else {
+        query = query.eq('location', session.location)
+      }
+      
+      const { data, error } = await query.limit(1)
 
       if (error) {
         // Log dell'errore per debug ma non bloccare l'app
@@ -994,93 +1242,60 @@ export default function Activities() {
     return details.join(' • ')
   }
 
-  // Funzione per ottenere il colore della categoria (Apple-style)
-  const getCategoryColor = (categories: any) => {
-    const code = categories?.code
-    const colorMap: { [key: string]: string } = {
-      'U6': 'bg-gradient-to-br from-emerald-400 to-emerald-500 shadow-sm',
-      'U8': 'bg-gradient-to-br from-emerald-400 to-emerald-500 shadow-sm',
-      'U10': 'bg-gradient-to-br from-emerald-400 to-emerald-500 shadow-sm',
-      'U12': 'bg-gradient-to-br from-emerald-400 to-emerald-500 shadow-sm',
-      'U14': 'bg-gradient-to-br from-blue-500 to-cyan-400 shadow-sm',
-      'U16': 'bg-gradient-to-br from-blue-500 to-cyan-400 shadow-sm',
-      'U18': 'bg-gradient-to-br from-blue-500 to-cyan-400 shadow-sm',
-      'SERIE_C': 'bg-gradient-to-br from-blue-500 to-cyan-400 shadow-sm',
-      'SERIE_B': 'bg-gradient-to-br from-blue-500 to-cyan-400 shadow-sm',
-      'GUSSAGOLD': 'bg-gradient-to-br from-amber-400 to-amber-500 shadow-sm',
-      'PODEROSA': 'bg-gradient-to-br from-amber-400 to-amber-500 shadow-sm',
-      'BRIXIAOLD': 'bg-gradient-to-br from-amber-400 to-amber-500 shadow-sm',
-      'LEONESSE': 'bg-gradient-to-br from-rose-400 to-rose-500 shadow-sm'
-    }
-    return colorMap[code] || 'bg-gradient-to-br from-sky-400 to-sky-500 shadow-sm'
-  }
+  // Colori categoria: ogni categoria ha un colore distinto (vedi src/config/categoryColors.ts)
+  const getCategoryColor = getCategoryBgClass
+  const getCategoryCircleColor = getCategoryCircleClass
 
-  // Funzione per ottenere il colore chiaro del cerchio basato sulla categoria (Apple-style)
-  const getCategoryCircleColor = (categories: any) => {
-    const code = categories?.code
-    const colorMap: { [key: string]: string } = {
-      'U6': 'bg-emerald-100 text-emerald-700',
-      'U8': 'bg-emerald-100 text-emerald-700',
-      'U10': 'bg-emerald-100 text-emerald-700',
-      'U12': 'bg-emerald-100 text-emerald-700',
-      'U14': 'bg-blue-100 text-blue-700',
-      'U16': 'bg-blue-100 text-blue-700',
-      'U18': 'bg-blue-100 text-blue-700',
-      'SERIE_C': 'bg-blue-100 text-blue-700',
-      'SERIE_B': 'bg-blue-100 text-blue-700',
-      'GUSSAGOLD': 'bg-amber-100 text-amber-700',
-      'PODEROSA': 'bg-amber-100 text-amber-700',
-      'BRIXIAOLD': 'bg-amber-100 text-amber-700',
-      'LEONESSE': 'bg-rose-100 text-rose-700'
-    }
-    return colorMap[code] || 'bg-gray-100 text-gray-700'
-  }
-
-  // Funzione per ottenere l'abbreviazione della categoria
+  // Funzione per ottenere l'abbreviazione della categoria (Senior/Seniores non vanno mai mostrati; Serie B/C → B/C)
   const getCategoryAbbreviation = (code: string) => {
-    // Mappatura per codici
+    const u = (code || '').toUpperCase().trim()
+    if (u === 'SENIOR' || u === 'SENIORES') return ''
+    if (code?.trim() === 'Seniores' || code?.trim() === 'Senior') return ''
     const codeAbbreviations: { [key: string]: string } = {
-      'U6': 'U6',
-      'U8': 'U8', 
-      'U10': 'U10',
-      'U12': 'U12',
-      'U14': 'U14',
-      'U16': 'U16',
-      'U18': 'U18',
-      'SERIE_C': 'C',
-      'SERIE_B': 'B',
-      'SENIORES': 'SEN',
-      'PODEROSA': 'POD',
-      'GUSSAGOLD': 'GUS',
-      'BRIXIAOLD': 'BRI',
-      'LEONESSE': 'LEO'
+      'U6': 'U6', 'U8': 'U8', 'U10': 'U10', 'U12': 'U12', 'U14': 'U14', 'U16': 'U16', 'U18': 'U18',
+      'SERIE_C': 'C', 'SERIE_B': 'B', 'PODEROSA': 'POD', 'GUSSAGOLD': 'GUS', 'BRIXIAOLD': 'BRI', 'LEONESSE': 'LEO'
     }
-    
-    // Mappatura per nomi completi (nel caso arrivino i nomi invece dei codici)
     const nameAbbreviations: { [key: string]: string } = {
-      'Under 6': 'U6',
-      'Under 8': 'U8',
-      'Under 10': 'U10',
-      'Under 12': 'U12',
-      'Under 14': 'U14',
-      'Under 16': 'U16',
-      'Under 18': 'U18',
-      'Serie C': 'C',
-      'Serie B': 'B',
-      'Seniores': 'SEN',
-      'Poderosa': 'POD',
-      'GussagOld': 'GUS',
-      'Brixia Old': 'BRI',
-      'Leonesse': 'LEO'
+      'Under 6': 'U6', 'Under 8': 'U8', 'Under 10': 'U10', 'Under 12': 'U12',
+      'Under 14': 'U14', 'Under 16': 'U16', 'Under 18': 'U18',
+      'Serie C': 'C', 'Serie B': 'B', 'Poderosa': 'POD', 'GussagOld': 'GUS', 'Brixia Old': 'BRI', 'Leonesse': 'LEO'
     }
-    
-    // Prova prima con i codici, poi con i nomi
-    const result = codeAbbreviations[code] || nameAbbreviations[code] || code
-    return result
+    return codeAbbreviations[code] || nameAbbreviations[code] || code
+  }
+
+  /** Badge categoria/tipo evento: stessa formattazione per Consiglio (CON) e altre categorie (U14, B, ...). */
+  const getEventCategoryBadge = (event: Event): { abbr: string; colorClass: string } => {
+    if (event.event_type === 'consiglio') {
+      return { abbr: 'CON', colorClass: 'bg-blue-600 text-white' }
+    }
+    if (event.event_type === 'incontro_genitori') {
+      return { abbr: 'GEN', colorClass: 'bg-blue-600 text-white' }
+    }
+    if (event.categories?.code) {
+      return {
+        abbr: getCategoryAbbreviation(event.categories.code),
+        colorClass: getCategoryCircleColor(event.categories)
+      }
+    }
+    if (event.categories?.name) {
+      const abbr = getCategoryAbbreviation(event.categories.name) || event.categories.name.slice(0, 3)
+      return { abbr, colorClass: 'bg-blue-600 text-white' }
+    }
+    return { abbr: '—', colorClass: 'bg-gray-600 text-white' }
   }
 
   // Funzioni per raggruppare per data
   const groupByDate = (items: any[]) => {
+    console.log('🔍 GROUPBYDATE DEBUG - Items ricevuti:', items.length, 'eventi')
+    if (items.length > 0) {
+      console.log('🔍 GROUPBYDATE DEBUG - Primo evento ricevuto:', {
+        title: items[0].title,
+        start_time: items[0].start_time,
+        event_time: items[0].event_time,
+        event_date: items[0].event_date
+      })
+    }
+    
     const grouped = items.reduce((acc, item) => {
       const date = item.session_date || item.event_date
       if (!acc[date]) {
@@ -1097,8 +1312,61 @@ export default function Activities() {
 
     return sortedDates.map(date => ({
       date,
-      items: grouped[date]
+      items: grouped[date].sort((a, b) => {
+        // DEBUG: Verifica i valori effettivi
+        console.log('🔍 ACTIVITIES DEBUG - Eventi da ordinare:', {
+          eventA: { 
+            title: a.title, 
+            event_time: a.event_time, 
+            start_time: a.start_time,
+            event_date: a.event_date,
+            fullEventA: a
+          },
+          eventB: { 
+            title: b.title, 
+            event_time: b.event_time, 
+            start_time: b.start_time,
+            event_date: b.event_date,
+            fullEventB: b
+          }
+        })
+        
+        // Ordina per orario crescente se hanno la stessa data
+        // Usa start_time se disponibile, altrimenti event_time (LOGICA CORRETTA da Events.tsx)
+        const timeA = a.start_time || a.event_time || '00:00'
+        const timeB = b.start_time || b.event_time || '00:00'
+        
+        console.log('🔍 ACTIVITIES DEBUG - Tempi estratti:', { timeA, timeB, comparison: timeA.localeCompare(timeB) })
+        
+        return timeA.localeCompare(timeB)
+      })
     }))
+  }
+
+  // Funzione per limitare le sessioni a 6 per categoria
+  const limitSessionsPerCategory = (sessions: Session[], limit: number = 6) => {
+    const categorySessions: { [categoryId: string]: Session[] } = {}
+    
+    // Raggruppa per categoria
+    sessions.forEach(session => {
+      if (!categorySessions[session.category_id]) {
+        categorySessions[session.category_id] = []
+      }
+      categorySessions[session.category_id].push(session)
+    })
+    
+    // Limita a 6 sessioni per categoria e riunisci
+    const limitedSessions: Session[] = []
+    Object.values(categorySessions).forEach(categorySessionList => {
+      const sortedSessions = categorySessionList.sort((a, b) => 
+        new Date(a.session_date).getTime() - new Date(b.session_date).getTime()
+      )
+      limitedSessions.push(...sortedSessions.slice(0, limit))
+    })
+    
+    return limitedSessions.sort((a, b) => 
+      new Date(a.session_date).getTime() - new Date(b.session_date).getTime()
+    )
   }
 
   const formatDateHeader = (dateString: string) => {
@@ -1111,276 +1379,900 @@ export default function Activities() {
     return `${weekday}, ${day}/${month}`
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <Header 
-        title="Gestione Attività" 
-        showBack={true} 
-      />
-      
-      <div className="max-w-7xl mx-auto p-6">
-        {/* Dashboard interno con statistiche */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white/90 backdrop-blur-sm border border-white/60 rounded-2xl p-6 bg-gradient-to-br from-emerald-400 to-emerald-500 text-white shadow-sm">
-            <div className="flex items-center">
-              <div className="text-3xl mr-6">📊</div>
-              <div>
-                <div className="text-2xl font-bold">{stats.totalSessions}</div>
-                <div className="text-sm text-emerald-100">Sessioni Totali ({stats.averageAttendance}%)</div>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white/90 backdrop-blur-sm border border-white/60 rounded-2xl p-6 bg-gradient-to-br from-sky-400 to-sky-500 text-white shadow-sm">
-            <div className="flex items-center">
-              <div className="text-3xl mr-6">🟢</div>
-              <div>
-                <div className="text-2xl font-bold">{stats.activeSessions}</div>
-                <div className="text-sm text-sky-100">Totale Partite</div>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white/90 backdrop-blur-sm border border-white/60 rounded-2xl p-6 bg-gradient-to-br from-violet-400 to-violet-500 text-white shadow-sm">
-            <div className="flex items-center">
-              <div className="text-3xl mr-6">✅</div>
-              <div>
-                <div className="text-2xl font-bold">{stats.completedSessions}</div>
-                <div className="text-sm text-violet-100">Totale Tornei</div>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white/90 backdrop-blur-sm border border-white/60 rounded-2xl p-6 bg-gradient-to-br from-amber-400 to-amber-500 text-white shadow-sm">
-            <div className="flex items-center">
-              <div className="text-3xl mr-6">🏈</div>
-              <div>
-                <div className="text-2xl font-bold">{stats.categoriesCount}</div>
-                <div className="text-sm text-amber-100">Categorie</div>
-              </div>
-            </div>
-          </div>
-        </div>
+  // Raggruppa sessioni per settimana (lun–ven) e poi per giorno; una riga = una settimana, 5 colonne
+  const getMonday = (dateStr: string) => {
+    const d = new Date(dateStr + 'T12:00:00')
+    const day = d.getDay()
+    const diff = day === 0 ? -6 : 1 - day
+    const monday = new Date(d)
+    monday.setDate(d.getDate() + diff)
+    return monday.toISOString().slice(0, 10)
+  }
 
-        {/* Header per azioni rapide */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
-          <div className="flex gap-3">
-            <button
-              onClick={handleNewSessionClick}
-              className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-6 py-3 rounded-xl font-medium transition-all duration-200 flex items-center gap-2 shadow-sm hover:shadow-md"
-            >
-              🚀 Nuova Sessione
-            </button>
+  const getSessionStartTime = (session: Session) => {
+    const t = sessionTimes[session.id]?.start_time ?? session.start_time
+    return t ? String(t).substring(0, 5) : '99:99'
+  }
 
-          </div>
-          
-          <div className="mt-4 md:mt-0">
-            <button
-              onClick={() => navigate('/events')}
-              className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white px-6 py-3 rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md"
-            >
-              📅 Gestione Eventi
-            </button>
-          </div>
-        </div>
+  const compareSessionsByTimeAndCategory = (a: Session, b: Session) => {
+    const timeCmp = getSessionStartTime(a).localeCompare(getSessionStartTime(b))
+    if (timeCmp !== 0) return timeCmp
+    return getCategorySortOrder(a.categories?.code ?? '') - getCategorySortOrder(b.categories?.code ?? '')
+  }
 
-        {/* Sezione categorie per visualizzazione attività */}
-        <div className="mb-8">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Categorie</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
-            {categories.map((category) => (
+  const dedupeSessionsForDisplay = (items: Session[]) => {
+    const byKey = new Map<string, Session>()
+    for (const session of items) {
+      const key = sessionSlotKey(session, sessionTimes[session.id]?.start_time)
+      const existing = byKey.get(key)
+      if (!existing || session.created_at > existing.created_at) {
+        byKey.set(key, session)
+      }
+    }
+    return Array.from(byKey.values())
+  }
+
+  const groupByWeekAndWeekday = (items: Session[]) => {
+    const byWeek: Record<string, Record<string, Session[]>> = {}
+    items.forEach((session) => {
+      const weekKey = getMonday(session.session_date)
+      if (!byWeek[weekKey]) byWeek[weekKey] = {}
+      const dateKey = session.session_date
+      if (!byWeek[weekKey][dateKey]) byWeek[weekKey][dateKey] = []
+      byWeek[weekKey][dateKey].push(session)
+    })
+    const sortedWeeks = Object.keys(byWeek).sort((a, b) => a.localeCompare(b))
+    return sortedWeeks.map((weekMonday) => {
+      const weekStart = new Date(weekMonday + 'T12:00:00')
+      const days: { date: string; label?: string; items: Session[] }[] = []
+      for (let i = 0; i < 5; i++) {
+        const d = new Date(weekStart)
+        d.setDate(weekStart.getDate() + i)
+        const dateStr = d.toISOString().slice(0, 10)
+        const daySessions = (byWeek[weekMonday][dateStr] || []).sort(compareSessionsByTimeAndCategory)
+        days.push({ date: dateStr, items: daySessions })
+      }
+      const satStr = new Date(weekStart)
+      satStr.setDate(weekStart.getDate() + 5)
+      const sunStr = new Date(weekStart)
+      sunStr.setDate(weekStart.getDate() + 6)
+      const weekendSessions = [
+        ...(byWeek[weekMonday][satStr.toISOString().slice(0, 10)] || []),
+        ...(byWeek[weekMonday][sunStr.toISOString().slice(0, 10)] || [])
+      ].sort((a, b) => {
+        const dateCmp = new Date(a.session_date).getTime() - new Date(b.session_date).getTime()
+        return dateCmp !== 0 ? dateCmp : compareSessionsByTimeAndCategory(a, b)
+      })
+      if (weekendSessions.length > 0) {
+        days.push({ date: weekMonday, label: 'Sab/Dom', items: weekendSessions })
+      }
+      return { weekMonday, days }
+    })
+  }
+
+  type WeekGrid = ReturnType<typeof groupByWeekAndWeekday>[number]
+
+  const buildEmptyWeek = (weekMondayStr: string): WeekGrid => {
+    const weekStart = new Date(weekMondayStr + 'T12:00:00')
+    const days: { date: string; label?: string; items: Session[] }[] = []
+    for (let i = 0; i < 5; i++) {
+      const d = new Date(weekStart)
+      d.setDate(weekStart.getDate() + i)
+      days.push({ date: d.toISOString().slice(0, 10), items: [] })
+    }
+    return { weekMonday: weekMondayStr, days }
+  }
+
+  const buildConsecutiveWeeks = (startMondayStr: string, count: number, sessionWeeks: WeekGrid[]) => {
+    const weekMap = new Map(sessionWeeks.map((w) => [w.weekMonday, w]))
+    const weeks: WeekGrid[] = []
+    const monday = new Date(startMondayStr + 'T12:00:00')
+    for (let i = 0; i < count; i++) {
+      const key = monday.toISOString().slice(0, 10)
+      weeks.push(weekMap.get(key) ?? buildEmptyWeek(key))
+      monday.setDate(monday.getDate() + 7)
+    }
+    return weeks
+  }
+
+  const brand = getBrandConfig()
+  const { primary, secondary, dark } = brand.colors
+  const embedLight = embedInLayout
+
+  const activityTabs: { id: 'allenamenti' | 'eventi' | 'giocatori'; label: string }[] = [
+    { id: 'allenamenti', label: 'Allenamenti' },
+    { id: 'eventi', label: 'Prossimi Eventi' },
+    { id: 'giocatori', label: `Giocatori (${playersCountByFilter})` },
+  ]
+
+  const renderActivitiesTabs = () => (
+    <div
+      className={`flex flex-wrap gap-1 ${embedLight ? 'px-4 pt-2 pb-0 border-b shrink-0' : 'border-b'}`}
+      style={embedLight ? { borderColor: GOLEE.border } : { borderColor: `${secondary}30` }}
+    >
+      {activityTabs.map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          onClick={() => setActivitiesTab(tab.id)}
+          className={`px-4 py-2 font-semibold transition-colors border-b-2 -mb-px focus:outline-none ${
+            embedLight
+              ? activitiesTab === tab.id
+                ? 'border-[#00C48C] text-sm'
+                : 'border-transparent hover:border-[#00C48C]/40 text-sm'
+              : activitiesTab === tab.id
+                ? 'w-[11rem] py-3 px-4 text-white border-b-2 text-base shrink-0 text-center'
+                : 'w-[11rem] py-3 px-4 text-sm shrink-0 text-center'
+          }`}
+          style={
+            embedLight
+              ? { color: activitiesTab === tab.id ? GOLEE.text : GOLEE.textMuted }
+              : activitiesTab === tab.id
+                ? { backgroundColor: primary, borderBottomColor: secondary }
+                : { color: secondary }
+          }
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  )
+
+  const renderCategoryFilterRow = () => (
+    <div
+      className={`flex w-full flex-wrap gap-1.5 ${embedLight ? 'px-4 py-2 border-b' : 'border-t border-b'}`}
+      style={embedLight ? { borderColor: GOLEE.border } : { borderColor: '#ffffff', backgroundColor: `${primary}66` }}
+    >
+      <button
+        type="button"
+        onClick={() => setSelectedCategoryFilters([])}
+        className={
+          embedLight
+            ? `flex-1 min-w-[4.5rem] rounded-lg py-1.5 text-xs font-medium border transition-colors ${!hasCategoryFilter ? 'bg-slate-800 text-white shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`
+            : `flex-1 min-w-0 py-3 text-sm font-medium transition-all border-r border-white/20 ${categories.length === 0 ? 'border-r-0' : ''}`
+        }
+        style={
+          !embedLight
+            ? !hasCategoryFilter
+              ? { backgroundColor: '#ffffff', color: primary }
+              : { backgroundColor: `${primary}99`, color: secondary }
+            : undefined
+        }
+      >
+        Tutte
+      </button>
+      {categories.map((cat) => {
+        const isSelected = selectedCategoryFilters.includes(cat.id)
+        return (
+        <button
+          key={cat.id}
+          type="button"
+          onClick={() => toggleCategoryFilter(cat.id)}
+          className={
+            embedLight
+              ? `flex-1 min-w-[4.5rem] rounded-lg py-1.5 text-xs font-medium border transition-colors ${getCategoryTextClass(cat)} ${getCategoryColor(cat)} ${isSelected ? 'ring-2 ring-offset-1 ring-slate-800 shadow-md scale-[1.02]' : 'opacity-90 hover:opacity-100'}`
+              : `flex-1 min-w-0 py-3 text-sm font-medium transition-all border-r border-white/20 last:border-r-0 ${getCategoryTextClass(cat)} ${getCategoryColor(cat)} ${isSelected ? 'opacity-100 ring-2 ring-inset ring-white/70' : 'opacity-80 hover:opacity-100'}`
+          }
+        >
+          {cat.name}
+          {embedLight && categoryAttendancePercentages[cat.id] != null && (
+            <span className="ml-0.5 opacity-90">({categoryAttendancePercentages[cat.id]}%)</span>
+          )}
+        </button>
+        )
+      })}
+    </div>
+  )
+
+  const content = (
+    <>
+    <div
+      className={`w-full min-w-0 flex flex-col ${embedLight ? 'p-4 gap-3 flex-1 min-h-0' : 'p-6'}`}
+      style={embedLight ? { backgroundColor: GOLEE.pageBg } : undefined}
+    >
+        {/* Statistiche */}
+        <div className={`flex flex-wrap ${embedLight ? 'gap-2 shrink-0' : 'gap-4 mb-6'}`}>
+          {(embedLight
+            ? [
+                { icon: BarChart2, label: 'Sessioni totali', value: stats.totalSessions, sub: stats.averageAttendance != null ? `(${stats.averageAttendance}%)` : null, iconBg: GOLEE.accentSoft, iconColor: GOLEE.accent },
+                { icon: Trophy, label: 'Totale partite', value: stats.activeSessions, sub: null, iconBg: GOLEE.infoSoft, iconColor: GOLEE.info },
+                { icon: CheckCircle, label: 'Totali tornei', value: stats.completedSessions, sub: null, iconBg: GOLEE.warningSoft, iconColor: GOLEE.warning },
+                { icon: Layers, label: 'Categorie', value: stats.categoriesCount, sub: null, iconBg: GOLEE.successSoft, iconColor: GOLEE.success },
+              ]
+            : null
+          )?.map((item) => {
+            const Icon = item.icon
+            return (
               <div
-                key={category.id}
-                onClick={() => handleCategoryClick(category.id)}
-                className={`card p-4 text-center cursor-pointer transition-all duration-200 hover:scale-105 hover:shadow-lg ${getCategoryColor(category)} text-white`}
+                key={item.label}
+                className="flex-1 min-w-[120px] rounded-xl p-2.5 border shadow-sm"
+                style={{ backgroundColor: GOLEE.surface, borderColor: GOLEE.border }}
               >
-                <div className="font-semibold text-white text-lg">
-                  {category.name}
-                  {categoryAttendancePercentages[category.id] && (
-                    <span className="text-sm font-normal opacity-90"> ({categoryAttendancePercentages[category.id]}%)</span>
-                  )}
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: item.iconBg }}>
+                    <Icon className="w-4 h-4" style={{ color: item.iconColor }} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide truncate" style={{ color: GOLEE.textMuted }}>{item.label}</p>
+                    <p className="text-lg font-bold leading-tight" style={{ color: GOLEE.text }}>
+                      {item.value}
+                      {item.sub && <span className="text-xs font-normal ml-1" style={{ color: GOLEE.textMuted }}>{item.sub}</span>}
+                    </p>
+                  </div>
                 </div>
               </div>
-            ))}
+            )
+          }) ?? (
+            <>
+          <div className="flex-1 min-w-[160px] p-4 rounded-2xl shadow-lg transition-all duration-200 hover:scale-[1.02] text-center backdrop-blur border" style={{ background: `linear-gradient(145deg, ${primary} 0%, ${dark} 100%)`, borderColor: `${secondary}50` }}>
+            <div className="text-2xl font-bold" style={{ color: secondary }}>{stats.totalSessions}</div>
+            <div className="text-sm text-white/90 mt-0.5">Sessioni totali</div>
+            {stats.averageAttendance != null && <div className="text-xs text-blue-200/70 mt-0.5">({stats.averageAttendance}%)</div>}
           </div>
+          <div className="flex-1 min-w-[160px] p-4 rounded-2xl shadow-lg transition-all duration-200 hover:scale-[1.02] text-center backdrop-blur border" style={{ background: `linear-gradient(145deg, ${primary} 0%, ${dark} 100%)`, borderColor: `${secondary}50` }}>
+            <div className="text-2xl font-bold" style={{ color: secondary }}>{stats.activeSessions}</div>
+            <div className="text-sm text-white/90">Totale partite</div>
+          </div>
+          <div className="flex-1 min-w-[160px] p-4 rounded-2xl shadow-lg transition-all duration-200 hover:scale-[1.02] text-center backdrop-blur border" style={{ background: `linear-gradient(145deg, ${primary} 0%, ${dark} 100%)`, borderColor: `${secondary}50` }}>
+            <div className="text-2xl font-bold" style={{ color: secondary }}>{stats.completedSessions}</div>
+            <div className="text-sm text-white/90">Totali tornei</div>
+          </div>
+          <div className="flex-1 min-w-[160px] p-4 rounded-2xl shadow-lg transition-all duration-200 hover:scale-[1.02] text-center backdrop-blur border" style={{ background: `linear-gradient(145deg, ${primary} 0%, ${dark} 100%)`, borderColor: `${secondary}50` }}>
+            <div className="text-2xl font-bold" style={{ color: secondary }}>{stats.categoriesCount}</div>
+            <div className="text-sm text-white/90">Categorie</div>
+          </div>
+            </>
+          )}
         </div>
 
-        {/* Sezione attività - Layout a 3 colonne */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
-          {/* Colonna 1: Sessioni Questa Settimana */}
-          <div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Allenamenti Settimanali</h2>
-          
+        {/* Navigazione categorie – click apre l'area della categoria */}
+        <div
+          className={`overflow-hidden shrink-0 ${embedLight ? 'rounded-xl border shadow-sm flex flex-wrap gap-1.5 p-2' : 'rounded-2xl mb-6 shadow-lg backdrop-blur-xl border'}`}
+          style={embedLight ? { backgroundColor: GOLEE.surface, borderColor: GOLEE.border } : { backgroundColor: `${primary}99`, borderColor: `${secondary}40` }}
+        >
+          {embedLight ? (
+            categories.map((category) => (
+              <button
+                key={category.id}
+                type="button"
+                onClick={() => handleCategoryClick(category.id)}
+                className={`flex-1 min-w-[4.5rem] rounded-lg py-1.5 px-2 text-xs font-medium transition-all border ${getCategoryColor(category)} ${getCategoryTextClass(category)} hover:opacity-90 flex items-center justify-center`}
+              >
+                {category.name}
+                {categoryAttendancePercentages[category.id] != null && (
+                  <span className="ml-0.5 opacity-90">({categoryAttendancePercentages[category.id]}%)</span>
+                )}
+              </button>
+            ))
+          ) : (
+          <div className="flex w-full">
+            {categories.map((category) => (
+              <button
+                key={category.id}
+                type="button"
+                onClick={() => handleCategoryClick(category.id)}
+                className={`flex-1 min-w-0 py-3 px-2 text-sm font-medium transition-all duration-200 border-r border-white/10 last:border-r-0 first:rounded-l-2xl last:rounded-r-2xl ${getCategoryColor(category)} ${getCategoryTextClass(category)} hover:opacity-90 flex items-center justify-center`}
+              >
+                {category.name}
+                {categoryAttendancePercentages[category.id] != null && (
+                  <span className="ml-1 opacity-90">({categoryAttendancePercentages[category.id]}%)</span>
+                )}
+              </button>
+            ))}
+          </div>
+          )}
+        </div>
+
+        {/* Pulsanti azioni – solo se non in layout */}
+        {!embedInLayout && (
+          <div className="flex flex-wrap gap-3 mb-6">
+            <button
+              onClick={handleNewSessionClick}
+              className="px-4 py-2 rounded-lg border text-white font-medium transition-all flex items-center gap-2 hover:opacity-90"
+              style={{ backgroundColor: secondary, borderColor: `${secondary}80` }}
+            >
+              <Rocket className="w-4 h-4" />
+              Nuova Sessione
+            </button>
+            <button
+              onClick={() => navigate('/events')}
+              className="px-4 py-2 rounded-lg border font-medium transition-all flex items-center gap-2 hover:opacity-90"
+              style={{ backgroundColor: `${primary}99`, borderColor: `${secondary}50`, color: secondary }}
+            >
+              <Calendar className="w-4 h-4" />
+              Gestione Eventi
+            </button>
+          </div>
+        )}
+
+        {/* Contenuto: tab Allenamenti / Prossimi Eventi / Giocatori */}
+        <div
+          className={`overflow-hidden flex flex-col min-h-0 ${embedLight ? 'flex-1 rounded-2xl border shadow-sm' : 'shadow-lg backdrop-blur-xl border'}`}
+          style={embedLight ? { backgroundColor: GOLEE.surface, borderColor: GOLEE.border } : { backgroundColor: `${primary}ee`, borderColor: `${secondary}40` }}
+        >
+        <div className={embedLight ? 'flex flex-col flex-1 min-h-0' : undefined}>
+          {renderActivitiesTabs()}
+          {renderCategoryFilterRow()}
           {loading ? (
-              <div className="text-center py-8">
-              <div className="text-2xl mb-2">⏳</div>
-                <p className="text-gray-500 text-sm">Caricamento...</p>
+            <div className="text-center py-8">
+              <div className="text-2xl mb-2" style={{ color: embedLight ? GOLEE.textMuted : secondary }}>⏳</div>
+              <p className="text-sm" style={{ color: embedLight ? GOLEE.textMuted : secondary }}>Caricamento...</p>
             </div>
-          ) : sessions.length === 0 ? null : (
-              <div className="space-y-6">
-                {groupByDate(sessions).map((dateGroup) => (
-                  <div key={dateGroup.date}>
-                    <div className="mb-3">
-                      <h4 className="text-sm font-medium text-gray-700 bg-gradient-to-r from-blue-50 to-indigo-50 px-3 py-2 rounded-lg border border-blue-100 shadow-sm">
-                        {formatDateHeader(dateGroup.date)}
-                      </h4>
-                    </div>
-                    <div className="space-y-3">
-                      {dateGroup.items.map((session) => (
-                    <div key={session.id} className="bg-white/90 backdrop-blur-sm border border-white/60 rounded-2xl p-4 cursor-pointer hover:shadow-md hover:scale-[1.02] transition-all duration-200" onClick={() => handleOpenAttendancePopup(session.id)}>
-                      <div className="flex items-start">
-                        <div className={`text-lg font-bold rounded-full w-10 h-10 flex items-center justify-center flex-shrink-0 mr-6 ${session.categories?.code ? getCategoryCircleColor(session.categories) : 'bg-gray-200 text-gray-800'}`}>
-                          {session.categories?.code ? getCategoryAbbreviation(session.categories.code) : '?'}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs text-gray-600 mt-1">
-                            {formatDate(session.session_date)}
-                          </p>
-                          <p className="text-xs text-gray-600 mt-1">
-                            {sessionTimes[session.id] ? `${sessionTimes[session.id].start_time.substring(0, 5)} - ${sessionTimes[session.id].end_time.substring(0, 5)} • ` : ''}{session.location === 'Trasferta' ? session.away_place : session.location}
-                          </p>
-                        </div>
-                        {/* Status indicator */}
-                        <div className="flex-shrink-0 ml-2 flex items-center gap-1">
-                          {(() => {
-                            const status = sessionAttendanceStatus[session.id]
-                            
-                            if (status?.isComplete) {
-                              return (
-                                <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
-                                  <span className="text-white text-xs font-bold">
-                                    {status.totalPlayers}
-                                  </span>
-                                </div>
-                              )
-                            } else if (status?.hasUnassigned) {
-                              return (
-                                <div className="w-6 h-6 bg-orange-500 rounded-full flex items-center justify-center">
-                                  <span className="text-white text-xs font-bold">{status.unassignedCount}</span>
-                                </div>
-                              )
-                            }
-                            return null
-                          })()}
-                        </div>
-                      </div>
-                                    </div>
-                      ))}
-                    </div>
+          ) : activitiesTab === 'allenamenti' ? (
+            /* Tab Allenamenti */
+            <div className={embedLight ? 'flex flex-col flex-1 min-h-0' : undefined}>
+              <div className={embedLight ? 'flex-1 min-h-0 overflow-auto p-3' : 'p-4'}>
+            {(() => {
+              const filteredSessions = dedupeSessionsForDisplay(
+                hasCategoryFilter ? sessions.filter((s) => sessionMatchesCategoryFilter(s.category_id)) : sessions
+              )
+              if (filteredSessions.length === 0) {
+                return (
+                  <div className="text-center py-8">
+                    <div className="text-2xl mb-2" style={{ color: embedLight ? GOLEE.textMuted : secondary }}>📊</div>
+                    <p className="text-sm" style={{ color: embedLight ? GOLEE.textMuted : secondary }}>Nessuna sessione</p>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-        {/* Colonna 2: Partite & Tornei (15 giorni) */}
-          <div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Partite & Tornei al {new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' })}</h2>
-            
-            {loading ? (
-              <div className="text-center py-8">
-                <div className="text-2xl mb-2">⏳</div>
-                <p className="text-gray-500 text-sm">Caricamento...</p>
-              </div>
-            ) : getFilteredEvents('partite_tornei', 15).length === 0 ? null : (
-              <div className="space-y-6">
-                {groupByDate(getFilteredEvents('partite_tornei', 15)).map((dateGroup) => (
-                  <div key={dateGroup.date}>
-                    <div className="mb-3">
-                      <h4 className="text-sm font-medium text-gray-700 bg-gradient-to-r from-blue-50 to-indigo-50 px-3 py-2 rounded-lg border border-blue-100 shadow-sm">
-                        {formatDateHeader(dateGroup.date)}
-                      </h4>
-                    </div>
-                    <div className="space-y-3">
-                      {dateGroup.items.map((event) => (
-                  <div key={event.id} className="bg-white/90 backdrop-blur-sm border border-white/60 rounded-2xl p-4 cursor-pointer hover:shadow-md hover:scale-[1.02] transition-all duration-200" onClick={() => handleEventClick(event)}>
-                    <div className="flex items-start">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0 mr-6 ${event.categories?.code ? getCategoryCircleColor(event.categories) : 'bg-gray-200 text-gray-800'}`}>
-                        {event.categories?.code ? getCategoryAbbreviation(event.categories.code) : 
-                         event.event_type === 'consiglio' ? 'CON' :
-                         event.event_type === 'incontro_genitori' ? 'GEN' :
-                         event.event_type === 'incontro_staff' ? 'STAFF' : '?'}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-gray-900 text-sm leading-tight">
-                          {event.event_type === 'consiglio' ? `Consiglio del ${formatDate(event.event_date)}` : event.title}
-                        </h3>
-                        <p className="text-xs text-gray-600 mt-1">
-                          {formatDate(event.event_date)}
-                          {event.start_time && event.end_time ? ` • ${event.start_time.substring(0, 5)} - ${event.end_time.substring(0, 5)}` : 
-                           event.event_time ? ` • ${event.event_time.substring(0, 5)}` : ''}
-                          {event.location && ` • ${event.location}`} {event.is_home ? '(Casa)' : '(Trasferta)'}
-                        </p>
-                      </div>
-                    </div>
-
+                )
+              }
+              const sorted = [...filteredSessions].sort((a, b) => new Date(a.session_date).getTime() - new Date(b.session_date).getTime())
+              const sessionWeeks = groupByWeekAndWeekday(sorted)
+              const todayStr = new Date().toISOString().slice(0, 10)
+              const currentMondayStr = getMonday(todayStr)
+              const currentMonday = new Date(currentMondayStr + 'T12:00:00')
+              const minMonday = new Date(currentMonday)
+              minMonday.setDate(minMonday.getDate() - 7)
+              const maxMonday = new Date(currentMonday)
+              maxMonday.setDate(maxMonday.getDate() + 14)
+              const minStr = minMonday.toISOString().slice(0, 10)
+              const maxStr = maxMonday.toISOString().slice(0, 10)
+              const visibleWeeks = embedLight
+                ? buildConsecutiveWeeks(currentMondayStr, 2, sessionWeeks)
+                : sessionWeeks.filter((w) => w.weekMonday >= minStr && w.weekMonday <= maxStr)
+              const dayCardMinH = embedLight ? 'min-h-[11rem]' : ''
+              const dayBodyMinH = embedLight ? 'min-h-[9rem]' : ''
+              return (
+                <div
+                  className={embedLight ? 'space-y-4 rounded-xl p-3' : 'space-y-8'}
+                  style={embedLight ? { backgroundColor: GOLEE.gridBg } : undefined}
+                >
+                  {visibleWeeks.map((week) => (
+                  <div key={week.weekMonday} className={`grid min-w-0 ${embedLight ? 'gap-3' : 'gap-3'} ${week.days.length === 6 ? 'grid-cols-6' : 'grid-cols-5'}`}>
+                    {week.days.map((daySlot) => {
+                      const todayStr = new Date().toISOString().slice(0, 10)
+                      const isToday = daySlot.date === todayStr
+                      const hasSessions = daySlot.items.length > 0
+                      return (
+                      <div
+                        key={daySlot.date + (daySlot.label || '')}
+                        className={`min-w-0 flex flex-col rounded-xl overflow-hidden transition-shadow ${dayCardMinH} ${
+                          embedLight
+                            ? `border-2 shadow-md hover:shadow-lg ${isToday ? 'ring-2 ring-[#00C48C] ring-offset-2' : ''} ${hasSessions ? 'border-slate-300' : 'border-slate-200 border-dashed'}`
+                            : 'border'
+                        }`}
+                        style={
+                          embedLight
+                            ? { backgroundColor: '#FFFFFF', borderColor: hasSessions ? '#CBD5E1' : '#E2E8F0' }
+                            : { backgroundColor: `${primary}66`, borderColor: `${secondary}40` }
+                        }
+                      >
+                        <div
+                          className={`px-2 border-b text-center font-semibold shrink-0 ${embedLight ? 'py-2.5 text-sm tracking-wide' : 'py-2 rounded-t-xl text-sm'} ${embedLight && isToday ? '' : embedLight ? '' : isToday ? '' : 'text-white'}`}
+                          style={
+                            embedLight
+                              ? isToday
+                                ? { backgroundColor: GOLEE.accent, color: '#FFFFFF', borderColor: GOLEE.accent }
+                                : hasSessions
+                                  ? { backgroundColor: '#E2E8F0', color: GOLEE.text, borderColor: '#CBD5E1' }
+                                  : { backgroundColor: '#F1F5F9', color: GOLEE.textMuted, borderColor: '#E2E8F0' }
+                              : isToday
+                                ? { backgroundColor: '#B8E0F0', color: '#0f2d52', borderColor: 'rgba(15,45,82,0.2)' }
+                                : { backgroundColor: `${primary}cc`, borderColor: `${secondary}30` }
+                          }
+                        >
+                          {daySlot.label ?? new Date(daySlot.date).toLocaleDateString('it-IT', { weekday: 'short', day: '2-digit', month: '2-digit' })}
+                        </div>
+                        <div
+                          className={`p-2.5 space-y-2 flex-1 min-h-0 overflow-auto ${dayBodyMinH} ${embedLight && !hasSessions ? 'bg-slate-50' : ''}`}
+                          style={embedLight && hasSessions ? { backgroundColor: '#FAFBFC' } : undefined}
+                        >
+                          {daySlot.items.length === 0 ? (
+                            <p className={`text-sm text-center flex items-center justify-center h-full ${embedLight ? 'min-h-[7rem] text-slate-400' : ''}`} style={!embedLight ? { color: `${secondary}99` } : undefined}>—</p>
+                          ) : (
+                            daySlot.items.map((session) => (
+                              <div key={session.id} className={`${getSessionBackgroundColor(session.id, embedLight)} rounded-lg overflow-hidden flex cursor-pointer hover:opacity-90 transition-all duration-200 border ${embedLight ? 'min-h-[3.25rem] shadow-sm border-slate-200' : ''}`} style={embedLight ? undefined : { borderColor: `${secondary}40` }} onClick={() => handleOpenAttendancePopup(session.id)}>
+                                <div className={`${embedLight ? 'w-11' : 'w-10'} min-h-[2.75rem] self-stretch flex items-center justify-center flex-shrink-0 text-sm font-bold text-white rounded-l-lg ${session.categories?.code ? getCategoryCircleColor(session.categories) : ''}`} style={!session.categories?.code ? { backgroundColor: dark } : undefined}>
+                                  {session.categories?.code ? getCategoryAbbreviation(session.categories.code) : '?'}
+                                </div>
+                                <div className="flex items-center gap-2 flex-1 min-w-0 p-2">
+                                  <div className="min-w-0 flex-1">
+                                    <p className={`text-sm truncate ${embedLight ? '' : 'text-white/90'}`} style={embedLight ? { color: GOLEE.text } : undefined} title={session.location === 'Trasferta' ? session.away_place : session.location}>
+                                      {(() => {
+                                        const times = sessionTimes[session.id]
+                                        const start = times?.start_time ?? session.start_time
+                                        const end = times?.end_time ?? session.end_time
+                                        const timeStr = (start && end) ? `${String(start).substring(0, 5)}-${String(end).substring(0, 5)}` : (start ? String(start).substring(0, 5) : '')
+                                        return timeStr ? `${timeStr} ` : ''
+                                      })()}{session.location === 'Trasferta' ? session.away_place : session.location}
+                                    </p>
                                   </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-        {/* Colonna 3: Altri Eventi (30 giorni) */}
-        <div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Altri Eventi al {new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' })}</h2>
-            
-            {loading ? (
-              <div className="text-center py-8">
-                <div className="text-2xl mb-2">⏳</div>
-                <p className="text-gray-500 text-sm">Caricamento...</p>
-              </div>
-            ) : getFilteredEvents('altri', 30).length === 0 ? null : (
-              <div className="space-y-6">
-                {groupByDate(getFilteredEvents('altri', 30)).map((dateGroup) => (
-                  <div key={dateGroup.date}>
-                    <div className="mb-3">
-                      <h4 className="text-sm font-medium text-gray-700 bg-gradient-to-r from-blue-50 to-indigo-50 px-3 py-2 rounded-lg border border-blue-100 shadow-sm">
-                        {formatDateHeader(dateGroup.date)}
-                      </h4>
-                    </div>
-                    <div className="space-y-3">
-                      {dateGroup.items.map((event) => (
-                  <div key={event.id} className="bg-white/90 backdrop-blur-sm border border-white/60 rounded-2xl p-4 cursor-pointer hover:shadow-md hover:scale-[1.02] transition-all duration-200" onClick={() => handleEventClick(event)}>
-                    <div className="flex items-start">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0 mr-6 ${event.categories?.code ? getCategoryCircleColor(event.categories) : 'bg-gray-200 text-gray-800'}`}>
-                        {event.categories?.code ? getCategoryAbbreviation(event.categories.code) : 
-                         event.event_type === 'consiglio' ? 'CON' :
-                         event.event_type === 'incontro_genitori' ? 'GEN' :
-                         event.event_type === 'incontro_staff' ? 'STAFF' : '?'}
+                                </div>
+                                {(() => {
+                                  const today = new Date()
+                                  today.setHours(0, 0, 0, 0)
+                                  const sessionDate = new Date(session.session_date)
+                                  sessionDate.setHours(0, 0, 0, 0)
+                                  if (sessionDate > today) return null
+                                  const status = sessionAttendanceStatus[session.id]
+                                  const total = status?.totalPlayers ?? 0
+                                  const present = status?.presentCount ?? 0
+                                  const unassigned = status?.unassignedCount ?? 0
+                                  if (total === 0) return null
+                                  const isPast = sessionDate < today
+                                  const numColor = unassigned === 0 ? 'bg-green-600' : isPast ? 'bg-red-600' : 'bg-amber-500'
+                                  const pct = Math.round((present / total) * 100)
+                                  const pctTextColor = pct >= 85 ? 'text-green-500' : pct > 65 ? 'text-amber-500' : 'text-red-500'
+                                  return (
+                                    <div className="flex self-stretch flex-shrink-0 rounded-r-lg overflow-hidden" title={unassigned === 0 ? 'Completato' : isPast ? 'Da completare' : 'Da compilare'}>
+                                      {!isPast && (
+                                        <div className={`w-9 self-stretch flex items-center justify-center text-white text-sm font-bold ${numColor}`}>
+                                          {unassigned}
+                                        </div>
+                                      )}
+                                      <div className={`w-9 self-stretch flex items-center justify-center text-sm font-bold rounded-r-lg bg-transparent ${pctTextColor}`}>
+                                        {pct}%
+                                      </div>
+                                    </div>
+                                  )
+                                })()}
+                              </div>
+                            ))
+                          )}
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-gray-900 text-sm leading-tight">
-                          {event.event_type === 'consiglio' ? `Consiglio del ${formatDate(event.event_date)}` : event.title}
-                        </h3>
-                        <p className="text-xs text-gray-600 mt-1">
-                          {formatDate(event.event_date)}
-                          {event.start_time && event.end_time ? ` • ${event.start_time.substring(0, 5)} - ${event.end_time.substring(0, 5)}` : 
-                           event.event_time ? ` • ${event.event_time.substring(0, 5)}` : ''}
-                          {event.location && ` • ${event.location}`} {event.is_home ? '(Casa)' : '(Trasferta)'}
-                        </p>
+                    );})}
+                  </div>
+                  ))}
+                </div>
+              );
+            })()}
+              </div>
+            </div>
+          ) : activitiesTab === 'eventi' ? (
+            /* Tab Prossimi Eventi: tabella partite, tornei e feste del rugby */
+            <div className={embedLight ? 'flex-1 min-h-0 overflow-auto' : undefined}>
+            {(() => {
+              const onlyPartiteTorneiFeste = events.filter(
+                (e) => e.event_type === 'partita' || e.event_type === 'torneo' || e.event_type === 'festa' || e.event_type === 'MATCH' || e.event_type === 'TOURNAMENT'
+              )
+              const allEvents = [...onlyPartiteTorneiFeste].sort((a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime())
+              const displayedEvents = hasCategoryFilter
+                ? allEvents.filter((e) => e.category_id && sessionMatchesCategoryFilter(e.category_id))
+                : allEvents
+              const todayStr = new Date().toISOString().slice(0, 10)
+              const seasonStartStr = getSeasonStartDate()
+              const futureEvents = displayedEvents.filter((e) => e.event_date >= todayStr)
+              const pastEvents = displayedEvents
+                .filter((e) => e.event_date < todayStr && e.event_date >= seasonStartStr)
+                .sort((a, b) => b.event_date.localeCompare(a.event_date))
+              const getCategoryName = (e: Event) => e.categories?.name || e.categories?.code || ''
+              /** Solo il titolo di evento senza categoria: "Campionato", "Amichevole", "Partita", "Festa del rugby", "Torneo" (+ eventuale titolo). */
+              const getTipoEventoSolo = (e: Event) => {
+                if (e.event_type === 'partita' || e.event_type === 'MATCH') {
+                  return (e as any).is_championship ? 'Campionato' : (e as any).is_friendly ? 'Amichevole' : 'Partita'
+                }
+                if (e.event_type === 'torneo' || e.event_type === 'TOURNAMENT') return (e as any).title ? `Torneo – ${(e as any).title}` : 'Torneo'
+                if (e.event_type === 'festa') return 'Festa del rugby'
+                return e.event_type || '—'
+              }
+              const getGiorno = (dateStr: string) => {
+                const d = new Date(dateStr + 'T12:00:00')
+                const day = d.toLocaleDateString('it-IT', { weekday: 'long' })
+                return day.charAt(0).toUpperCase() + day.slice(1)
+              }
+              const getDataFormatted = (dateStr: string) => {
+                const [y, m, d] = dateStr.split('-')
+                return `${d}/${m}/${y}`
+              }
+              const getOrarioInizio = (e: Event) => (e.start_time || e.event_time) ? (e.start_time || e.event_time)!.substring(0, 5) : '—'
+              /** Indice di gruppo per data: stessa data = stesso indice; ogni nuova data incrementa. Usato per sfondo alternato per giorno. */
+              const getDayGroupIndices = (events: { event_date: string }[]) => {
+                const indices: number[] = []
+                let group = -1
+                let last = ''
+                for (const e of events) {
+                  if (e.event_date !== last) {
+                    last = e.event_date
+                    group += 1
+                  }
+                  indices.push(group)
+                }
+                return indices
+              }
+              const futureDayGroups = getDayGroupIndices(futureEvents)
+              const pastDayGroups = getDayGroupIndices(pastEvents)
+              const rowBgByDay = (dayIndex: number) =>
+                embedLight
+                  ? dayIndex % 2 === 0 ? GOLEE.surface : GOLEE.surfaceMuted
+                  : dayIndex % 2 === 0 ? `${primary}99` : `${secondary}88`
+              const tableHeadBg = embedLight ? GOLEE.surfaceMuted : `${primary}cc`
+              const tableHeadColor = embedLight ? GOLEE.textMuted : secondary
+              const tableBorderColor = embedLight ? GOLEE.border : `${secondary}30`
+              const tableCellStyle = embedLight ? { color: GOLEE.text } : undefined
+              const hasFuture = futureEvents.length > 0
+              const hasPast = pastEvents.length > 0
+              return !hasFuture && !hasPast ? (
+                <div className="text-center py-8">
+                  <div className="text-2xl mb-2" style={{ color: embedLight ? GOLEE.textMuted : secondary }}>📅</div>
+                  <p className="text-sm" style={{ color: embedLight ? GOLEE.textMuted : secondary }}>Nessun evento in programma</p>
+                </div>
+              ) : (
+                <>
+                <div className="p-4">
+                  <div className="overflow-x-auto rounded-xl border" style={embedLight ? { borderColor: GOLEE.border } : undefined}>
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b" style={{ backgroundColor: tableHeadBg, borderColor: tableBorderColor }}>
+                        <th className="px-2 py-3 font-semibold text-lg w-14 text-center" style={{ color: tableHeadColor }}>Cat.</th>
+                        <th className="px-4 py-3 font-semibold text-lg" style={{ color: tableHeadColor }}>Tipo Evento</th>
+                        <th className="px-4 py-3 font-semibold text-lg" style={{ color: tableHeadColor }}>Giorno</th>
+                        <th className="px-4 py-3 font-semibold text-lg" style={{ color: tableHeadColor }}>Data</th>
+                        <th className="px-4 py-3 font-semibold text-lg" style={{ color: tableHeadColor }}>Orario</th>
+                        <th className="px-4 py-3 font-semibold text-lg" style={{ color: tableHeadColor }}>Avversario</th>
+                        <th className="px-4 py-3 font-semibold text-lg" style={{ color: tableHeadColor }}>Luogo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {futureEvents.length === 0 && (
+                        <tr>
+                          <td colSpan={7} className="px-4 py-6 text-center text-lg" style={{ color: tableHeadColor }}>
+                            Nessun evento in programma
+                          </td>
+                        </tr>
+                      )}
+                      {futureEvents.map((event, index) => {
+                        const isFirstForDate = index === 0 || futureEvents[index - 1].event_date !== event.event_date
+                        const dayGroup = futureDayGroups[index]
+                        return (
+                        <tr
+                          key={event.id}
+                          className="border-b transition-colors cursor-pointer hover:opacity-90"
+                          style={{ backgroundColor: rowBgByDay(dayGroup), borderColor: tableBorderColor }}
+                          onClick={() => handleEventClick(event)}
+                        >
+                          <td className="px-2 py-3 align-middle text-center">
+                            {(() => {
+                              const badge = getEventCategoryBadge(event)
+                              return (
+                                <div
+                                  className={`inline-flex items-center justify-center min-w-[2.125rem] w-[2.125rem] min-h-[2rem] py-1 text-sm font-bold text-white rounded-lg ${badge.colorClass}`}
+                                  title={getCategoryName(event) || (event.event_type === 'consiglio' ? 'Consiglio' : undefined)}
+                                >
+                                  {badge.abbr}
+                                </div>
+                              )
+                            })()}
+                          </td>
+                          <td className={`px-4 py-3 text-lg ${embedLight ? '' : 'text-white/90'}`} style={tableCellStyle}>
+                            {getTipoEventoSolo(event)}
+                          </td>
+                          <td className={`px-4 py-3 text-lg ${embedLight ? '' : 'text-white/90'}`} style={tableCellStyle}>{isFirstForDate ? getGiorno(event.event_date) : ''}</td>
+                          <td className={`px-4 py-3 text-lg ${embedLight ? '' : 'text-white/90'}`} style={tableCellStyle}>{getDataFormatted(event.event_date)}</td>
+                          <td className={`px-4 py-3 text-lg ${embedLight ? '' : 'text-white/90'}`} style={tableCellStyle}>{getOrarioInizio(event)}</td>
+                          <td className={`px-4 py-3 text-lg ${embedLight ? '' : 'text-white'}`} style={tableCellStyle}>{event.opponent || '—'}</td>
+                          <td className={`px-4 py-3 text-lg ${embedLight ? '' : 'text-white/90'}`} style={tableCellStyle}>
+                            {event.location === 'Trasferta'
+                              ? (event.away_location?.trim() || 'Trasferta')
+                              : (event.location?.trim() || (event.is_home ? 'Casa' : 'Trasferta'))}
+                          </td>
+                        </tr>
+                      )})}
+                    </tbody>
+                  </table>
+                  </div>
+                </div>
+                {hasPast && (
+                  <div className="mt-8 px-4 pb-4">
+                    <div
+                      className={`overflow-hidden border rounded-xl ${embedLight ? 'shadow-sm' : ''}`}
+                      style={embedLight ? { backgroundColor: GOLEE.surface, borderColor: GOLEE.border } : { backgroundColor: `${primary}99`, borderColor: `${secondary}40` }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setPastEventsAccordionOpen((v) => !v)}
+                        className={`w-full flex items-center justify-between gap-2 px-4 py-3 text-left hover:opacity-90 transition-opacity ${embedLight ? '' : 'text-white'}`}
+                        style={embedLight ? { color: GOLEE.text } : undefined}
+                      >
+                        <span className="text-lg font-semibold">Eventi passati (stagione in corso)</span>
+                        <span className="text-sm font-medium" style={{ color: embedLight ? GOLEE.textMuted : secondary }}>({pastEvents.length})</span>
+                        {pastEventsAccordionOpen ? (
+                          <ChevronDown className="w-5 h-5 flex-shrink-0" style={{ color: embedLight ? GOLEE.textMuted : secondary }} />
+                        ) : (
+                          <ChevronRight className="w-5 h-5 flex-shrink-0" style={{ color: embedLight ? GOLEE.textMuted : secondary }} />
+                        )}
+                      </button>
+                      {pastEventsAccordionOpen && (
+                        <div className="border-t" style={{ borderColor: tableBorderColor }}>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                              <thead>
+                                <tr className="border-b" style={{ backgroundColor: tableHeadBg, borderColor: tableBorderColor }}>
+                                  <th className="px-2 py-3 font-semibold text-lg w-14 text-center" style={{ color: tableHeadColor }}>Cat.</th>
+                                  <th className="px-4 py-3 font-semibold text-lg" style={{ color: tableHeadColor }}>Tipo Evento</th>
+                                  <th className="px-4 py-3 font-semibold text-lg" style={{ color: tableHeadColor }}>Giorno</th>
+                                  <th className="px-4 py-3 font-semibold text-lg" style={{ color: tableHeadColor }}>Data</th>
+                                  <th className="px-4 py-3 font-semibold text-lg" style={{ color: tableHeadColor }}>Orario</th>
+                                  <th className="px-4 py-3 font-semibold text-lg" style={{ color: tableHeadColor }}>Avversario</th>
+                                  <th className="px-4 py-3 font-semibold text-lg" style={{ color: tableHeadColor }}>Luogo</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {pastEvents.map((event, index) => {
+                                  const isFirstForDate = index === 0 || pastEvents[index - 1].event_date !== event.event_date
+                                  const dayGroup = pastDayGroups[index]
+                                  return (
+                                  <tr
+                                    key={event.id}
+                                    className="border-b transition-colors cursor-pointer hover:opacity-90"
+                                    style={{ backgroundColor: rowBgByDay(dayGroup), borderColor: tableBorderColor }}
+                                    onClick={() => handleEventClick(event)}
+                                  >
+                                    <td className="px-2 py-3 align-middle text-center">
+                                      {(() => {
+                                        const badge = getEventCategoryBadge(event)
+                                        return (
+                                          <div
+                                            className={`inline-flex items-center justify-center min-w-[2.125rem] w-[2.125rem] min-h-[2rem] py-1 text-sm font-bold text-white rounded-lg ${badge.colorClass}`}
+                                            title={getCategoryName(event) || (event.event_type === 'consiglio' ? 'Consiglio' : undefined)}
+                                          >
+                                            {badge.abbr}
+                                          </div>
+                                        )
+                                      })()}
+                                    </td>
+                                    <td className={`px-4 py-3 text-lg ${embedLight ? '' : 'text-white/90'}`} style={tableCellStyle}>
+                                      {getTipoEventoSolo(event)}
+                                    </td>
+                                    <td className={`px-4 py-3 text-lg ${embedLight ? '' : 'text-white/90'}`} style={tableCellStyle}>{isFirstForDate ? getGiorno(event.event_date) : ''}</td>
+                                    <td className={`px-4 py-3 text-lg ${embedLight ? '' : 'text-white/90'}`} style={tableCellStyle}>{getDataFormatted(event.event_date)}</td>
+                                    <td className={`px-4 py-3 text-lg ${embedLight ? '' : 'text-white/90'}`} style={tableCellStyle}>{getOrarioInizio(event)}</td>
+                                    <td className={`px-4 py-3 text-lg ${embedLight ? '' : 'text-white/90'}`} style={tableCellStyle}>{event.opponent || '—'}</td>
+                                    <td className={`px-4 py-3 text-lg ${embedLight ? '' : 'text-white/90'}`} style={tableCellStyle}>
+                                      {event.location === 'Trasferta'
+                                        ? (event.away_location?.trim() || 'Trasferta')
+                                        : (event.location?.trim() || (event.is_home ? 'Casa' : 'Trasferta'))}
+                                    </td>
+                                  </tr>
+                                )})}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                </>
+              )
+            })()}
+            </div>
+          ) : (
+            /* Tab Giocatori: tabella con colori brand */
+            <div className={embedLight ? 'flex-1 min-h-0 overflow-auto' : undefined}>
+              <div className={embedLight ? 'p-3' : 'p-4'}>
+                {allPlayersLoading ? (
+                  <div className="text-center py-8">
+                    <div className="text-2xl mb-2" style={{ color: embedLight ? GOLEE.textMuted : secondary }}>⏳</div>
+                    <p className="text-sm" style={{ color: embedLight ? GOLEE.textMuted : secondary }}>Caricamento giocatori...</p>
+                  </div>
+                ) : (() => {
+                  let filtered = hasCategoryFilter
+                    ? allPlayersList.filter((p) => p.categoryItems.some((c) => selectedCategoryFilters.includes(c.id)))
+                    : allPlayersList
+                  const searchTrim = playersTableSearch.trim().toLowerCase()
+                  if (searchTrim) {
+                    filtered = filtered.filter((p) => {
+                      const nameMatch = p.full_name?.toLowerCase().includes(searchTrim)
+                      const yearMatch = p.birthYear != null && String(p.birthYear).includes(searchTrim)
+                      const roleMatch = p.roleLabel?.toLowerCase().includes(searchTrim)
+                      return nameMatch || yearMatch || roleMatch
+                    })
+                  }
+                  const sortCol = playersTableSort?.column
+                  const sortDir = playersTableSort?.direction
+                  if (sortCol && sortDir) {
+                    filtered = [...filtered].sort((a, b) => {
+                      let va: string | number | boolean | null | undefined
+                      let vb: string | number | boolean | null | undefined
+                      switch (sortCol) {
+                        case 'cat':
+                          va = a.categoryItems.map((c) => c.name || c.code || '').join(' ')
+                          vb = b.categoryItems.map((c) => c.name || c.code || '').join(' ')
+                          break
+                        case 'nome':
+                          va = a.full_name ?? ''
+                          vb = b.full_name ?? ''
+                          break
+                        case 'anno':
+                          va = a.birthYear ?? -1
+                          vb = b.birthYear ?? -1
+                          break
+                        case 'ruolo':
+                          va = a.roleLabel ?? ''
+                          vb = b.roleLabel ?? ''
+                          break
+                        case 'infortunato':
+                          va = a.injured ? 1 : 0
+                          vb = b.injured ? 1 : 0
+                          break
+                        case 'squalificato':
+                          va = a.disqualified ? (a.disqualification_end_date ?? '') : ''
+                          vb = b.disqualified ? (b.disqualification_end_date ?? '') : ''
+                          break
+                        default:
+                          return 0
+                      }
+                      const cmp = typeof va === 'number' && typeof vb === 'number'
+                        ? va - vb
+                        : String(va).localeCompare(String(vb), undefined, { numeric: true })
+                      return sortDir === 'asc' ? cmp : -cmp
+                    })
+                  }
+                  const formatDisqualificationEnd = (d: string | null) => {
+                    if (!d) return null
+                    const [y, m, day] = d.split(/[-T]/)
+                    return day && m && y ? `${day}/${m}/${y}` : d
+                  }
+                  const hasTableFilters = searchTrim !== '' || playersTableSort !== null
+                  const cycleSort = (column: string) => {
+                    setPlayersTableSort((prev) => {
+                      if (prev?.column !== column) return { column, direction: 'asc' as const }
+                      if (prev.direction === 'asc') return { column, direction: 'desc' as const }
+                      return null
+                    })
+                  }
+                  const SortIcon = ({ col }: { col: string }) => {
+                    if (sortCol !== col) return <span className="opacity-40 ml-0.5 inline-block w-4" />
+                    return sortDir === 'asc'
+                      ? <ArrowUp className="inline w-4 h-4 ml-0.5" aria-hidden />
+                      : <ArrowDown className="inline w-4 h-4 ml-0.5" aria-hidden />
+                  }
+                  return (
+                    <div className="overflow-x-auto rounded-xl border" style={{ borderColor: embedLight ? GOLEE.border : `${secondary}40` }}>
+                      <table className="w-full text-left border-collapse" style={{ tableLayout: 'fixed' }}>
+                        <thead>
+                          <tr className="border-b" style={{ backgroundColor: embedLight ? GOLEE.surfaceMuted : primary, borderColor: embedLight ? GOLEE.border : `${secondary}40` }}>
+                            <th className="px-4 py-3 text-left text-sm font-medium uppercase tracking-wider w-14" style={{ color: embedLight ? GOLEE.textMuted : secondary }}>
+                              <button type="button" onClick={() => cycleSort('cat')} className="flex items-center gap-0.5 hover:opacity-90 cursor-pointer">Cat. <SortIcon col="cat" /></button>
+                            </th>
+                            <th className="px-4 py-2 text-left text-sm font-medium uppercase tracking-wider" style={{ color: embedLight ? GOLEE.textMuted : secondary, width: '20%' }}>
+                              <div className="flex flex-row items-center gap-2 flex-wrap">
+                                <button type="button" onClick={() => cycleSort('nome')} className="flex items-center gap-0.5 hover:opacity-90 cursor-pointer text-left shrink-0">Nome <SortIcon col="nome" /></button>
+                                <input
+                                  type="text"
+                                  placeholder="Cerca nome, anno, ruolo..."
+                                  value={playersTableSearch}
+                                  onChange={(e) => setPlayersTableSearch(e.target.value)}
+                                  className={
+                                    embedLight
+                                      ? 'min-w-[100px] max-w-[140px] px-2 py-1 text-sm rounded-lg border focus:outline-none focus:ring-2 focus:ring-[#00C48C]/30'
+                                      : 'min-w-[100px] max-w-[140px] px-2 py-1 text-sm rounded border bg-white/10 border-white/30 text-white placeholder-white/50 focus:outline-none focus:ring-1 focus:ring-white/50'
+                                  }
+                                  style={
+                                    embedLight
+                                      ? { borderColor: GOLEE.border, backgroundColor: GOLEE.surface, color: GOLEE.text }
+                                      : { color: 'inherit' }
+                                  }
+                                />
+                              </div>
+                            </th>
+                            <th className="px-4 py-3 text-center text-sm font-medium uppercase tracking-wider" style={{ color: embedLight ? GOLEE.textMuted : secondary }}>
+                              <button type="button" onClick={() => cycleSort('anno')} className="flex items-center justify-center gap-0.5 w-full hover:opacity-90 cursor-pointer">Anno <SortIcon col="anno" /></button>
+                            </th>
+                            <th className="px-4 py-3 text-center text-sm font-medium uppercase tracking-wider" style={{ color: embedLight ? GOLEE.textMuted : secondary, width: '10%' }}>% Presenze</th>
+                            <th className="px-4 py-3 text-center text-sm font-medium uppercase tracking-wider" style={{ color: embedLight ? GOLEE.textMuted : secondary, width: '11%' }}>Min./Par.</th>
+                            <th className="px-4 py-3 text-left text-sm font-medium uppercase tracking-wider" style={{ color: embedLight ? GOLEE.textMuted : secondary }}>
+                              <button type="button" onClick={() => cycleSort('ruolo')} className="flex items-center gap-0.5 hover:opacity-90 cursor-pointer">Ruolo <SortIcon col="ruolo" /></button>
+                            </th>
+                            <th className="px-4 py-3 text-center text-sm font-medium uppercase tracking-wider" style={{ color: embedLight ? GOLEE.textMuted : secondary, width: '15%' }}>
+                              <button type="button" onClick={() => cycleSort('infortunato')} className="flex items-center justify-center gap-0.5 w-full hover:opacity-90 cursor-pointer">Infortunato <SortIcon col="infortunato" /></button>
+                            </th>
+                            <th className="px-4 py-3 text-left text-sm font-medium uppercase tracking-wider" style={{ color: embedLight ? GOLEE.textMuted : secondary, width: '15%' }}>
+                              <button type="button" onClick={() => cycleSort('squalificato')} className="flex items-center gap-0.5 hover:opacity-90 cursor-pointer">Squalificato <SortIcon col="squalificato" /></button>
+                            </th>
+                            <th className="px-4 py-3 text-center text-sm font-medium uppercase tracking-wider" style={{ color: embedLight ? GOLEE.textMuted : secondary, width: '7%' }}>Azioni</th>
+                            {hasTableFilters && (
+                              <th className="px-3 py-3 text-right" style={{ color: embedLight ? GOLEE.textMuted : secondary }}>
+                                <button
+                                  type="button"
+                                  onClick={() => { setPlayersTableSearch(''); setPlayersTableSort(null) }}
+                                  title="Annulla filtri e ordinamento"
+                                  className={`p-1.5 rounded transition-colors ${embedLight ? 'hover:bg-slate-100' : 'hover:bg-white/10'}`}
+                                >
+                                  <RotateCcw className="w-5 h-5" />
+                                </button>
+                              </th>
+                            )}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y" style={{ borderColor: embedLight ? GOLEE.border : `${secondary}30` }}>
+                          {filtered.length === 0 ? (
+                            <tr>
+                              <td colSpan={hasTableFilters ? 10 : 9} className="px-4 py-8 text-center text-sm" style={{ color: embedLight ? GOLEE.textMuted : secondary }}>
+                                Nessun giocatore trovato
+                              </td>
+                            </tr>
+                          ) : (
+                            filtered.map((row, rowIndex) => (
+                              <tr
+                                key={row.id}
+                                className={`transition-colors ${row.disqualified ? 'border-l-4 border-l-red-400' : ''}`}
+                                style={{ backgroundColor: embedLight ? (rowIndex % 2 === 0 ? GOLEE.surface : GOLEE.surfaceMuted) : dark }}
+                              >
+                                <td className="px-0 py-0 align-middle">
+                                  <div className="flex items-stretch min-h-[3rem] gap-px">
+                                    {row.categoryItems.map((cat) => (
+                                      <div
+                                        key={cat.id}
+                                        className={`flex items-center justify-center flex-shrink-0 w-[2.125rem] min-w-[2.125rem] min-h-[2rem] text-sm font-bold text-white ${cat.code ? getCategoryCircleColor({ code: cat.code }) : ''}`}
+                                        style={!cat.code ? { backgroundColor: dark } : undefined}
+                                      >
+                                        {cat.code ? getCategoryAbbreviation(cat.code) : cat.name}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </td>
+                                <td className={`px-4 py-3 font-medium ${embedLight ? '' : 'text-white'}`} style={embedLight ? { color: GOLEE.text } : undefined}>{row.full_name}</td>
+                                <td className={`px-4 py-3 text-center ${embedLight ? '' : 'text-white/90'}`} style={embedLight ? { color: GOLEE.text } : undefined}>{row.birthYear ?? '—'}</td>
+                                <td className={`px-4 py-3 text-center ${embedLight ? '' : 'text-white/80'}`} style={embedLight ? { color: GOLEE.textMuted } : undefined}>—</td>
+                                <td className={`px-4 py-3 text-center ${embedLight ? '' : 'text-white/80'}`} style={embedLight ? { color: GOLEE.textMuted } : undefined}>—</td>
+                                <td className={`px-4 py-3 ${embedLight ? '' : 'text-white/90'}`} style={embedLight ? { color: GOLEE.text } : undefined}>{row.roleLabel}</td>
+                                <td className="px-4 py-3 text-center">
+                                  {row.injured ? <span className="rounded-md bg-amber-500/80 px-2 py-0.5 text-xs text-white">Sì</span> : '—'}
+                                </td>
+                                <td className={`px-4 py-3 ${embedLight ? '' : 'text-white/90'}`} style={embedLight ? { color: GOLEE.text } : undefined}>
+                                  {row.disqualified && row.disqualification_end_date
+                                    ? `fino al ${formatDisqualificationEnd(row.disqualification_end_date)}`
+                                    : row.disqualified
+                                      ? 'Sì'
+                                      : '—'}
+                                </td>
+                                <td className="px-4 py-3 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => navigate(`/create-person?edit=${row.id}`)}
+                                    title="Apri scheda anagrafica"
+                                    className={`p-1.5 rounded transition-colors inline-flex items-center justify-center ${embedLight ? 'hover:bg-slate-100 text-slate-500 hover:text-slate-800' : 'hover:bg-white/10 text-white/80 hover:text-white'}`}
+                                  >
+                                    <Pencil className="w-5 h-5" aria-hidden />
+                                  </button>
+                                </td>
+                                {hasTableFilters && <td className="w-12" />}
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                      <div className="px-4 py-2 border-t text-sm" style={{ borderColor: embedLight ? GOLEE.border : `${secondary}30`, color: embedLight ? GOLEE.textMuted : secondary }}>
+                        Totale: {filtered.length} giocatori
                       </div>
                     </div>
-
-                  </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+                  )
+                })()}
               </div>
-            )}
-          </div>
+            </div>
+          )}
+        </div>
         </div>
 
         {/* Modal per selezione tipo sessione */}
         {showSessionTypeModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-2xl p-6 max-w-lg w-full mx-4">
-              <h2 className="text-2xl font-bold text-gray-900 mb-6">🚀 Nuova Sessione</h2>
-              <p className="text-gray-600 mb-6">Scegli il tipo di sessione che vuoi creare:</p>
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+            <div className="bg-slate-900 border border-slate-600 rounded-2xl p-6 max-w-lg w-full mx-4 shadow-xl">
+              <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+                <Dumbbell className="w-6 h-6 text-blue-400" />
+                Nuova Sessione
+              </h2>
+              <p className="text-blue-200 text-sm mb-6">Scegli il tipo di sessione che vuoi creare:</p>
               
               <div className="space-y-3">
                 <button
@@ -1389,16 +2281,15 @@ export default function Activities() {
                     setShowSessionTypeModal(false)
                     setShowCreateModal(true)
                   }}
-                  className="w-full p-4 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-xl font-medium transition-all duration-200 flex items-center justify-between shadow-sm hover:shadow-md"
+                  className="w-full p-4 bg-blue-800 hover:bg-blue-700 border border-blue-600 text-white rounded-xl font-medium transition-all duration-200 flex items-center justify-between"
                 >
                   <div className="flex items-center gap-3">
-                    <span className="text-2xl">🎯</span>
                     <div className="text-left">
                       <div className="font-semibold">Singolo Allenamento</div>
-                      <div className="text-sm opacity-90">Prossimo giorno disponibile</div>
+                      <div className="text-sm text-blue-200">Prossimo giorno disponibile</div>
                     </div>
                   </div>
-                  <span className="text-xl">→</span>
+                  <span className="text-blue-300">→</span>
                 </button>
 
                 <button
@@ -1407,16 +2298,15 @@ export default function Activities() {
                     setShowSessionTypeModal(false)
                     setShowCreateModal(true)
                   }}
-                  className="w-full p-4 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-xl font-medium transition-all duration-200 flex items-center justify-between shadow-sm hover:shadow-md"
+                  className="w-full p-4 bg-blue-800 hover:bg-blue-700 border border-blue-600 text-white rounded-xl font-medium transition-all duration-200 flex items-center justify-between"
                 >
                   <div className="flex items-center gap-3">
-                    <span className="text-2xl">📅</span>
                     <div className="text-left">
                       <div className="font-semibold">Settimanale</div>
-                      <div className="text-sm opacity-90">Tutti i giorni di allenamento</div>
+                      <div className="text-sm text-blue-200">Tutti i giorni di allenamento</div>
                     </div>
                   </div>
-                  <span className="text-xl">→</span>
+                  <span className="text-blue-300">→</span>
                 </button>
 
                 <button
@@ -1425,16 +2315,15 @@ export default function Activities() {
                     setShowSessionTypeModal(false)
                     setShowCreateModal(true)
                   }}
-                  className="w-full p-4 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white rounded-xl font-medium transition-all duration-200 flex items-center justify-between shadow-sm hover:shadow-md"
+                  className="w-full p-4 bg-blue-800 hover:bg-blue-700 border border-blue-600 text-white rounded-xl font-medium transition-all duration-200 flex items-center justify-between"
                 >
                   <div className="flex items-center gap-3">
-                    <span className="text-2xl">📆</span>
                     <div className="text-left">
                       <div className="font-semibold">2 Settimane</div>
-                      <div className="text-sm opacity-90">Due settimane di allenamenti</div>
+                      <div className="text-sm text-blue-200">Due settimane di allenamenti</div>
                     </div>
                   </div>
-                  <span className="text-xl">→</span>
+                  <span className="text-blue-300">→</span>
                 </button>
 
                 <button
@@ -1443,16 +2332,15 @@ export default function Activities() {
                     setShowSessionTypeModal(false)
                     setShowCreateModal(true)
                   }}
-                  className="w-full p-4 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white rounded-xl font-medium transition-all duration-200 flex items-center justify-between shadow-sm hover:shadow-md"
+                  className="w-full p-4 bg-blue-800 hover:bg-blue-700 border border-blue-600 text-white rounded-xl font-medium transition-all duration-200 flex items-center justify-between"
                 >
                   <div className="flex items-center gap-3">
-                    <span className="text-2xl">🗓️</span>
                     <div className="text-left">
                       <div className="font-semibold">4 Settimane</div>
-                      <div className="text-sm opacity-90">Un mese di allenamenti</div>
+                      <div className="text-sm text-blue-200">Un mese di allenamenti</div>
                     </div>
                   </div>
-                  <span className="text-xl">→</span>
+                  <span className="text-blue-300">→</span>
                 </button>
 
                 <button
@@ -1461,25 +2349,24 @@ export default function Activities() {
                     setShowSessionTypeModal(false)
                     setShowCreateModal(true)
                   }}
-                  className="w-full p-4 bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 text-white rounded-xl font-medium transition-all duration-200 flex items-center justify-between shadow-sm hover:shadow-md"
+                  className="w-full p-4 bg-slate-700 hover:bg-slate-600 border border-slate-600 text-white rounded-xl font-medium transition-all duration-200 flex items-center justify-between"
                 >
                   <div className="flex items-center gap-3">
-                    <span className="text-2xl">⚙️</span>
                     <div className="text-left">
                       <div className="font-semibold">Allenamento Extra</div>
-                      <div className="text-sm opacity-90">Configurazione manuale</div>
+                      <div className="text-sm text-blue-200">Configurazione manuale</div>
                     </div>
                   </div>
-                  <span className="text-xl">→</span>
+                  <span className="text-blue-300">→</span>
                 </button>
               </div>
 
               <div className="flex gap-3 pt-6">
                 <button
                   onClick={() => setShowSessionTypeModal(false)}
-                  className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 px-6 py-3 rounded-xl font-medium transition-colors"
+                  className="flex-1 bg-slate-700 hover:bg-slate-600 text-white px-6 py-3 rounded-xl font-medium transition-colors border border-slate-600"
                 >
-                  ❌ Annulla
+                  Annulla
                 </button>
               </div>
             </div>
@@ -1488,8 +2375,8 @@ export default function Activities() {
 
         {/* Modal per creare nuova sessione */}
         {showCreateModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4">
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+            <div className="bg-white text-gray-900 rounded-2xl p-6 max-w-md w-full mx-4 [&_select]:bg-white [&_select]:text-gray-900 [&_option]:bg-white [&_option]:text-gray-900">
               <h2 className="text-2xl font-bold text-gray-900 mb-6">
                 {sessionType === 'single' && '🎯 Singolo Allenamento'}
                 {sessionType === 'weekly' && '📅 Allenamenti Settimanali'}
@@ -1510,7 +2397,7 @@ export default function Activities() {
                     required
                     value={newSession.category_id}
                     onChange={(e) => setNewSession({...newSession, category_id: e.target.value})}
-                    className="w-full p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
                   >
                     <option value="">Seleziona categoria</option>
                     {categories.map(category => (
@@ -1541,22 +2428,16 @@ export default function Activities() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Location *
                   </label>
-                  <select
+                  <TrainingVenueSelect
                     required
                     value={newSession.location}
-                    onChange={(e) => setNewSession({...newSession, location: e.target.value, away_location: ''})}
-                    className="w-full p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="">Seleziona location</option>
-                    <option value="Brescia">Brescia</option>
-                    <option value="Gussago">Gussago</option>
-                    <option value="Ospitaletto">Ospitaletto</option>
-                    <option value="Trasferta">Trasferta</option>
-                  </select>
+                    onChange={(value) => setNewSession({...newSession, location: value, away_location: ''})}
+                    className="w-full p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
+                  />
                 </div>
 
                 {/* Campo Trasferta (condizionale) */}
-                {newSession.location === 'Trasferta' && (
+                {requiresAwayDetail(newSession.location) && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Dove in trasferta? *
@@ -1637,16 +2518,16 @@ export default function Activities() {
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Categoria *
                     </label>
-                    <select
-                      required
-                      value={selectedCategoryForSession?.id || ''}
-                      onChange={(e) => {
+                  <select
+                    required
+                    value={selectedCategoryForSession?.id || ''}
+                    onChange={(e) => {
                         const category = categories.find(cat => cat.id === e.target.value)
                         setSelectedCategoryForSession(category)
                       }}
-                      className="w-full p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="">Seleziona categoria</option>
+                    className="w-full p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
+                  >
+                    <option value="">Seleziona categoria</option>
                       {categories.map(category => (
                         <option key={category.id} value={category.id}>
                           {category.name}
@@ -1699,6 +2580,11 @@ export default function Activities() {
                           return
                         }
                         await createBulkSessions(selectedCategoryForSession, sessionType!, bulkSessionNote)
+                        // Chiudi il modal dopo la creazione
+                        setShowCreateModal(false)
+                        setSelectedCategoryForSession(null)
+                        setSessionType(null)
+                        setBulkSessionNote('')
                       }}
                       className="flex-1 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white px-6 py-3 rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md"
                     >
@@ -1722,208 +2608,63 @@ export default function Activities() {
           </div>
         )}
 
-        {/* Popup per le presenze */}
-        {showAttendancePopup && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-2xl max-w-2xl w-full mx-4 max-h-[95vh] flex flex-col">
-              {/* Header del popup */}
-              <div className="flex items-center justify-between p-6 border-b border-gray-200">
-                <h2 className="text-2xl font-bold text-gray-900">
-                  Presenze – {currentCategory?.code || 'Categoria'}
-                </h2>
-                <button
-                  onClick={handleCloseAttendancePopup}
-                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                  title="Chiudi"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              
-              {/* Contenuto del popup */}
-              <div className="flex-1 overflow-hidden">
-                <div className="card p-0 overflow-hidden h-full">
-                  <div className="max-h-full overflow-auto divide-y divide-white/50 relative">
-                      {players.length === 0 ? (
-                        <div className="p-8 text-center text-gray-500">
-                          <div className="text-2xl mb-2">👥</div>
-                          <p>Nessun giocatore trovato per questa categoria</p>
-                        </div>
-                      ) : (
-                        (() => {
-                          // Raggruppa i giocatori per status
-                          const groupedPlayers = players.reduce((groups, player) => {
-                            const status = attendance[player.id]?.status
-                            const place = attendance[player.id]?.injured_place
-                            
-                            let groupKey = 'Nessun Status'
-                            if (!status) groupKey = 'Nessun Status'
-                            else if (status === 'PRESENTE') groupKey = 'Presenti'
-                            else if (status === 'INFORTUNATO' && place === 'PALESTRA') groupKey = 'Infortunati (Campo)'
-                            else if (status === 'INFORTUNATO' && place === 'CASA') groupKey = 'Infortunati (Casa)'
-                            else if (status === 'ASSENTE') groupKey = 'Assenti'
-                            else if (status === 'MALATO') groupKey = 'Malati'
-
-                            
-                            if (!groups[groupKey]) groups[groupKey] = []
-                            groups[groupKey].push(player)
-                            return groups
-                          }, {} as Record<string, typeof players>)
-
-                          // Ordine dei gruppi
-                          const groupOrder = [
-                            'Nessun Status',
-                            'Presenti', 
-                            'Infortunati (Campo)',
-                            'Infortunati (Casa)',
-                            'Assenti',
-                            'Malati',
-                            'Permesso'
-                          ]
-
-                          return groupOrder.map(groupKey => {
-                            const groupPlayers = groupedPlayers[groupKey]
-                            if (!groupPlayers || groupPlayers.length === 0) return null
-
-                            // Ordina i giocatori del gruppo per cognome
-                            const sortedPlayers = groupPlayers.sort((a, b) => 
-                              a.last_name.localeCompare(b.last_name)
-                            )
-
-                            return (
-                              <div key={groupKey}>
-                                {/* Titolo del gruppo */}
-                                <div className="px-3 py-2 bg-gray-100 border-b border-gray-200">
-                                  <h3 className="text-sm font-semibold text-gray-700">
-                                    {groupKey} ({groupPlayers.length})
-                                  </h3>
-                                </div>
-                                
-                                {/* Giocatori del gruppo */}
-                                {sortedPlayers.map(p => (
-                                  <AttendanceRow 
-                                    key={p.id} 
-                                    player={p as any} 
-                                    onExpandPopup={handleExpandPopup}
-                                    onCollapsePopup={handleCollapsePopup}
-                                  />
-                                ))}
-                              </div>
-                            )
-                          }).filter(Boolean)
-                        })()
-                      )}
-                    </div>
-                  </div>
-                </div>
-            </div>
-            </div>
-          )}
+        <AttendancePopup
+          open={showAttendancePopup}
+          onClose={handleCloseAttendancePopup}
+          onSaveAndExit={handleSaveAndExitAttendance}
+        />
       </div>
 
       {/* Modal per i dettagli dell'evento - Stile Events */}
       {showEventModal && selectedEvent && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
-              {/* Header del modal */}
               <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-navy">
-                  {selectedEvent.title}
-                </h2>
-                <button
-                  onClick={() => setShowEventModal(false)}
-                  className="text-gray-500 hover:text-gray-700 text-2xl"
-                >
-                  ×
-                </button>
+                <h2 className="text-2xl font-bold text-navy">{selectedEvent.title}</h2>
+                <button onClick={() => setShowEventModal(false)} className="text-gray-500 hover:text-gray-700 text-2xl">×</button>
               </div>
-
-              {/* Contenuto del modal - Stile Events */}
               <div className="space-y-6">
-                {/* Data e Orari */}
                 <div className="bg-blue-50 p-4 rounded-lg">
                   <h4 className="font-semibold text-blue-800 mb-2">📅 Data e Orari</h4>
                   <p className="text-blue-700">{formatDate(selectedEvent.event_date)}</p>
                   {selectedEvent.start_time && selectedEvent.end_time && (
-                    <p className="text-blue-700">
-                      Inizio: {selectedEvent.start_time.substring(0, 5)} - Fine: {selectedEvent.end_time.substring(0, 5)}
-                    </p>
+                    <p className="text-blue-700">Inizio: {selectedEvent.start_time.substring(0, 5)} - Fine: {selectedEvent.end_time.substring(0, 5)}</p>
                   )}
                   {selectedEvent.event_time && !selectedEvent.start_time && (
-                    <p className="text-blue-700">
-                      Ora: {selectedEvent.event_time.substring(0, 5)}
-                    </p>
+                    <p className="text-blue-700">Ora: {selectedEvent.event_time.substring(0, 5)}</p>
                   )}
                 </div>
-
-                {/* Location */}
                 {selectedEvent.location && (
                   <div className="bg-pink-50 p-4 rounded-lg">
                     <h4 className="font-semibold text-pink-800 mb-2">📍 Location</h4>
-                    <p className="text-pink-700">
-                      {selectedEvent.location} {selectedEvent.is_home ? '(Casa)' : '(Trasferta)'}
-                    </p>
+                    <p className="text-pink-700">{selectedEvent.location} {selectedEvent.is_home ? '(Casa)' : '(Trasferta)'}</p>
                   </div>
                 )}
-
-                {/* Avversario */}
                 {selectedEvent.opponent && (
                   <div className="bg-blue-50 p-4 rounded-lg">
                     <h4 className="font-semibold text-blue-800 mb-2">🌍 Avversario</h4>
                     <p className="text-blue-700">{selectedEvent.opponent}</p>
-                    <span className="text-xs bg-blue-200 px-2 py-1 rounded mt-2 inline-block">
-                      1 avversario
-                    </span>
                   </div>
                 )}
-
-                {/* Avversari (per tornei) */}
-                {selectedEvent.opponents && selectedEvent.opponents.length > 0 && (
-                  <div className="bg-blue-50 p-4 rounded-lg">
-                    <h4 className="font-semibold text-blue-800 mb-2">🌍 Squadre</h4>
-                    <p className="text-blue-700">{selectedEvent.opponents.join(', ')}</p>
-                    <span className="text-xs bg-blue-200 px-2 py-1 rounded mt-2 inline-block">
-                      {selectedEvent.opponents.length} squadre
-                    </span>
-                  </div>
-                )}
-
-                {/* Partecipanti (solo per consiglio) */}
-                {selectedEvent.event_type === 'consiglio' && selectedEvent.participants && selectedEvent.participants.length > 0 && (
+                {selectedEvent.event_type === 'consiglio' && selectedEvent.participants?.length > 0 && (
                   <div className="bg-blue-50 p-4 rounded-lg">
                     <h4 className="font-semibold text-blue-800 mb-2">👥 Partecipanti</h4>
-                    <p className="text-blue-700">{selectedEvent.participants.join(', ')}</p>
-                    <span className="text-xs bg-blue-200 px-2 py-1 rounded mt-2 inline-block">
-                      {selectedEvent.participants.length} membri
-                    </span>
+                    <p className="text-blue-700">{sortNamesBySurname(selectedEvent.participants).join(', ')}</p>
                   </div>
                 )}
-
-                {/* Invitati (solo per consiglio) */}
-                {selectedEvent.event_type === 'consiglio' && selectedEvent.invited && selectedEvent.invited.length > 0 && (
+                {selectedEvent.event_type === 'consiglio' && selectedEvent.invited?.length > 0 && (
                   <div className="bg-green-50 p-4 rounded-lg">
                     <h4 className="font-semibold text-green-800 mb-2">🎫 Invitati</h4>
-                    <p className="text-green-700">{selectedEvent.invited.join(', ')}</p>
-                    <span className="text-xs bg-green-200 px-2 py-1 rounded mt-2 inline-block">
-                      {selectedEvent.invited.length} invitati
-                    </span>
+                    <p className="text-green-700">{sortNamesBySurname(selectedEvent.invited).join(', ')}</p>
                   </div>
                 )}
-
-                {/* Categoria */}
                 {selectedEvent.category_id && (
                   <div className="bg-purple-50 p-4 rounded-lg">
                     <h4 className="font-semibold text-purple-800 mb-2">🏈 Categoria</h4>
-                    <p className="text-purple-700">
-                      {categories.find(cat => cat.id === selectedEvent.category_id)?.name || 'Categoria non trovata'}
-                    </p>
+                    <p className="text-purple-700">{categories.find(cat => cat.id === selectedEvent.category_id)?.name || 'Categoria non trovata'}</p>
                   </div>
                 )}
-
-                {/* Descrizione */}
                 {selectedEvent.description && (
                   <div className="bg-gray-50 p-4 rounded-lg">
                     <h4 className="font-semibold text-gray-800 mb-2">📝 Descrizione</h4>
@@ -1931,29 +2672,41 @@ export default function Activities() {
                   </div>
                 )}
               </div>
-
-              {/* Pulsanti di azione */}
               <div className="flex justify-end space-x-3 mt-8 pt-6 border-t">
                 <button
                   onClick={() => {
+                    const returnTo = `${window.location.pathname}${window.location.search}`
                     setShowEventModal(false)
-                    navigate(`/events?edit=${selectedEvent.id}`)
+                    navigate(`/events?eventId=${selectedEvent.id}&returnTo=${encodeURIComponent(returnTo)}`)
                   }}
                   className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-medium transition-colors"
                 >
                   Modifica
                 </button>
-                <button
-                  onClick={() => setShowEventModal(false)}
-                  className="bg-gray-300 hover:bg-gray-400 text-gray-700 px-6 py-3 rounded-xl font-medium transition-colors"
-                >
-                  Chiudi
-                </button>
+                <button onClick={() => setShowEventModal(false)} className="bg-gray-300 hover:bg-gray-400 text-gray-700 px-6 py-3 rounded-xl font-medium transition-colors">Chiudi</button>
               </div>
             </div>
           </div>
         </div>
       )}
+    </>
+  )
+
+  if (embedInLayout) {
+    return (
+      <div className="min-h-full flex flex-col" style={{ backgroundColor: GOLEE.pageBg }}>
+        {content}
+      </div>
+    )
+  }
+  return (
+    <div className="min-h-screen text-white" style={{ backgroundColor: '#2A3051' }}>
+      <Header 
+        title="Squadre" 
+        showBack={true}
+        hideCenterLogo={true} 
+      />
+      {content}
     </div>
   )
 }

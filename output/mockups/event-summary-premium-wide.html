@@ -1,0 +1,940 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mockup Sunto Evento Premium Wide</title>
+  <style>
+    :root {
+      --bg: #050a16;
+      --panel: #f5f8fc;
+      --ink: #071226;
+      --muted: #667085;
+      --navy: #071226;
+      --navy-2: #102451;
+      --blue: #2f6df6;
+      --cyan: #42c8ff;
+      --teal: #10b7a6;
+      --gold: #f4b740;
+      --pink: #d14f83;
+      --line: #dbe5f0;
+      --white: #ffffff;
+      --shadow: 0 28px 90px rgba(3, 10, 27, .34);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% 18%, rgba(47, 109, 246, .24), transparent 28%),
+        radial-gradient(circle at 88% 0%, rgba(66, 200, 255, .20), transparent 32%),
+        linear-gradient(135deg, #030814 0%, #081329 48%, #030814 100%);
+      display: grid;
+      place-items: center;
+      padding: 32px;
+    }
+
+    button, input { font: inherit; }
+
+    .modal {
+      width: min(1380px, calc(100vw - 48px));
+      height: min(820px, calc(100vh - 48px));
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, .12);
+      border-radius: 28px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .hero {
+      position: relative;
+      min-height: 134px;
+      padding: 18px 34px;
+      overflow: hidden;
+      color: white;
+      background: linear-gradient(135deg, #071226 0%, #102451 58%, #183a78 100%);
+    }
+
+    .hero::before,
+    .hero::after {
+      content: "";
+      position: absolute;
+      border-radius: 999px;
+      pointer-events: none;
+    }
+
+    .hero::before {
+      width: 360px;
+      height: 360px;
+      right: -92px;
+      top: -170px;
+      background: rgba(66, 200, 255, .13);
+    }
+
+    .hero::after {
+      width: 270px;
+      height: 270px;
+      left: -92px;
+      bottom: -175px;
+      background: rgba(47, 109, 246, .24);
+    }
+
+    .hero-inner {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 30px;
+      align-items: center;
+    }
+
+    .brandline {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 12px;
+    }
+
+    .logo {
+      width: 48px;
+      height: 48px;
+      display: grid;
+      place-items: center;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, .10);
+      border: 1px solid rgba(255, 255, 255, .12);
+      overflow: hidden;
+    }
+
+    .logo img {
+      width: 40px;
+      height: 40px;
+      object-fit: contain;
+    }
+
+    .logo-stat {
+      display: grid;
+      place-items: center;
+      min-height: 82px;
+      padding: 13px 14px;
+      border: 1px solid rgba(255, 255, 255, .14);
+      border-radius: 20px;
+      background: rgba(255, 255, 255, .08);
+      backdrop-filter: blur(12px);
+    }
+
+    .logo-stat img {
+      width: 74px;
+      height: 58px;
+      object-fit: contain;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 32px;
+      padding: 0 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(120, 168, 255, .45);
+      background: rgba(255, 255, 255, .08);
+      color: #c8d3ed;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(36px, 4.2vw, 58px);
+      line-height: .92;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      margin: 12px 0 0;
+      color: #c8d3ed;
+      font-size: 20px;
+      font-weight: 700;
+      display: none;
+    }
+
+    .hero-stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(132px, 1fr));
+      gap: 12px;
+      min-width: 640px;
+    }
+
+    .stat {
+      min-height: 82px;
+      padding: 13px 14px;
+      border: 1px solid rgba(255, 255, 255, .14);
+      border-radius: 20px;
+      background: rgba(255, 255, 255, .08);
+      backdrop-filter: blur(12px);
+    }
+
+    .stat .label {
+      color: #aebce0;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .stat strong {
+      display: block;
+      margin-top: 8px;
+      color: white;
+      font-size: 19px;
+      line-height: 1;
+    }
+
+    .stat span {
+      display: block;
+      margin-top: 7px;
+      color: #c8d3ed;
+      font-size: 12px;
+    }
+
+    .content {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 300px minmax(0, 1fr);
+      gap: 20px;
+      padding: 22px;
+      overflow: hidden;
+    }
+
+    .side,
+    .main,
+    .detail {
+      min-height: 0;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: white;
+      box-shadow: 0 16px 40px rgba(16, 36, 81, .08);
+    }
+
+    .side {
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .section-title {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: .08em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    .tabs {
+      display: grid;
+      gap: 10px;
+    }
+
+    .tab {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 13px 14px;
+      border: 1px solid #e4ebf5;
+      border-radius: 16px;
+      background: #f8fafc;
+      color: #344054;
+      cursor: pointer;
+      transition: .18s ease;
+    }
+
+    .tab:hover {
+      transform: translateY(-1px);
+      border-color: #bdd7ff;
+    }
+
+    .tab.active {
+      color: white;
+      background: var(--navy);
+      border-color: var(--navy);
+      box-shadow: 0 12px 24px rgba(7, 18, 38, .18);
+    }
+
+    .tab small {
+      color: inherit;
+      opacity: .72;
+      font-weight: 800;
+    }
+
+    .search {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      border: 1px solid #dce8f5;
+      border-radius: 16px;
+      background: #f8fbff;
+    }
+
+    .search input {
+      width: 100%;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--ink);
+      font-size: 14px;
+    }
+
+    .mini-list {
+      min-height: 0;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .team-chip {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+      padding: 10px 11px;
+      border: 1px solid #e3edf7;
+      border-radius: 14px;
+      background: #f8fbff;
+      color: #344054;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .empty-search {
+      padding: 13px 4px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--blue);
+      box-shadow: 0 0 0 4px rgba(47, 109, 246, .12);
+      flex: 0 0 auto;
+    }
+
+    .main {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .main-toolbar {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 18px;
+      align-items: center;
+      padding: 13px 20px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .main-toolbar h2 {
+      margin: 0;
+      font-size: 23px;
+      letter-spacing: 0;
+    }
+
+    .main-toolbar p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      display: none;
+    }
+
+    .counter {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      height: 34px;
+      padding: 0 15px;
+      border-radius: 999px;
+      background: #edf6ff;
+      color: var(--blue);
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .groups-grid {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(210px, 1fr));
+      gap: 14px;
+      padding: 18px;
+      overflow: auto;
+    }
+
+    .overview-dashboard {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 1.1fr .9fr;
+      gap: 16px;
+      padding: 18px;
+      overflow: auto;
+    }
+
+    .overview-card {
+      min-height: 150px;
+      padding: 18px;
+      border: 1px solid #dce8f5;
+      border-radius: 24px;
+      background: white;
+      box-shadow: 0 14px 30px rgba(16, 36, 81, .08);
+    }
+
+    .overview-card.dark {
+      color: white;
+      background: linear-gradient(135deg, #071226, #102451);
+      border-color: #102451;
+    }
+
+    .overview-card.wide {
+      grid-column: 1 / -1;
+    }
+
+    .overview-card h3 {
+      margin: 0 0 12px;
+      font-size: 22px;
+      letter-spacing: 0;
+    }
+
+    .overview-card p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .overview-card.dark p {
+      color: #c8d3ed;
+    }
+
+    .metric-row {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .metric {
+      padding: 14px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, .08);
+      border: 1px solid rgba(255, 255, 255, .12);
+    }
+
+    .metric span {
+      display: block;
+      color: #aebce0;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 8px;
+      color: white;
+      font-size: 24px;
+      line-height: 1;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 12px;
+      margin-top: 8px;
+    }
+
+    .time-item {
+      display: grid;
+      grid-template-columns: 58px 1fr;
+      gap: 12px;
+      align-items: center;
+      padding: 12px;
+      border-radius: 16px;
+      background: #f7fbff;
+      border: 1px solid #e3edf7;
+    }
+
+    .time-item strong {
+      color: var(--blue);
+      font-size: 16px;
+    }
+
+    .time-item span {
+      color: var(--ink);
+      font-weight: 800;
+    }
+
+    .mini-group-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .mini-group {
+      padding: 13px;
+      border-radius: 16px;
+      background: #f8fbff;
+      border: 1px solid #e3edf7;
+      font-weight: 900;
+    }
+
+    .mini-group span {
+      display: block;
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .team-directory {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(180px, 1fr));
+      align-content: start;
+      gap: 12px;
+      padding: 18px;
+      overflow: auto;
+    }
+
+    .team-card {
+      min-height: 96px;
+      padding: 14px;
+      border: 1px solid #dce8f5;
+      border-radius: 20px;
+      background: #ffffff;
+      box-shadow: 0 12px 24px rgba(16, 36, 81, .07);
+      cursor: pointer;
+      transition: .18s ease;
+    }
+
+    .team-card:hover {
+      transform: translateY(-2px);
+      border-color: #bdd7ff;
+    }
+
+    .team-card strong {
+      display: block;
+      color: var(--ink);
+      font-size: 15px;
+      letter-spacing: 0;
+    }
+
+    .group-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      margin-top: 14px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: #f1f6fb;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .group-card {
+      position: relative;
+      min-height: 292px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 2px solid var(--accent);
+      border-radius: 24px;
+      background: white;
+      box-shadow: 0 14px 30px rgba(16, 36, 81, .08);
+      cursor: pointer;
+      transition: .18s ease;
+    }
+
+    .group-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 22px 42px rgba(16, 36, 81, .13);
+    }
+
+    .group-card.active {
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent), transparent 82%), 0 22px 42px rgba(16, 36, 81, .13);
+    }
+
+    .group-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: center;
+      padding: 13px 14px;
+      color: white;
+      background: var(--navy);
+    }
+
+    .group-head h3 {
+      margin: 0;
+      font-size: 16px;
+      letter-spacing: 0;
+    }
+
+    .group-head span {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      min-height: 32px;
+      padding: 0 10px;
+      border: 1px solid rgba(255, 255, 255, .14);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .08);
+      color: #c8d3ed;
+      font-size: 10px;
+      font-weight: 900;
+    }
+
+    .accent-line {
+      height: 5px;
+      margin: 0;
+      margin-bottom: 14px;
+      border-radius: 0;
+      background: var(--accent);
+    }
+
+    .team-list {
+      display: grid;
+      gap: 8px;
+      padding: 0 16px 16px;
+    }
+
+    .team-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 36px;
+      padding: 0 12px;
+      border: 1px solid #e3edf7;
+      border-radius: 14px;
+      background: #f7fbff;
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .team-row:nth-child(even) { background: #f1f6fb; }
+    .team-row .dot { background: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent), transparent 82%); }
+
+    .detail {
+      display: none;
+    }
+
+    .detail-card {
+      padding: 16px;
+      border: 1px solid #e3edf7;
+      border-radius: 20px;
+      background: #f8fbff;
+    }
+
+    .detail-card.dark {
+      color: white;
+      background: var(--navy);
+      border-color: var(--navy);
+    }
+
+    .detail-card h3,
+    .detail-card h4 {
+      margin: 0 0 10px;
+    }
+
+    .detail-card p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .detail-card.dark p { color: #c8d3ed; }
+
+    .big-number {
+      display: block;
+      margin-top: 8px;
+      font-size: 44px;
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      padding: 16px 22px;
+      border-top: 1px solid var(--line);
+      background: white;
+    }
+
+    .action {
+      min-height: 50px;
+      border: 1px solid transparent;
+      border-radius: 16px;
+      color: white;
+      font-weight: 900;
+      cursor: pointer;
+      transition: .18s ease;
+    }
+
+    .action:hover { transform: translateY(-1px); filter: brightness(1.05); }
+    .pdf { background: #0f766e; }
+    .edit { background: #2d5fb8; }
+    .delete { background: #8f3456; }
+    .close { background: #f8fafc; color: #344054; border-color: #d8e3ef; }
+
+    .hidden { display: none; }
+
+    @media (max-width: 1180px) {
+      .modal { height: auto; min-height: calc(100vh - 48px); }
+      .hero-inner, .content { grid-template-columns: 1fr; }
+      .hero-stats { min-width: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .groups-grid { grid-template-columns: repeat(2, minmax(220px, 1fr)); }
+      .overview-dashboard, .team-directory { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <section class="modal" aria-label="Mockup interattivo sunto evento">
+    <header class="hero">
+      <div class="hero-inner">
+        <div>
+          <div class="brandline">
+            <span class="badge">Festa del Rugby</span>
+          </div>
+          <h1>Due Laghi</h1>
+          <p class="subtitle">Sunto evento premium, largo e pensato per 32 squadre</p>
+        </div>
+        <div class="hero-stats">
+          <article class="stat"><div class="label">Data</div><strong>Dom 5 luglio</strong><span>10:00 - 13:00</span></article>
+          <article class="stat"><div class="label">Luogo</div><strong>Brescia</strong><span>Casa</span></article>
+          <article class="stat"><div class="label">Formato</div><strong>32 Squadre</strong><span>4 /Teams per 8 gironi</span></article>
+          <article class="logo-stat"><img src="../../public/logo-brixia-official.png" alt="Brixia Rugby" /></article>
+        </div>
+      </div>
+    </header>
+
+    <main class="content">
+      <aside class="side">
+        <h2 class="section-title">Navigazione</h2>
+        <div class="tabs">
+          <button class="tab active" data-view="overview"><span>Panoramica</span><small>evento</small></button>
+          <button class="tab" data-view="groups"><span>Gironi</span><small>8</small></button>
+          <button class="tab" data-view="teams"><span>Squadre</span><small>32</small></button>
+        </div>
+
+        <h2 class="section-title">Ricerca rapida</h2>
+        <label class="search">
+          <span>⌕</span>
+          <input id="search" type="search" placeholder="Cerca squadra o girone..." />
+        </label>
+
+        <h2 class="section-title">Squadre trovate</h2>
+        <div id="teamChips" class="mini-list"></div>
+      </aside>
+
+      <section class="main">
+        <div class="main-toolbar">
+          <div>
+            <h2 id="mainTitle">Composizione gironi</h2>
+            <p id="mainCopy"></p>
+          </div>
+          <span id="counter" class="counter">32 squadre</span>
+        </div>
+        <div id="groupsGrid" class="groups-grid"></div>
+      </section>
+
+      <aside class="detail" aria-hidden="true"></aside>
+    </main>
+
+    <footer class="actions">
+      <button class="action pdf">PDF</button>
+      <button class="action edit">Modifica</button>
+      <button class="action delete">Elimina</button>
+      <button class="action close">Chiudi</button>
+    </footer>
+  </section>
+
+  <script>
+    const groups = [
+      { id: 'g1', number: '01', name: 'Girone 1', accent: '#2f6df6', teams: ['CASALE', 'BERGAMO', 'CUS MILANO', 'LYONS PIACENZA'] },
+      { id: 'g2', number: '02', name: 'Girone 2', accent: '#10b7a6', teams: ['CALVISANO', 'CASTELLANA', 'GUSSAGO', 'CENTURIONI'] },
+      { id: 'g3', number: '03', name: 'Girone 3', accent: '#f4b740', teams: ['BRESCIA', 'FRANCIACORTA', 'PETRARCA', 'BASSA BRESCIANA'] },
+      { id: 'g4', number: '04', name: 'Girone 4', accent: '#d14f83', teams: ['PIEVE DI CENTO', 'MOGLIANO', 'PARABIAGO', 'FELTRE'] },
+      { id: 'g5', number: '05', name: 'Girone 5', accent: '#7c3aed', teams: ['ALESSANDRIA', 'BADIA', 'BOLOGNA', 'OSPITALETTO'] },
+      { id: 'g6', number: '06', name: 'Girone 6', accent: '#0ea5e9', teams: ['BIELLA', 'BOTTICINO', 'CUS TORINO', 'MODENA'] },
+      { id: 'g7', number: '07', name: 'Girone 7', accent: '#16a34a', teams: ['VENEZIA', 'COLORNO', 'CONEGLIANO', 'BENETTON'] },
+      { id: 'g8', number: '08', name: 'Girone 8', accent: '#f97316', teams: ['CUS PADOVA', 'LIVORNO', 'FIUMICELLO', 'NOCETO'] }
+    ];
+
+    let activeGroup = groups[0];
+    let activeView = 'overview';
+
+    const grid = document.getElementById('groupsGrid');
+    const chips = document.getElementById('teamChips');
+    const search = document.getElementById('search');
+    const mainTitle = document.getElementById('mainTitle');
+    const mainCopy = document.getElementById('mainCopy');
+    const counter = document.getElementById('counter');
+
+    function allTeams() {
+      return groups.flatMap(group => group.teams.map(team => ({ team, group })));
+    }
+
+    function setDetail(group) {
+      activeGroup = group;
+      render();
+    }
+
+    function renderOverview(items) {
+      grid.innerHTML = '';
+      grid.className = 'overview-dashboard';
+      const visibleTeams = items.flatMap(group => group.teams);
+      grid.innerHTML = `
+        <article class="overview-card">
+          <div class="timeline">
+            <div class="time-item"><strong>09:30</strong><span>Accoglienza squadre e briefing staff</span></div>
+            <div class="time-item"><strong>10:00</strong><span>Inizio attivita in campo</span></div>
+            <div class="time-item"><strong>13:00</strong><span>Fine attivita</span></div>
+          </div>
+        </article>
+        <article class="overview-card wide">
+          <h3>Anteprima gironi</h3>
+          <div class="mini-group-grid">
+            ${items.map(group => `<button class="mini-group" data-group="${group.id}" style="border-left:5px solid ${group.accent}">${group.name}<span>${group.teams.length} squadre</span></button>`).join('')}
+          </div>
+        </article>
+      `;
+      grid.querySelectorAll('[data-group]').forEach(button => {
+        button.addEventListener('click', () => {
+          const group = groups.find(item => item.id === button.dataset.group);
+          if (group) setDetail(group);
+          setView('groups');
+        });
+      });
+    }
+
+    function renderGroups(items) {
+      grid.innerHTML = '';
+      grid.className = 'groups-grid';
+      items.forEach(group => {
+        const card = document.createElement('button');
+        card.className = `group-card ${group.id === activeGroup.id ? 'active' : ''}`;
+        card.style.setProperty('--accent', group.accent);
+        card.onclick = () => setDetail(group);
+        card.innerHTML = `
+          <div class="group-head">
+            <h3>${group.name}</h3>
+            <span>${group.teams.length} squadre</span>
+          </div>
+          <div class="accent-line"></div>
+          <div class="team-list">
+            ${group.teams.map(team => `<div class="team-row"><span class="dot"></span>${team}</div>`).join('')}
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    function renderTeams(items) {
+      grid.innerHTML = '';
+      grid.className = 'team-directory';
+      const q = search.value.trim().toLowerCase();
+      const visibleTeams = items
+        .flatMap(group => group.teams.map(team => ({ team, group })))
+        .filter(({ team, group }) => `${team} ${group.name}`.toLowerCase().includes(q));
+
+      visibleTeams.forEach(({ team, group }) => {
+        const card = document.createElement('button');
+        card.className = 'team-card';
+        card.onclick = () => {
+          setDetail(group);
+          setView('groups');
+        };
+        card.innerHTML = `
+          <strong>${team}</strong>
+          <span class="group-pill"><span class="dot" style="background:${group.accent}"></span>${group.name}</span>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    function renderChips(items) {
+      chips.innerHTML = '';
+      if (!search.value.trim()) {
+        chips.innerHTML = '<div class="empty-search">Digita per cercare una societa o un girone.</div>';
+        return;
+      }
+      items.forEach(({ team, group }) => {
+        const item = document.createElement('button');
+        item.className = 'team-chip';
+        item.style.width = '100%';
+        item.style.textAlign = 'left';
+        item.style.cursor = 'pointer';
+        item.innerHTML = `<span class="dot" style="background:${group.accent}"></span><span>${team}</span>`;
+        item.onclick = () => setDetail(group);
+        chips.appendChild(item);
+      });
+    }
+
+    function render() {
+      const q = search.value.trim().toLowerCase();
+      const filteredGroups = groups.filter(group => {
+        const haystack = `${group.name} ${group.teams.join(' ')}`.toLowerCase();
+        return haystack.includes(q);
+      });
+      const filteredTeams = allTeams().filter(({ team, group }) => `${team} ${group.name}`.toLowerCase().includes(q));
+
+      if (activeView === 'overview') renderOverview(filteredGroups);
+      if (activeView === 'groups') renderGroups(filteredGroups);
+      if (activeView === 'teams') renderTeams(filteredGroups);
+      renderChips(filteredTeams);
+
+      if (activeView === 'overview') {
+        mainTitle.textContent = 'Due Laghi in sintesi';
+        mainCopy.textContent = '';
+      } else if (activeView === 'groups') {
+        mainTitle.textContent = 'Vista gironi';
+        mainCopy.textContent = 'Focus sui raggruppamenti: ogni card mostra numero, colore e squadre.';
+      } else {
+        mainTitle.textContent = 'Vista squadre';
+        mainCopy.textContent = 'Usa la ricerca a sinistra per trovare subito una societa e il suo girone.';
+      }
+      counter.textContent = q ? `${filteredTeams.length} risultati` : '32 squadre';
+    }
+
+    function setView(view) {
+      activeView = view;
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.view === view);
+      });
+      render();
+    }
+
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => setView(tab.dataset.view));
+    });
+
+    search.addEventListener('input', render);
+    render();
+  </script>
+</body>
+</html>

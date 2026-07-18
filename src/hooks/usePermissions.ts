@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/store/auth'
 import { supabase } from '@/lib/supabaseClient'
+import { getRolePermissions, getPermissionCategory } from '@/config/permissions'
 
 export interface Permission {
   id: string
@@ -23,7 +24,7 @@ export const usePermissions = () => {
   const [loading, setLoading] = useState(false)
 
   const loadUserPermissions = async () => {
-    if (!profile?.user_role_id) {
+    if (!profile?.role) {
       setPermissions([])
       setUserRole(null)
       return
@@ -32,14 +33,29 @@ export const usePermissions = () => {
     try {
       setLoading(true)
       
-      // Carica il ruolo dell'utente
+      // Carica il ruolo dell'utente usando il nome del ruolo (case-insensitive)
       const { data: roleData, error: roleError } = await supabase
         .from('user_roles')
         .select('*')
-        .eq('id', profile.user_role_id)
-        .single()
+        .ilike('name', profile.role)
+        .maybeSingle()
 
-      if (roleError) throw roleError
+      if (roleError || !roleData) {
+        console.warn('Ruolo non trovato in user_roles, uso permessi di default per:', profile.role)
+        // Se il ruolo non esiste in user_roles, usa i permessi hardcoded
+        const rolePermissions = getRolePermissions(profile.role)
+        const hardcodedPermissions = rolePermissions.map(permName => ({
+          id: permName,
+          name: permName,
+          description: '',
+          category: getPermissionCategory(permName) || 'general',
+          position_order: 0
+        }))
+        setPermissions(hardcodedPermissions)
+        setUserRole({ id: profile.role, name: profile.role, position_order: 0 })
+        return
+      }
+      
       setUserRole(roleData)
 
       // Carica i permessi del ruolo
@@ -55,15 +71,75 @@ export const usePermissions = () => {
             position_order
           )
         `)
-        .eq('role_id', profile.user_role_id)
+        .eq('role_id', roleData.id)
 
-      if (permError) throw permError
+      if (permError) {
+        console.warn('Errore nel caricamento permessi dal database, uso permessi hardcoded')
+        // Fallback ai permessi hardcoded
+        const rolePermissions = getRolePermissions(profile.role)
+        const hardcodedPermissions = rolePermissions.map(permName => ({
+          id: permName,
+          name: permName,
+          description: '',
+          category: getPermissionCategory(permName) || 'general',
+          position_order: 0
+        }))
+        setPermissions(hardcodedPermissions)
+        return
+      }
       
-      const userPermissions = permData
+      // Permessi di base del ruolo
+      const rolePermissions = permData
         ?.map(rp => rp.permissions)
         .filter(Boolean) as Permission[]
       
-      setPermissions(userPermissions || [])
+      // Carica i permessi personalizzati dell'utente
+      const { data: customPerms, error: customError } = await supabase
+        .from('user_permissions')
+        .select(`
+          permission_id,
+          is_granted,
+          permissions (
+            id,
+            name,
+            description,
+            category,
+            position_order
+          )
+        `)
+        .eq('user_id', profile.id)
+
+      if (customError) {
+        console.warn('Errore nel caricamento permessi personalizzati:', customError)
+        // Se errore, usa solo i permessi del ruolo
+        setPermissions(rolePermissions || [])
+        return
+      }
+
+      // Combina permessi: (permessi ruolo + aggiunti) - rimossi
+      const permissionsMap = new Map<string, Permission>()
+      
+      // Aggiungi tutti i permessi del ruolo
+      rolePermissions?.forEach(perm => {
+        permissionsMap.set(perm.name, perm)
+      })
+      
+      // Applica permessi personalizzati (gestisce record senza join valido)
+      customPerms?.forEach(cp => {
+        const perm = (cp?.permissions ?? null) as unknown as Permission | null
+        if (!perm || !perm.name) {
+          return
+        }
+        if (cp.is_granted) {
+          // Aggiungi permesso personalizzato
+          permissionsMap.set(perm.name, perm)
+        } else {
+          // Rimuovi permesso del ruolo
+          permissionsMap.delete(perm.name)
+        }
+      })
+      
+      setPermissions(Array.from(permissionsMap.values()))
       
     } catch (error) {
       console.error('Errore nel caricamento permessi:', error)

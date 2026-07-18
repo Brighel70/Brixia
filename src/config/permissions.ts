@@ -50,7 +50,13 @@ export const PERMISSIONS = {
     CREATE: 'users.create',
     EDIT: 'users.edit',
     DELETE: 'users.delete',
-    ROLES: 'users.roles'
+    MANAGE_PERMISSIONS: 'users.manage_permissions'
+  },
+  COUNCIL: {
+    MANAGE: 'council.manage'
+  },
+  BRAND: {
+    MANAGE: 'brand.manage'
   }
 } as const
 
@@ -61,13 +67,12 @@ export const ROLES = {
   DIRETTORE_SPORTIVO: 'Direttore Sportivo',
   DIRETTORE_TECNICO: 'Direttore Tecnico',
   ALLENATORE: 'Allenatore',
+  GIOCATORE: 'Giocatore',
+  PREPARATORE: 'Preparatore Atletico',
   TEAM_MANAGER: 'Team Manager',
   ACCOMPAGNATORE: 'Accompagnatore',
-  PLAYER: 'Player',
-  PREPARATORE: 'Preparatore',
   MEDICO: 'Medico',
-  FISIO: 'Fisio',
-  FAMIGLIA: 'Famiglia'
+  FISIO: 'Fisioterapista'
 } as const
 
 export const ROLE_PERMISSIONS = {
@@ -104,19 +109,21 @@ export const ROLE_PERMISSIONS = {
     PERMISSIONS.SETTINGS.VIEW,
     PERMISSIONS.SETTINGS.EDIT,
     PERMISSIONS.SETTINGS.BRAND,
-    PERMISSIONS.USERS.VIEW
+    PERMISSIONS.USERS.VIEW,
+    PERMISSIONS.COUNCIL.MANAGE,
+    PERMISSIONS.BRAND.MANAGE
   ],
   [ROLES.SEGRETERIA]: [
     // Segreteria: gestione amministrativa
     PERMISSIONS.PLAYERS.VIEW,
     PERMISSIONS.PLAYERS.CREATE,
     PERMISSIONS.PLAYERS.EDIT,
-    PERMISSIONS.EVENTS.VIEW,
-    PERMISSIONS.SESSIONS.VIEW,
-    PERMISSIONS.ATTENDANCE.VIEW,
+    PERMISSIONS.PLAYERS.EXPORT,
     PERMISSIONS.STAFF.VIEW,
     PERMISSIONS.CATEGORIES.VIEW,
-    PERMISSIONS.USERS.VIEW
+    PERMISSIONS.ATTENDANCE.VIEW,
+    PERMISSIONS.ATTENDANCE.EXPORT,
+    PERMISSIONS.SETTINGS.VIEW
   ],
   [ROLES.DIRETTORE_SPORTIVO]: [
     // Direttore Sportivo: gestione sportiva
@@ -171,100 +178,129 @@ export const ROLE_PERMISSIONS = {
     PERMISSIONS.ATTENDANCE.EDIT,
     PERMISSIONS.CATEGORIES.VIEW
   ],
-  [ROLES.TEAM_MANAGER]: [
-    // Team Manager: gestione squadra
+  [ROLES.GIOCATORE]: [
+    // Giocatore: accesso limitato ai propri dati
+    PERMISSIONS.PLAYERS.VIEW,
+    PERMISSIONS.EVENTS.VIEW,
+    PERMISSIONS.SESSIONS.VIEW,
+    PERMISSIONS.ATTENDANCE.VIEW,
+    PERMISSIONS.CATEGORIES.VIEW
+  ],
+  [ROLES.PREPARATORE]: [
+    // Preparatore Atletico: gestione fisica
     PERMISSIONS.PLAYERS.VIEW,
     PERMISSIONS.PLAYERS.EDIT,
     PERMISSIONS.EVENTS.VIEW,
     PERMISSIONS.SESSIONS.VIEW,
+    PERMISSIONS.ATTENDANCE.VIEW,
+    PERMISSIONS.CATEGORIES.VIEW
+  ],
+  [ROLES.TEAM_MANAGER]: [
+    // Team Manager: gestione logistica
+    PERMISSIONS.PLAYERS.VIEW,
+    PERMISSIONS.EVENTS.VIEW,
+    PERMISSIONS.EVENTS.CREATE,
+    PERMISSIONS.EVENTS.EDIT,
     PERMISSIONS.ATTENDANCE.VIEW,
     PERMISSIONS.ATTENDANCE.MARK,
     PERMISSIONS.CATEGORIES.VIEW
   ],
   [ROLES.ACCOMPAGNATORE]: [
-    // Accompagnatore: supporto
+    // Accompagnatore: supporto trasferte
     PERMISSIONS.PLAYERS.VIEW,
     PERMISSIONS.EVENTS.VIEW,
-    PERMISSIONS.SESSIONS.VIEW,
-    PERMISSIONS.ATTENDANCE.VIEW,
-    PERMISSIONS.ATTENDANCE.MARK
-  ],
-  [ROLES.PLAYER]: [
-    // Player: accesso limitato ai propri dati e categoria
-    PERMISSIONS.PLAYERS.VIEW, // Solo i propri dati
-    PERMISSIONS.EVENTS.VIEW, // Solo eventi della sua categoria
-    PERMISSIONS.SESSIONS.VIEW, // Solo sessioni della sua categoria
-    PERMISSIONS.ATTENDANCE.VIEW, // Solo le sue presenze
-    PERMISSIONS.CATEGORIES.VIEW // Solo la sua categoria
-  ],
-  [ROLES.PREPARATORE]: [
-    // Preparatore: preparazione fisica
-    PERMISSIONS.PLAYERS.VIEW,
-    PERMISSIONS.PLAYERS.EDIT,
-    PERMISSIONS.EVENTS.VIEW,
-    PERMISSIONS.EVENTS.CREATE,
-    PERMISSIONS.EVENTS.EDIT,
-    PERMISSIONS.SESSIONS.VIEW,
-    PERMISSIONS.SESSIONS.CREATE,
-    PERMISSIONS.SESSIONS.EDIT,
     PERMISSIONS.ATTENDANCE.VIEW,
     PERMISSIONS.ATTENDANCE.MARK,
-    PERMISSIONS.ATTENDANCE.EDIT
+    PERMISSIONS.CATEGORIES.VIEW
   ],
   [ROLES.MEDICO]: [
-    // Medico: informazioni sanitarie
+    // Medico: gestione sanitaria
     PERMISSIONS.PLAYERS.VIEW,
     PERMISSIONS.PLAYERS.EDIT,
-    PERMISSIONS.EVENTS.VIEW,
-    PERMISSIONS.SESSIONS.VIEW,
     PERMISSIONS.ATTENDANCE.VIEW,
-    PERMISSIONS.ATTENDANCE.MARK
+    PERMISSIONS.CATEGORIES.VIEW
   ],
   [ROLES.FISIO]: [
-    // Fisio: fisioterapia
+    // Fisioterapista: riabilitazione
     PERMISSIONS.PLAYERS.VIEW,
     PERMISSIONS.PLAYERS.EDIT,
-    PERMISSIONS.EVENTS.VIEW,
-    PERMISSIONS.SESSIONS.VIEW,
     PERMISSIONS.ATTENDANCE.VIEW,
-    PERMISSIONS.ATTENDANCE.MARK
-  ],
-  [ROLES.FAMIGLIA]: [
-    // Famiglia: accesso limitato
-    PERMISSIONS.PLAYERS.VIEW,
-    PERMISSIONS.EVENTS.VIEW,
-    PERMISSIONS.SESSIONS.VIEW
+    PERMISSIONS.CATEGORIES.VIEW
   ]
-} as const
-
-export const isValidPermission = (permission: string): boolean => {
-  const allPermissions = Object.values(PERMISSIONS).flatMap(category => Object.values(category))
-  return allPermissions.includes(permission as any)
 }
 
-export const getPermissionCategory = (permission: string): string | null => {
-  for (const [categoryName, category] of Object.entries(PERMISSIONS)) {
-    const categoryPermissions = Object.values(category)
-    if (categoryPermissions.includes(permission as any)) {
-      return categoryName.toLowerCase()
-    }
-  }
-  return null
-}
-
-export const getRolePermissions = (role: string): readonly string[] => {
+// Funzione helper per ottenere i permessi di un ruolo
+export const getRolePermissions = (role: string): string[] => {
   return ROLE_PERMISSIONS[role as keyof typeof ROLE_PERMISSIONS] || []
 }
 
-export const hasPermission = (userPermissions: string[], permission: string): boolean => {
-  return userPermissions.includes(permission)
+// Funzione helper per ottenere la categoria di un permesso
+export const getPermissionCategory = (permission: string): string => {
+  const categoryMap: Record<string, string> = {
+    'players.': 'Giocatori',
+    'events.': 'Eventi',
+    'sessions.': 'Sessioni',
+    'attendance.': 'Presenze',
+    'staff.': 'Staff',
+    'categories.': 'Categorie',
+    'settings.': 'Impostazioni',
+    'users.': 'Utenti',
+    'council.': 'Consiglio',
+    'brand.': 'Brand'
+  }
+
+  for (const [prefix, category] of Object.entries(categoryMap)) {
+    if (permission.startsWith(prefix)) {
+      return category
+    }
+  }
+
+  return 'Altro'
 }
 
-export const hasAnyPermission = (userPermissions: string[], permissions: string[]): boolean => {
-  return permissions.some(permission => userPermissions.includes(permission))
-}
+// Convenience constants per permessi comuni
+export const CAN_VIEW_PLAYERS = PERMISSIONS.PLAYERS.VIEW
+export const CAN_CREATE_PLAYERS = PERMISSIONS.PLAYERS.CREATE
+export const CAN_EDIT_PLAYERS = PERMISSIONS.PLAYERS.EDIT
+export const CAN_DELETE_PLAYERS = PERMISSIONS.PLAYERS.DELETE
+export const CAN_EXPORT_PLAYERS = PERMISSIONS.PLAYERS.EXPORT
 
-export const hasAllPermissions = (userPermissions: string[], permissions: string[]): boolean => {
-  return permissions.every(permission => userPermissions.includes(permission))
-}
+export const CAN_VIEW_EVENTS = PERMISSIONS.EVENTS.VIEW
+export const CAN_CREATE_EVENTS = PERMISSIONS.EVENTS.CREATE
+export const CAN_EDIT_EVENTS = PERMISSIONS.EVENTS.EDIT
+export const CAN_DELETE_EVENTS = PERMISSIONS.EVENTS.DELETE
 
+export const CAN_VIEW_SESSIONS = PERMISSIONS.SESSIONS.VIEW
+export const CAN_CREATE_SESSIONS = PERMISSIONS.SESSIONS.CREATE
+export const CAN_EDIT_SESSIONS = PERMISSIONS.SESSIONS.EDIT
+export const CAN_DELETE_SESSIONS = PERMISSIONS.SESSIONS.DELETE
+export const CAN_START_SESSIONS = PERMISSIONS.SESSIONS.START
+export const CAN_STOP_SESSIONS = PERMISSIONS.SESSIONS.STOP
+
+export const CAN_VIEW_ATTENDANCE = PERMISSIONS.ATTENDANCE.VIEW
+export const CAN_MARK_ATTENDANCE = PERMISSIONS.ATTENDANCE.MARK
+export const CAN_EDIT_ATTENDANCE = PERMISSIONS.ATTENDANCE.EDIT
+export const CAN_EXPORT_ATTENDANCE = PERMISSIONS.ATTENDANCE.EXPORT
+
+export const CAN_VIEW_STAFF = PERMISSIONS.STAFF.VIEW
+export const CAN_CREATE_STAFF = PERMISSIONS.STAFF.CREATE
+export const CAN_EDIT_STAFF = PERMISSIONS.STAFF.EDIT
+export const CAN_DELETE_STAFF = PERMISSIONS.STAFF.DELETE
+
+export const CAN_VIEW_CATEGORIES = PERMISSIONS.CATEGORIES.VIEW
+export const CAN_CREATE_CATEGORIES = PERMISSIONS.CATEGORIES.CREATE
+export const CAN_EDIT_CATEGORIES = PERMISSIONS.CATEGORIES.EDIT
+export const CAN_DELETE_CATEGORIES = PERMISSIONS.CATEGORIES.DELETE
+
+export const CAN_VIEW_SETTINGS = PERMISSIONS.SETTINGS.VIEW
+export const CAN_EDIT_SETTINGS = PERMISSIONS.SETTINGS.EDIT
+export const CAN_MANAGE_BRAND = PERMISSIONS.SETTINGS.BRAND
+
+export const CAN_VIEW_USERS = PERMISSIONS.USERS.VIEW
+export const CAN_CREATE_USERS = PERMISSIONS.USERS.CREATE
+export const CAN_EDIT_USERS = PERMISSIONS.USERS.EDIT
+export const CAN_DELETE_USERS = PERMISSIONS.USERS.DELETE
+export const CAN_MANAGE_USER_PERMISSIONS = PERMISSIONS.USERS.MANAGE_PERMISSIONS
+
+export const CAN_MANAGE_COUNCIL = PERMISSIONS.COUNCIL.MANAGE
+export const CAN_MANAGE_BRAND_SETTINGS = PERMISSIONS.BRAND.MANAGE

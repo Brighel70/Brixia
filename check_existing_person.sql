@@ -1,3 +1,4 @@
+-- DEPRECATED: usare people. Script diagnostico legacy.
 -- Script per verificare se l'ID persona esiste nel database
 -- ID dall'URL: d22e30e5-780a-4ecc-98c4-701f0ca92fe6
 

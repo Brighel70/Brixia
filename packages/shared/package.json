@@ -1,0 +1,16 @@
+{
+  "name": "@brixia/shared",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "peerDependencies": {
+    "@supabase/supabase-js": "^2.x"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./overlapCheck": "./src/overlapCheck.ts",
+    "./sessionScheduler": "./src/sessionScheduler.ts"
+  }
+}

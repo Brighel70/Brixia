@@ -14,6 +14,7 @@ interface Tutor {
   full_name: string
   given_name?: string
   family_name?: string
+  fiscal_code?: string
   email?: string
   phone?: string
   address_street?: string
@@ -36,13 +37,18 @@ interface TutorTabProps {
   athleteName: string
   isMinor: boolean
   onTutorAdded?: () => void
+  onOpenCreatePerson?: (isTutor?: boolean, athleteId?: string) => void
+  /** Se fornito, cliccando "Modifica" si apre la scheda completa del tutor invece del modale */
+  onEditTutor?: (tutorId: string) => void
 }
 
 const TutorTab: React.FC<TutorTabProps> = ({ 
   athleteId, 
   athleteName, 
   isMinor, 
-  onTutorAdded 
+  onTutorAdded,
+  onOpenCreatePerson,
+  onEditTutor
 }) => {
   const [tutors, setTutors] = useState<Tutor[]>([])
   const [professionalCategories, setProfessionalCategories] = useState<ProfessionalCategory[]>([])
@@ -51,6 +57,29 @@ const TutorTab: React.FC<TutorTabProps> = ({
   const [loading, setLoading] = useState(true)
   const [isEditingTutor, setIsEditingTutor] = useState(false)
   const isEditingTutorRef = useRef(false)
+
+  // Restituisce il nome della professione (se è un UUID lo risolve con professionalCategories)
+  const getProfessionDisplay = (profession: string | undefined): string => {
+    if (!profession || !profession.trim()) return ''
+    const trimmed = profession.trim()
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)
+    if (isUuid && professionalCategories.length > 0) {
+      const cat = professionalCategories.find(c => c.id === trimmed)
+      return cat?.name ?? '' // Se è UUID e non trovato, non mostrare il codice
+    }
+    return trimmed
+  }
+
+  // Rimuove simboli mojibake e normalizza apostrofi/virgolette Unicode dopo i nomi
+  const sanitizeDisplayText = (s: string | undefined | null): string => {
+    if (s == null || s === '') return ''
+    return String(s)
+      .replace(/\u2019|\u2018|\u201A|\u201B|\u2032/g, "'")
+      .replace(/Ã¢â‚¬â„¢â‚¬/g, '')
+      .replace(/Ã¢â‚¬â„¢/g, "'")
+      .replace(/â€™/g, "'")
+      .trim()
+  }
 
   // Funzione per capitalizzare il testo (prima lettera maiuscola, resto minuscolo)
   const capitalizeText = (text: string) => {
@@ -90,6 +119,7 @@ const TutorTab: React.FC<TutorTabProps> = ({
     full_name: '',
     given_name: '',
     family_name: '',
+    fiscal_code: '',
     email: '',
     phone: '',
     address_street: '',
@@ -126,6 +156,7 @@ const TutorTab: React.FC<TutorTabProps> = ({
         full_name: editingTutor.full_name || '',
         given_name: editingTutor.given_name || '',
         family_name: editingTutor.family_name || '',
+        fiscal_code: editingTutor.fiscal_code || '',
         email: editingTutor.email || '',
         phone: editingTutor.phone || '',
         address_street: editingTutor.address_street || '',
@@ -170,6 +201,7 @@ const TutorTab: React.FC<TutorTabProps> = ({
   const loadTutors = async () => {
     try {
       setLoading(true)
+      console.log('🔍 [TutorTab] Caricamento tutor per athleteId:', athleteId)
       
       // Carica le relazioni
       const { data: relations, error: relationsError } = await supabase
@@ -177,6 +209,8 @@ const TutorTab: React.FC<TutorTabProps> = ({
         .select('*')
         .eq('athlete_id', athleteId)
         .order('created_at', { ascending: false })
+      
+      console.log('🔍 [TutorTab] Relazioni trovate:', relations?.length || 0, relations)
 
       if (relationsError) throw relationsError
 
@@ -185,44 +219,76 @@ const TutorTab: React.FC<TutorTabProps> = ({
         return
       }
 
-      // Carica i tutor associati
+      // Carica i tutor associati dalla tabella people (senza filtro staff_roles)
       const tutorIds = relations.map(r => r.tutor_id)
       const { data: tutorsData, error: tutorsError } = await supabase
-        .from('tutors')
+        .from('people')
         .select(`
           id,
           full_name,
           given_name,
           family_name,
+          fiscal_code,
           email,
           phone,
           address_street,
           address_city,
           address_zip,
           address_country,
-          profession,
-          professional_category_id,
-          company,
-          position,
-          is_sponsor_potential,
-          is_club_useful
+          staff_roles,
+          staff_categories
         `)
         .in('id', tutorIds)
 
       if (tutorsError) throw tutorsError
 
-      // Combina i dati
-      const tutors = tutorsData?.map(tutor => {
+      console.log('🔍 [TutorTab] Dati tutor grezzi:', tutorsData?.length || 0, tutorsData)
+
+      // Raccogli tutti gli UUID professione da staff_categories (escludi sponsor_potential e club_useful)
+      const professionIds = [...new Set((tutorsData || []).flatMap(t => {
+        const raw = t.staff_categories?.find((cat: string) => cat !== 'sponsor_potential' && cat !== 'club_useful')
+        return raw && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(raw).trim()) ? [raw] : []
+      }))]
+      let professionIdToName: Record<string, string> = {}
+      if (professionIds.length > 0) {
+        const { data: categoriesData } = await supabase
+          .from('professional_categories')
+          .select('id, name')
+          .in('id', professionIds)
+        if (categoriesData) {
+          professionIdToName = Object.fromEntries(categoriesData.map((c: { id: string; name: string }) => [c.id, c.name || '']))
+        }
+      }
+
+      // Mostra tutte le persone collegate come tutor per questo atleta (da tutor_athlete_relations).
+      const rawProfession = (tutor: { staff_categories?: string[] }) =>
+        tutor.staff_categories?.find((cat: string) => cat !== 'sponsor_potential' && cat !== 'club_useful') || ''
+      const resolveProfession = (raw: string): string => {
+        if (!raw || !raw.trim()) return ''
+        const id = raw.trim()
+        if (professionIdToName[id]) return professionIdToName[id]
+        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return ''
+        return id
+      }
+
+      const tutors = (tutorsData || []).map(tutor => {
         const relation = relations.find(r => r.tutor_id === tutor.id)
+        const rawProf = rawProfession(tutor)
         return {
           ...tutor,
           relationship: relation?.relationship || '',
           is_primary_contact: relation?.is_primary_contact || false,
           is_emergency_contact: relation?.is_emergency_contact || false,
-          notes: relation?.notes || ''
+          notes: relation?.notes || '',
+          is_sponsor_potential: tutor.staff_categories?.includes('sponsor_potential') || false,
+          is_club_useful: tutor.staff_categories?.includes('club_useful') || false,
+          profession: resolveProfession(rawProf),
+          company: '',
+          position: ''
         }
       }) || []
 
+      console.log('✅ [TutorTab] Tutor filtrati e processati:', tutors.length, tutors)
       setTutors(tutors)
     } catch (error) {
       console.error('Errore nel caricamento tutor:', error)
@@ -257,6 +323,7 @@ const TutorTab: React.FC<TutorTabProps> = ({
       full_name: '',
       given_name: '',
       family_name: '',
+      fiscal_code: '',
       email: '',
       phone: '',
       address_street: '',
@@ -277,7 +344,16 @@ const TutorTab: React.FC<TutorTabProps> = ({
     // ⛔️ rimosso setShowAddForm(false) - gestito separatamente
   }
 
-  const openTutorForm = () => setShowTutorForm(true)
+  const openTutorForm = () => {
+    console.log('🔍 openTutorForm chiamato:', { athleteId, onOpenCreatePerson: !!onOpenCreatePerson })
+    if (onOpenCreatePerson) {
+      console.log('🔍 Chiamando onOpenCreatePerson con:', { isTutor: true, athleteId })
+      onOpenCreatePerson(true, athleteId)
+    } else {
+      console.log('🔍 Usando form locale')
+      setShowTutorForm(true)
+    }
+  }
   const closeTutorForm = () => setShowTutorForm(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -288,25 +364,29 @@ const TutorTab: React.FC<TutorTabProps> = ({
       let tutorId = editingTutor?.id
       
       if (!tutorId) {
-        // Crea nuovo tutor
+        // Crea nuovo tutor nella tabella people
+        const staffCategories = []
+        if (formData.is_sponsor_potential) staffCategories.push('sponsor_potential')
+        if (formData.is_club_useful) staffCategories.push('club_useful')
+        if (formData.profession) staffCategories.push(formData.profession)
+
         const { data: tutorData, error: tutorError } = await supabase
-          .from('tutors')
+          .from('people')
           .insert({
             full_name: formData.full_name,
             given_name: formData.given_name,
             family_name: formData.family_name,
+            fiscal_code: formData.fiscal_code || null,
             email: formData.email,
             phone: formData.phone,
             address_street: formData.address_street,
             address_city: formData.address_city,
             address_zip: formData.address_zip,
             address_country: formData.address_country,
-            profession: formData.profession,
-            professional_category_id: formData.professional_category_id || null,
-            company: formData.company,
-            position: formData.position,
-            is_sponsor_potential: formData.is_sponsor_potential,
-            is_club_useful: formData.is_club_useful
+            staff_roles: ['tutor'],
+            staff_categories: staffCategories,
+            is_staff: true,
+            status: 'active'
           })
           .select()
           .single()
@@ -314,26 +394,29 @@ const TutorTab: React.FC<TutorTabProps> = ({
         if (tutorError) throw tutorError
         tutorId = tutorData.id
       } else {
-        // Aggiorna tutor esistente
+        // Aggiorna tutor esistente nella tabella people
+        const staffCategories = []
+        if (formData.is_sponsor_potential) staffCategories.push('sponsor_potential')
+        if (formData.is_club_useful) staffCategories.push('club_useful')
+        if (formData.profession) staffCategories.push(formData.profession)
+
         const { error: tutorError } = await supabase
-          .from('tutors')
-        .update({
-          full_name: formData.full_name,
-          given_name: formData.given_name,
-          family_name: formData.family_name,
-          email: formData.email,
-          phone: formData.phone,
-          address_street: formData.address_street,
-          address_city: formData.address_city,
-          address_zip: formData.address_zip,
-          address_country: formData.address_country,
-          profession: formData.profession,
-          professional_category_id: formData.professional_category_id || null,
-          company: formData.company,
-          position: formData.position,
-          is_sponsor_potential: formData.is_sponsor_potential,
-          is_club_useful: formData.is_club_useful
-        })
+          .from('people')
+          .update({
+            full_name: formData.full_name,
+            given_name: formData.given_name,
+            family_name: formData.family_name,
+            fiscal_code: formData.fiscal_code || null,
+            email: formData.email,
+            phone: formData.phone,
+            address_street: formData.address_street,
+            address_city: formData.address_city,
+            address_zip: formData.address_zip,
+            address_country: formData.address_country,
+            staff_roles: ['tutor'],
+            staff_categories: staffCategories,
+            is_staff: true
+          })
           .eq('id', tutorId)
 
         if (tutorError) throw tutorError
@@ -436,13 +519,14 @@ const TutorTab: React.FC<TutorTabProps> = ({
       const tutorToDelete = tutors.find(t => t.id === tutorId)
       const wasPrimaryContact = tutorToDelete?.is_primary_contact
 
-      const { error } = await supabase
+      // Elimina la relazione tutor-atleta
+      const { error: relationError } = await supabase
         .from('tutor_athlete_relations')
         .delete()
         .eq('tutor_id', tutorId)
         .eq('athlete_id', athleteId)
 
-      if (error) throw error
+      if (relationError) throw relationError
 
       // Se era contatto principale, svuota i dati di emergenza
       if (wasPrimaryContact) {
@@ -456,6 +540,9 @@ const TutorTab: React.FC<TutorTabProps> = ({
 
         if (athleteError) throw athleteError
       }
+
+      // NOTA: Non eliminiamo la persona dalla tabella people, 
+      // solo la relazione. La persona può essere riutilizzata come tutor per altri atleti.
 
       loadTutors()
     } catch (error) {
@@ -478,14 +565,17 @@ const TutorTab: React.FC<TutorTabProps> = ({
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold text-gray-900">
-            Tutor per {athleteName}
+            Tutor per {sanitizeDisplayText(athleteName)}
           </h3>
           <p className="text-sm text-gray-600">
             {isMinor ? 'Registrazione obbligatoria per atleti minorenni' : 'Gestione tutor (dati storici)'}
           </p>
         </div>
         <button
-          onClick={openTutorForm}
+          onClick={() => {
+            console.log('🔍 Pulsante "Aggiungi Tutor" cliccato:', { athleteId, onOpenCreatePerson: !!onOpenCreatePerson })
+            onOpenCreatePerson?.(true, athleteId)
+          }}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -503,7 +593,7 @@ const TutorTab: React.FC<TutorTabProps> = ({
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
-                    <h4 className="font-medium text-gray-900">{tutor.full_name}</h4>
+                    <h4 className="font-medium text-gray-900">{sanitizeDisplayText(tutor.full_name)}</h4>
                     {tutor.is_primary_contact && (
                       <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
                         Contatto Principale
@@ -523,11 +613,11 @@ const TutorTab: React.FC<TutorTabProps> = ({
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-600">
                     <div>
-                      <span className="font-medium">Relazione:</span> {tutor.relationship}
+                      <span className="font-medium">Relazione:</span> {sanitizeDisplayText(tutor.relationship)}
                     </div>
-                    {tutor.profession && (
+                    {(getProfessionDisplay(tutor.profession)) && (
                       <div>
-                        <span className="font-medium">Professione:</span> {tutor.profession}
+                        <span className="font-medium">Professione:</span> {sanitizeDisplayText(getProfessionDisplay(tutor.profession))}
                       </div>
                     )}
                     {tutor.phone && (
@@ -544,16 +634,16 @@ const TutorTab: React.FC<TutorTabProps> = ({
                   
                   {tutor.notes && (
                     <div className="mt-2 text-sm text-gray-600">
-                      <span className="font-medium">Note:</span> {tutor.notes}
+                      <span className="font-medium">Note:</span> {sanitizeDisplayText(tutor.notes)}
                     </div>
                   )}
                 </div>
                 
                 <div className="flex items-center gap-2 ml-4">
                   <button
-                    onClick={() => handleEdit(tutor)}
+                    onClick={() => onEditTutor ? onEditTutor(tutor.id) : handleEdit(tutor)}
                     className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                    title="Modifica"
+                    title={onEditTutor ? 'Apri scheda tutor' : 'Modifica'}
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -666,11 +756,25 @@ const TutorTab: React.FC<TutorTabProps> = ({
                     </label>
                     <input
                       type="email"
-                      value={formData.email}
-                      onChange={(e) => handleTextChange('email', e.target.value)}
+                      value={formData.email?.toLowerCase() || ''}
+                      onChange={(e) => handleTextChange('email', e.target.value.toLowerCase())}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     />
                   </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Codice Fiscale
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.fiscal_code?.toUpperCase() || ''}
+                    onChange={(e) => handleInputChange('fiscal_code', e.target.value.toUpperCase().trim())}
+                    placeholder="Es. RSSMRA85M01H501Z"
+                    maxLength={16}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
                 </div>
 
                 {/* Dati Professionali */}

@@ -6,6 +6,8 @@
     <meta name="theme-color" content="#0B1B3B" />
     <meta name="format-detection" content="telephone=no" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <!-- Disabilita tracking esterni -->
     <meta name="disable-bugsnag" content="true" />
@@ -15,7 +17,7 @@
     <meta name="crash-reporting-disabled" content="true" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/favicon.svg" />
-    <title>Segna Presenze</title>
+    <title>TeamFlow - Brixia Rugby</title>
   </head>
   <body class="bg-gradient-to-b from-[#0B1B3B] via-[#2A60A6] to-[#F6F4EF] min-h-screen">
     <div id="root"></div>
@@ -89,18 +91,29 @@
         }
       }, true);
       
-      // Registra Service Worker per PWA
+      // DISABILITATO Service Worker per permettere hot reload durante sviluppo
+      // Deregistra eventuali service workers esistenti
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function() {
-          navigator.serviceWorker.register('/sw.js')
-            .then(function(registration) {
-              console.log('✅ Service Worker registrato con successo:', registration.scope);
-            })
-            .catch(function(error) {
-              console.log('❌ Registrazione Service Worker fallita:', error);
-            });
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for(let registration of registrations) {
+            registration.unregister();
+            console.log('🔧 Service Worker disabilitato');
+          }
         });
       }
+      
+      // Registra Service Worker per PWA (COMMENTATO DURANTE SVILUPPO)
+      // if ('serviceWorker' in navigator) {
+      //   window.addEventListener('load', function() {
+      //     navigator.serviceWorker.register('/sw.js')
+      //       .then(function(registration) {
+      //         console.log('✅ Service Worker registrato con successo:', registration.scope);
+      //       })
+      //       .catch(function(error) {
+      //         console.log('❌ Registrazione Service Worker fallita:', error);
+      //       });
+      //   });
+      // }
     </script>
     
     <script type="module" src="./src/main.tsx"></script>

@@ -12,3 +12,4 @@ WHERE table_name = 'tutors'
 ORDER BY ordinal_position;
 
 
+

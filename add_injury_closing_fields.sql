@@ -26,3 +26,4 @@ FROM public.injuries
 LIMIT 5;
 
 
+

@@ -22,3 +22,4 @@ FROM information_schema.columns
 WHERE table_name = 'injury_activities'
 AND column_name = 'ricontrollo';
 
+

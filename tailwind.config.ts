@@ -1,14 +1,20 @@
 import type { Config } from 'tailwindcss'
+import containerQueries from '@tailwindcss/container-queries'
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
+  plugins: [containerQueries],
   theme: {
     extend: {
       colors: {
-        // Colori brand Brixia Rugby
+        // Colori brand (leggano le variabili CSS aggiornate da Personalizzazione Brand)
         brixia: {
-          primary: '#0b1f4d',      // Blu navy Brixia
-          secondary: '#4aa3ff',    // Celeste
-          accent: '#f7f7f5',       // Bianco sporco
+          primary: 'var(--brixia-primary)',
+          secondary: 'var(--brixia-secondary)',
+          accent: 'var(--brixia-accent)',
+          success: 'var(--brixia-success)',
+          warning: 'var(--brixia-warning)',
+          danger: 'var(--brixia-danger)',
+          info: 'var(--brixia-info)',
         },
         // Colori legacy mantenuti per compatibilità
         navy: '#0B1B3B',
@@ -32,6 +38,5 @@ export default {
         'brixia-light': 'linear-gradient(135deg, #f7f7f5 0%, #ffffff 100%)'
       }
     }
-  },
-  plugins: []
+  }
 } satisfies Config

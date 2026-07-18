@@ -21,3 +21,4 @@ WHERE table_name = 'tutor_athlete_relations'
 ORDER BY ordinal_position;
 
 
+

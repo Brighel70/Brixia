@@ -51,6 +51,7 @@ export default function CreatePlayer() {
       const { data, error } = await supabase
         .from('categories')
         .select('*')
+        .eq('active', true)
         .order('code')
 
       if (error) throw error
@@ -63,7 +64,7 @@ export default function CreatePlayer() {
   const loadRoles = async () => {
     try {
       const { data, error } = await supabase
-        .from('roles')
+        .from('player_positions')
         .select('*')
         .order('position_order')
 
@@ -88,12 +89,6 @@ export default function CreatePlayer() {
         throw new Error('Data di nascita non valida')
       }
 
-      // Determina se è aggregato alle seniores
-      const isAggregatedSeniores = form.category_ids.some(id => {
-        const category = categories.find(c => c.id === id)
-        return category?.code === 'CADETTA' || category?.code === 'PRIMA'
-      })
-
       // Crea il giocatore
       const { data: playerData, error: playerError } = await supabase
         .from('players')
@@ -103,8 +98,7 @@ export default function CreatePlayer() {
           birth_date: birthDate,
           fir_code: form.fir_code,
           role_id: form.role_id,
-          injured: false,
-          aggregated_seniores: isAggregatedSeniores
+          injured: false
         })
         .select()
         .single()

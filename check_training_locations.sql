@@ -52,3 +52,4 @@ INSERT INTO training_locations (category_id, location, weekday, start_time, end_
 
 
 
+

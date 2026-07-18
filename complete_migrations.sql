@@ -310,3 +310,4 @@ ORDER BY tablename, policyname;
 SELECT '=== COMPLETAMENTO MIGRAZIONI TERMINATO ===' as info;
 
 
+

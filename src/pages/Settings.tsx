@@ -2,15 +2,25 @@ import Header from '@/components/Header'
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabaseClient'
-import EmailTemplateViewer from '@/components/EmailTemplateViewer'
+import MessageTemplatesManager from '@/components/MessageTemplatesManager'
+import { TemplatesRicevuteSection } from '@/features/templatesRicevute'
+import { ReceiptHeaderForm } from '@/features/templatesRicevute/components/ReceiptHeaderForm'
 import { PermissionsDebug } from '@/components/PermissionsDebug'
 import QueryPerformanceMonitor from '@/components/QueryPerformanceMonitor'
 import { useAuth } from '@/store/auth'
+import EventTypesSettings from '@/components/EventTypesSettings'
+import TrainingVenuesPanel from '@/components/TrainingVenuesPanel'
+import TrainingVenueSelect from '@/components/TrainingVenueSelect'
+import { GOLEE, goleeCardClass, goleeInputClass, goleeInputStyle, goleeLabelClass } from '@/config/goleeTheme'
+import { getCategoryCircleClass } from '@/config/categoryColors'
+import { Plus, Pencil, Trash2, Layers, MapPin, Clock, AlertTriangle } from 'lucide-react'
+import { createPortal } from 'react-dom'
 
 interface Category {
   id: string
   code: string
   name: string
+  abbreviation?: string | null
   sort: number
   active: boolean
   created_at: string
@@ -36,24 +46,67 @@ interface TrainingLocation {
 }
 
 interface NewCategory {
-  code: string
   name: string
+  abbreviation: string
   training_locations: TrainingLocation[]
 }
 
-export default function Settings() {
+function deriveCategoryCodeFromAbbrev(abbreviation: string): string {
+  return abbreviation.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_').slice(0, 10)
+}
+
+function isTrainingLocationComplete(loc: TrainingLocation): boolean {
+  return !!(loc.location.trim() && loc.weekday.trim() && loc.start_time.trim() && loc.end_time.trim())
+}
+
+function getTrainingCardHighlightStyle(isHighlighted: boolean) {
+  return isHighlighted
+    ? {
+        borderColor: GOLEE.accent,
+        backgroundColor: GOLEE.accentSoft,
+        boxShadow: `0 0 0 2px ${GOLEE.accent}`,
+      }
+    : {
+        borderColor: GOLEE.border,
+        backgroundColor: GOLEE.surfaceMuted,
+      }
+}
+
+interface SettingsProps {
+  embedInLayout?: boolean
+}
+
+function getCategoryDisplayAbbrev(category: Category): string {
+  if (category.abbreviation?.trim()) return category.abbreviation.trim()
+  const code = (category.code || '').toUpperCase()
+  if (code === 'SERIE_C') return 'C'
+  if (code === 'SERIE_B') return 'B'
+  if (code === 'SENIOR' || code === 'SENIORES') return ''
+  const short: Record<string, string> = {
+    PODEROSA: 'POD',
+    GUSSAGOLD: 'GUS',
+    BRIXIAOLD: 'BRI',
+    LEONESSE: 'LEO',
+  }
+  return short[code] || category.code || '—'
+}
+
+export default function Settings({ embedInLayout = false }: SettingsProps) {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { profile } = useAuth()
   const [categories, setCategories] = useState<Category[]>([])
   const [newCategory, setNewCategory] = useState<NewCategory>({ 
-    code: '', 
-    name: '', 
+    name: '',
+    abbreviation: '',
     training_locations: [{ location: '', weekday: '', start_time: '', end_time: '' }] 
   })
+  const [addAnotherTrainingDismissed, setAddAnotherTrainingDismissed] = useState(false)
+  const [highlightedNewTrainingIndex, setHighlightedNewTrainingIndex] = useState<number | null>(null)
+  const [highlightedEditTrainingIndex, setHighlightedEditTrainingIndex] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
-  const [activeTab, setActiveTab] = useState<'categories' | 'system' | 'emails' | 'permissions' | 'debug' | 'performance'>('system')
+  const [activeTab, setActiveTab] = useState<'categories' | 'event-types' | 'system' | 'templates' | 'permissions' | 'debug' | 'performance'>('system')
   const [editingCategory, setEditingCategory] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
   const [showEditModal, setShowEditModal] = useState(false)
@@ -72,6 +125,9 @@ export default function Settings() {
   const [showProfessionalCategoryModal, setShowProfessionalCategoryModal] = useState(false)
   const [editingProfessionalCategory, setEditingProfessionalCategory] = useState<ProfessionalCategory | null>(null)
   const [expandedProfessionalCategories, setExpandedProfessionalCategories] = useState(false)
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState<{ id: string; name: string } | null>(null)
+  const [deleteBlockedModal, setDeleteBlockedModal] = useState<{ name: string; players: { id: string; first_name?: string; last_name?: string }[]; users: { id: string; full_name?: string }[] } | null>(null)
+  const [deletingCategory, setDeletingCategory] = useState(false)
 
   useEffect(() => {
     loadCategories()
@@ -81,8 +137,8 @@ export default function Settings() {
     const urlParams = new URLSearchParams(window.location.search)
     const tabParam = urlParams.get('tab')
     
-    if (tabParam && ['categories', 'system', 'emails', 'permissions', 'debug', 'performance'].includes(tabParam)) {
-      setActiveTab(tabParam as 'categories' | 'system' | 'emails' | 'permissions' | 'debug' | 'performance')
+    if (tabParam && ['categories', 'event-types', 'system', 'templates', 'emails', 'permissions', 'debug', 'performance'].includes(tabParam)) {
+      setActiveTab((tabParam === 'emails' ? 'templates' : tabParam) as 'categories' | 'event-types' | 'system' | 'templates' | 'permissions' | 'debug' | 'performance')
     }
   }, [])
 
@@ -278,23 +334,45 @@ export default function Settings() {
     setMessage('')
 
     try {
-      if (!newCategory.code.trim() || !newCategory.name.trim()) {
-        throw new Error('Codice e nome sono obbligatori')
+      if (!newCategory.name.trim() || !newCategory.abbreviation.trim()) {
+        throw new Error('Nome e abbreviazione sono obbligatori')
+      }
+
+      const categoryCode = deriveCategoryCodeFromAbbrev(newCategory.abbreviation)
+      if (!categoryCode) {
+        throw new Error('Abbreviazione non valida')
       }
 
       // Validazione sedi di allenamento
-      const validLocations = newCategory.training_locations.filter(loc => 
-        loc.location.trim() && loc.weekday.trim() && loc.start_time.trim() && loc.end_time.trim()
-      )
+      const validLocations = newCategory.training_locations.filter(isTrainingLocationComplete)
       
       if (validLocations.length === 0) {
         throw new Error('Devi inserire almeno una sede di allenamento completa')
       }
 
-      // Verifica che il codice non esista già
-      const existingCategory = categories.find(c => c.code === newCategory.code.toUpperCase())
-      if (existingCategory) {
-        throw new Error('Una categoria con questo codice esiste già')
+      // Verifica duplicati
+      const nameTaken = categories.some(
+        (c) => c.name.trim().toLowerCase() === newCategory.name.trim().toLowerCase()
+      )
+      if (nameTaken) {
+        throw new Error('Esiste già una categoria con questo nome')
+      }
+
+      const abbrevTaken = categories.some((c) => {
+        const norm = newCategory.abbreviation.trim().toUpperCase()
+        const existingAbbrev = c.abbreviation?.trim().toUpperCase() || ''
+        const existingCode = c.code?.trim().toUpperCase() || ''
+        return existingAbbrev === norm || existingCode === norm
+      })
+      if (abbrevTaken) {
+        throw new Error('Esiste già una categoria con questa abbreviazione')
+      }
+
+      const codeTaken = categories.some(
+        (c) => c.code.trim().toUpperCase() === categoryCode
+      )
+      if (codeTaken) {
+        throw new Error('Esiste già una categoria con questa abbreviazione')
       }
 
       // Determina il valore sort per la nuova categoria
@@ -310,8 +388,8 @@ export default function Settings() {
         'SENIORES': 6
       }
       
-      if (standardSorts[newCategory.code.toUpperCase()]) {
-        sortValue = standardSorts[newCategory.code.toUpperCase()]
+      if (standardSorts[categoryCode]) {
+        sortValue = standardSorts[categoryCode]
       } else {
         // Per nuove categorie, trova il valore sort più alto e aggiungi 1
         const maxSort = Math.max(...categories.map(c => c.sort), 0)
@@ -322,8 +400,9 @@ export default function Settings() {
       const { data: categoryData, error: categoryError } = await supabase
         .from('categories')
         .insert({
-          code: newCategory.code.toUpperCase(),
+          code: categoryCode,
           name: newCategory.name.trim(),
+          abbreviation: newCategory.abbreviation.trim(),
           sort: sortValue
         })
         .select()
@@ -349,10 +428,12 @@ export default function Settings() {
 
       setMessage('✅ Categoria e sedi di allenamento create con successo!')
       setNewCategory({ 
-        code: '', 
-        name: '', 
+        name: '',
+        abbreviation: '',
         training_locations: [{ location: '', weekday: '', start_time: '', end_time: '' }] 
       })
+      setAddAnotherTrainingDismissed(false)
+      setHighlightedNewTrainingIndex(null)
       loadCategories() // Ricarica la lista e le sedi di allenamento
     } catch (error: any) {
       console.error('Errore nella creazione categoria:', error)
@@ -414,93 +495,62 @@ export default function Settings() {
     }
   }
 
-  const handleDeleteCategory = async (categoryId: string) => {
+  const requestDeleteCategory = async (category: Category) => {
     try {
-      // PASSO 1: Controlla se ci sono giocatori collegati (usa i campi corretti)
-      let players: any[] = []
-      let playersError = null
-      
+      let players: { id: string; first_name?: string; last_name?: string }[] = []
       try {
-        const { data, error } = await supabase
+        const { data } = await supabase
           .from('players')
-          .select('id, first_name, last_name') // Usa i campi corretti
-          .eq('category_id', categoryId)
-        
+          .select('id, first_name, last_name')
+          .eq('category_id', category.id)
         players = data || []
-        playersError = error
-      } catch (e) {
-        // Se la tabella players non esiste, ignora
+      } catch {
         console.log('Tabella players non trovata, continuo...')
       }
 
-      // PASSO 2: Controlla se ci sono utenti collegati
-      let users: any[] = []
-      let usersError = null
-      
+      let users: { id: string; full_name?: string }[] = []
       try {
-        const { data, error } = await supabase
+        const { data } = await supabase
           .from('profiles')
           .select('id, full_name')
-          .eq('category_id', categoryId)
-        
+          .eq('category_id', category.id)
         users = data || []
-        usersError = error
-      } catch (e) {
-        // Se la tabella profiles non esiste, ignora
+      } catch {
         console.log('Tabella profiles non trovata, continuo...')
       }
 
-      // PASSO 3: Se ci sono collegamenti, mostra popup dettagliato
-      if ((players && players.length > 0) || (users && users.length > 0)) {
-        let message = '❌ **IMPOSSIBILE ELIMINARE QUESTA CATEGORIA!**\n\n'
-        message += '**Motivo:** La categoria è attualmente in uso da:\n\n'
-
-        if (players && players.length > 0) {
-          message += `🏃‍♂️ **${players.length} Giocatore/i:**\n`
-          players.forEach(player => {
-            const playerName = player.first_name && player.last_name 
-              ? `${player.first_name} ${player.last_name}`
-              : player.first_name || player.last_name || 'Nome non disponibile'
-            message += `   • ${playerName}\n`
-          })
-          message += '\n'
-        }
-
-        if (users && users.length > 0) {
-          message += `👥 **${users.length} Utente/i:**\n`
-          users.forEach(user => {
-            message += `   • ${user.full_name || 'Nome non disponibile'}\n`
-          })
-          message += '\n'
-        }
-
-        message += '**Soluzione:**\n'
-        message += '1. Sposta tutti i giocatori/utenti in altre categorie\n'
-        message += '2. Oppure elimina prima i giocatori/utenti collegati\n'
-        message += '3. Poi riprova a eliminare la categoria'
-
-        // Mostra popup con messaggio dettagliato
-        alert(message)
+      if (players.length > 0 || users.length > 0) {
+        setDeleteBlockedModal({ name: category.name, players, users })
         return
       }
 
-      // PASSO 4: Se non ci sono collegamenti, procedi con l'eliminazione
-      if (!confirm('Sei sicuro di voler eliminare questa categoria? Questa azione non può essere annullata.')) {
-        return
-      }
+      setDeleteConfirmModal({ id: category.id, name: category.name })
+    } catch (error: any) {
+      console.error('Errore nel controllo eliminazione categoria:', error)
+      setMessage(`❌ Errore: ${error.message}`)
+    }
+  }
 
+  const confirmDeleteCategory = async () => {
+    if (!deleteConfirmModal) return
+
+    setDeletingCategory(true)
+    try {
       const { error } = await supabase
         .from('categories')
         .delete()
-        .eq('id', categoryId)
+        .eq('id', deleteConfirmModal.id)
 
       if (error) throw error
 
       setMessage('✅ Categoria eliminata con successo!')
-      loadCategories() // Ricarica la lista
+      setDeleteConfirmModal(null)
+      loadCategories()
     } catch (error: any) {
       console.error('Errore nell\'eliminazione categoria:', error)
       setMessage(`❌ Errore: ${error.message}`)
+    } finally {
+      setDeletingCategory(false)
     }
   }
 
@@ -509,6 +559,7 @@ export default function Settings() {
   }
 
   const handleTrainingLocationChange = (index: number, field: keyof TrainingLocation, value: string) => {
+    setAddAnotherTrainingDismissed(false)
     setNewCategory(prev => ({
       ...prev,
       training_locations: prev.training_locations.map((loc, i) => 
@@ -518,17 +569,61 @@ export default function Settings() {
   }
 
   const addTrainingLocation = () => {
-    setNewCategory(prev => ({
-      ...prev,
-      training_locations: [...prev.training_locations, { location: '', weekday: '', start_time: '', end_time: '' }]
-    }))
+    setAddAnotherTrainingDismissed(false)
+    setNewCategory(prev => {
+      setHighlightedNewTrainingIndex(prev.training_locations.length)
+      return {
+        ...prev,
+        training_locations: [...prev.training_locations, { location: '', weekday: '', start_time: '', end_time: '' }]
+      }
+    })
   }
 
   const removeTrainingLocation = (index: number) => {
+    setAddAnotherTrainingDismissed(false)
+    setHighlightedNewTrainingIndex((prev) => {
+      if (prev === null) return null
+      if (prev === index) return null
+      if (prev > index) return prev - 1
+      return prev
+    })
     setNewCategory(prev => ({
       ...prev,
       training_locations: prev.training_locations.filter((_, i) => i !== index)
     }))
+  }
+
+  const completedTrainingCount = newCategory.training_locations.filter(isTrainingLocationComplete).length
+  const lastTrainingIndex = newCategory.training_locations.length - 1
+  const lastTrainingComplete = isTrainingLocationComplete(newCategory.training_locations[lastTrainingIndex] ?? { location: '', weekday: '', start_time: '', end_time: '' })
+  const showAddAnotherTrainingPrompt = lastTrainingComplete && !addAnotherTrainingDismissed
+  const normalizedNewName = newCategory.name.trim().toLowerCase()
+  const normalizedNewAbbrev = newCategory.abbreviation.trim().toUpperCase()
+  const hasDuplicateCategoryName =
+    normalizedNewName !== '' &&
+    categories.some((c) => c.name.trim().toLowerCase() === normalizedNewName)
+  const hasDuplicateCategoryAbbrev =
+    normalizedNewAbbrev !== '' &&
+    categories.some((c) => {
+      const existingAbbrev = c.abbreviation?.trim().toUpperCase() || ''
+      const existingCode = c.code?.trim().toUpperCase() || ''
+      return existingAbbrev === normalizedNewAbbrev || existingCode === normalizedNewAbbrev
+    })
+  const identityFieldsComplete =
+    newCategory.name.trim() !== '' &&
+    newCategory.abbreviation.trim() !== ''
+  const trainingReady =
+    completedTrainingCount >= 1 &&
+    lastTrainingComplete &&
+    addAnotherTrainingDismissed
+  const canSubmitNewCategory =
+    identityFieldsComplete &&
+    trainingReady &&
+    !hasDuplicateCategoryName &&
+    !hasDuplicateCategoryAbbrev
+
+  const confirmNoMoreTrainings = () => {
+    setAddAnotherTrainingDismissed(true)
   }
 
   // Funzioni per il modal di modifica
@@ -566,6 +661,7 @@ export default function Settings() {
     setShowEditModal(false)
     setEditingCategoryData(null)
     setEditingTrainingLocations([])
+    setHighlightedEditTrainingIndex(null)
   }
 
   const handleEditTrainingLocationChange = (index: number, field: keyof TrainingLocation, value: string) => {
@@ -577,13 +673,22 @@ export default function Settings() {
   }
 
   const addEditTrainingLocation = () => {
-    setEditingTrainingLocations(prev => [
-      ...prev,
-      { location: '', weekday: '', start_time: '', end_time: '' }
-    ])
+    setEditingTrainingLocations(prev => {
+      setHighlightedEditTrainingIndex(prev.length)
+      return [
+        ...prev,
+        { location: '', weekday: '', start_time: '', end_time: '' }
+      ]
+    })
   }
 
   const removeEditTrainingLocation = (index: number) => {
+    setHighlightedEditTrainingIndex((prev) => {
+      if (prev === null) return null
+      if (prev === index) return null
+      if (prev > index) return prev - 1
+      return prev
+    })
     setEditingTrainingLocations(prev => prev.filter((_, i) => i !== index))
   }
 
@@ -607,7 +712,8 @@ export default function Settings() {
       const { error: categoryError } = await supabase
         .from('categories')
         .update({
-          name: editingCategoryData.name.trim()
+          name: editingCategoryData.name.trim(),
+          abbreviation: editingCategoryData.abbreviation?.trim() || null
         })
         .eq('id', editingCategoryData.id)
 
@@ -648,8 +754,8 @@ export default function Settings() {
   }
 
   return (
-    <div>
-      <Header title="Configurazioni" showBack={true} />
+    <div className={embedInLayout ? 'min-h-full bg-gray-50 text-gray-900' : ''}>
+      {!embedInLayout && <Header title="Configurazioni" showBack={true} />}
       
       <div className="p-6">
         {/* Tabs */}
@@ -661,11 +767,24 @@ export default function Settings() {
             }}
             className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
               activeTab === 'categories'
-                ? 'bg-white text-sky-600 shadow-sm'
+                ? 'bg-white text-gray-900 shadow-sm'
                 : 'text-gray-600 hover:text-gray-800'
             }`}
           >
             📋 Categorie
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab('event-types')
+              navigate('/settings?tab=event-types', { replace: true })
+            }}
+            className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
+              activeTab === 'event-types'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-600 hover:text-gray-800'
+            }`}
+          >
+            📅 Tipi evento
           </button>
           <button
             onClick={() => {
@@ -674,7 +793,7 @@ export default function Settings() {
             }}
             className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
               activeTab === 'system'
-                ? 'bg-white text-sky-600 shadow-sm'
+                ? 'bg-white text-gray-900 shadow-sm'
                 : 'text-gray-600 hover:text-gray-800'
             }`}
           >
@@ -682,16 +801,16 @@ export default function Settings() {
           </button>
           <button
             onClick={() => {
-              setActiveTab('emails')
-              navigate('/settings?tab=emails', { replace: true })
+              setActiveTab('templates')
+              navigate('/settings?tab=templates', { replace: true })
             }}
             className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
-              activeTab === 'emails'
-                ? 'bg-white text-sky-600 shadow-sm'
+              activeTab === 'templates'
+                ? 'bg-white text-gray-900 shadow-sm'
                 : 'text-gray-600 hover:text-gray-800'
             }`}
           >
-            📧 Email
+            📝 Template
           </button>
           <button
             onClick={() => {
@@ -700,7 +819,7 @@ export default function Settings() {
             }}
             className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
               activeTab === 'permissions'
-                ? 'bg-white text-sky-600 shadow-sm'
+                ? 'bg-white text-gray-900 shadow-sm'
                 : 'text-gray-600 hover:text-gray-800'
             }`}
           >
@@ -713,7 +832,7 @@ export default function Settings() {
             }}
             className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
               activeTab === 'debug'
-                ? 'bg-white text-sky-600 shadow-sm'
+                ? 'bg-white text-gray-900 shadow-sm'
                 : 'text-gray-600 hover:text-gray-800'
             }`}
           >
@@ -726,7 +845,7 @@ export default function Settings() {
             }}
             className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
               activeTab === 'performance'
-                ? 'bg-white text-sky-600 shadow-sm'
+                ? 'bg-white text-gray-900 shadow-sm'
                 : 'text-gray-600 hover:text-gray-800'
             }`}
           >
@@ -736,260 +855,378 @@ export default function Settings() {
 
         {/* Tab Categorie */}
         {activeTab === 'categories' && (
-          <div className="space-y-8">
-            {/* Aggiungi Categoria */}
-            <div className="card p-6">
-              <h2 className="text-2xl font-bold text-navy mb-4">Aggiungi Nuova Categoria</h2>
+          <div className="w-full -mx-6 px-4 sm:px-6 space-y-5" style={{ backgroundColor: GOLEE.pageBg }}>
+          {/* Riga superiore: Aggiungi categoria 80% + Sedi 20% fissa */}
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,4fr)_minmax(0,1fr)] gap-5 items-stretch w-full">
+            <div className={`${goleeCardClass} p-5 md:p-6 w-full min-w-0 h-full`} style={{ borderColor: GOLEE.border }}>
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: GOLEE.accentSoft }}>
+                  <Layers className="w-5 h-5" style={{ color: GOLEE.accent }} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold" style={{ color: GOLEE.text }}>Aggiungi Nuova Categoria</h2>
+                  <p className="text-sm mt-0.5" style={{ color: GOLEE.textMuted }}>Nome, abbreviazione e orari di allenamento</p>
+                </div>
+              </div>
               
-              <form onSubmit={handleAddCategory} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <form onSubmit={handleAddCategory} className="space-y-5">
+                <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,280px)_120px] gap-4 items-end w-fit max-w-full">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Codice *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={newCategory.code}
-                      onChange={(e) => handleInputChange('code', e.target.value)}
-                      className="w-full p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-sky-500 focus:border-transparent"
-                      placeholder="Es. U16, SENIORES"
-                      maxLength={10}
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Nome *
-                    </label>
+                    <label className={goleeLabelClass} style={{ color: GOLEE.textMuted }}>Nome *</label>
                     <input
                       type="text"
                       required
                       value={newCategory.name}
                       onChange={(e) => handleInputChange('name', e.target.value)}
-                      className="w-full p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                      className={goleeInputClass}
+                      style={{
+                        ...goleeInputStyle,
+                        borderColor: hasDuplicateCategoryName ? GOLEE.danger : GOLEE.border,
+                      }}
                       placeholder="Es. Under 16, Seniores"
                     />
+                    {hasDuplicateCategoryName && (
+                      <p className="text-xs mt-1" style={{ color: GOLEE.danger }}>Esiste già una categoria con questo nome</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className={goleeLabelClass} style={{ color: GOLEE.textMuted }}>Abbrev. *</label>
+                    <input
+                      type="text"
+                      required
+                      value={newCategory.abbreviation}
+                      onChange={(e) => handleInputChange('abbreviation', e.target.value)}
+                      className={`${goleeInputClass} text-center`}
+                      style={{
+                        ...goleeInputStyle,
+                        borderColor: hasDuplicateCategoryAbbrev ? GOLEE.danger : GOLEE.border,
+                      }}
+                      placeholder="U16"
+                      maxLength={20}
+                    />
+                    {hasDuplicateCategoryAbbrev && (
+                      <p className="text-xs mt-1 text-center" style={{ color: GOLEE.danger }}>Nome o codice abbreviazione già in uso</p>
+                    )}
                   </div>
                 </div>
 
                 {/* Sedi di Allenamento */}
-                <div className="mt-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Sedi di Allenamento *</h3>
-                  <div className="space-y-4">
-                    {newCategory.training_locations.map((location, index) => (
-                      <div key={index} className="grid grid-cols-1 md:grid-cols-5 gap-4 p-4 bg-gray-50 rounded-lg">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Sede *
-                          </label>
-                          <select
-                            required
-                            value={location.location}
-                            onChange={(e) => handleTrainingLocationChange(index, 'location', e.target.value)}
-                            className="w-full p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-sky-500 focus:border-transparent"
-                          >
-                            <option value="">Seleziona sede</option>
-                            <option value="Brescia">Brescia</option>
-                            <option value="Ospitaletto">Ospitaletto</option>
-                            <option value="Gussago">Gussago</option>
-                          </select>
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Giorno *
-                          </label>
-                          <select
-                            required
-                            value={location.weekday}
-                            onChange={(e) => handleTrainingLocationChange(index, 'weekday', e.target.value)}
-                            className="w-full p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-sky-500 focus:border-transparent"
-                          >
-                            <option value="">Seleziona giorno</option>
-                            <option value="Lunedì">Lunedì</option>
-                            <option value="Martedì">Martedì</option>
-                            <option value="Mercoledì">Mercoledì</option>
-                            <option value="Giovedì">Giovedì</option>
-                            <option value="Venerdì">Venerdì</option>
-                            <option value="Sabato">Sabato</option>
-                            <option value="Domenica">Domenica</option>
-                          </select>
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Dalle *
-                          </label>
-                          <input
-                            type="time"
-                            required
-                            value={location.start_time}
-                            onChange={(e) => handleTrainingLocationChange(index, 'start_time', e.target.value)}
-                            className="w-full p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-sky-500 focus:border-transparent"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Alle *
-                          </label>
-                          <input
-                            type="time"
-                            required
-                            value={location.end_time}
-                            onChange={(e) => handleTrainingLocationChange(index, 'end_time', e.target.value)}
-                            className="w-full p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-sky-500 focus:border-transparent"
-                          />
-                        </div>
-                        
-                        <div className="flex items-end">
-                          {newCategory.training_locations.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => removeTrainingLocation(index)}
-                              className="w-full p-3 bg-red-500 text-white rounded-2xl hover:bg-red-600 transition-colors"
+                <div className="pt-4 border-t" style={{ borderColor: GOLEE.border }}>
+                  <h3 className="text-sm font-semibold uppercase tracking-wide mb-4" style={{ color: GOLEE.text }}>
+                    Sedi di Allenamento <span style={{ color: GOLEE.danger }}>*</span>
+                  </h3>
+                  <div className="space-y-3">
+                    {newCategory.training_locations.map((location, index) => {
+                      const isHighlightedNewTraining =
+                        index === highlightedNewTrainingIndex && !isTrainingLocationComplete(location)
+                      return (
+                      <div key={index}>
+                        <div
+                          className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_1fr_auto] gap-3 p-4 rounded-xl border transition-all duration-200"
+                          style={getTrainingCardHighlightStyle(isHighlightedNewTraining)}
+                        >
+                          <div>
+                            <label className={goleeLabelClass} style={{ color: GOLEE.textMuted }}>Sede *</label>
+                            <TrainingVenueSelect
+                              required
+                              scheduleOnly
+                              value={location.location}
+                              onChange={(value) => handleTrainingLocationChange(index, 'location', value)}
+                            />
+                          </div>
+                          
+                          <div>
+                            <label className={goleeLabelClass} style={{ color: GOLEE.textMuted }}>Giorno *</label>
+                            <select
+                              required
+                              value={location.weekday}
+                              onChange={(e) => handleTrainingLocationChange(index, 'weekday', e.target.value)}
+                              className={goleeInputClass}
+                              style={goleeInputStyle}
                             >
-                              🗑️ Rimuovi
-                            </button>
-                          )}
+                              <option value="">Seleziona giorno</option>
+                              <option value="Lunedì">Lunedì</option>
+                              <option value="Martedì">Martedì</option>
+                              <option value="Mercoledì">Mercoledì</option>
+                              <option value="Giovedì">Giovedì</option>
+                              <option value="Venerdì">Venerdì</option>
+                              <option value="Sabato">Sabato</option>
+                              <option value="Domenica">Domenica</option>
+                            </select>
+                          </div>
+                          
+                          <div>
+                            <label className={goleeLabelClass} style={{ color: GOLEE.textMuted }}>Dalle *</label>
+                            <input
+                              type="time"
+                              required
+                              value={location.start_time}
+                              onChange={(e) => handleTrainingLocationChange(index, 'start_time', e.target.value)}
+                              className={goleeInputClass}
+                              style={goleeInputStyle}
+                            />
+                          </div>
+                          
+                          <div>
+                            <label className={goleeLabelClass} style={{ color: GOLEE.textMuted }}>Alle *</label>
+                            <input
+                              type="time"
+                              required
+                              value={location.end_time}
+                              onChange={(e) => handleTrainingLocationChange(index, 'end_time', e.target.value)}
+                              className={goleeInputClass}
+                              style={goleeInputStyle}
+                            />
+                          </div>
+                          
+                          <div className="flex items-end">
+                            {newCategory.training_locations.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removeTrainingLocation(index)}
+                                className="w-full md:w-auto px-3 py-2.5 rounded-xl text-sm font-medium text-white whitespace-nowrap transition-opacity hover:opacity-90"
+                                style={{ backgroundColor: GOLEE.danger }}
+                              >
+                                Rimuovi
+                              </button>
+                            )}
+                          </div>
                         </div>
+
+                        {index === lastTrainingIndex && showAddAnotherTrainingPrompt && (
+                          <div
+                            className="mt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl border"
+                            style={{ backgroundColor: GOLEE.accentSoft, borderColor: GOLEE.accent }}
+                          >
+                            <p className="text-sm font-medium" style={{ color: GOLEE.text }}>
+                              Allenamento {index + 1} completato. Vuoi aggiungere un altro allenamento?
+                            </p>
+                            <div className="flex gap-2 shrink-0">
+                              <button
+                                type="button"
+                                onClick={confirmNoMoreTrainings}
+                                className="px-4 py-2 rounded-xl text-sm font-medium border transition-colors"
+                                style={{ borderColor: GOLEE.border, color: GOLEE.textMuted, backgroundColor: GOLEE.surface }}
+                              >
+                                No, basta così
+                              </button>
+                              <button
+                                type="button"
+                                onClick={addTrainingLocation}
+                                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                                style={{ backgroundColor: GOLEE.accent }}
+                              >
+                                <Plus className="w-4 h-4" />
+                                Sì, aggiungi
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    ))}
-                    
-                    <button
-                      type="button"
-                      onClick={addTrainingLocation}
-                      className="w-full p-3 bg-green-500 text-white rounded-2xl hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
-                    >
-                      ➕ Aggiungi Sede di Allenamento
-                    </button>
+                    )})}
                   </div>
                 </div>
-                
+
+                {canSubmitNewCategory && (
+                  <p
+                    className="text-sm font-medium px-4 py-2.5 rounded-xl border"
+                    style={{ backgroundColor: GOLEE.successSoft, borderColor: GOLEE.success, color: GOLEE.success }}
+                  >
+                    Tutto pronto: puoi salvare la categoria.
+                  </p>
+                )}
+
+                {showAddAnotherTrainingPrompt && (
+                  <p className="text-sm px-4 py-2.5 rounded-xl border" style={{ backgroundColor: GOLEE.infoSoft, borderColor: GOLEE.info, color: GOLEE.text }}>
+                    Conferma con <strong>No, basta così</strong> per abilitare il salvataggio.
+                  </p>
+                )}
+
+                {(hasDuplicateCategoryName || hasDuplicateCategoryAbbrev) && (
+                  <p className="text-sm px-4 py-2.5 rounded-xl border" style={{ backgroundColor: GOLEE.dangerSoft, borderColor: GOLEE.danger, color: GOLEE.danger }}>
+                    Correggi i campi evidenziati in rosso: nome o abbreviazione già utilizzati.
+                  </p>
+                )}
+
                 <button
                   type="submit"
-                  disabled={loading}
-                  className="btn bg-sky text-white px-6 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={loading || !canSubmitNewCategory}
+                  className="w-full py-3 rounded-xl text-sm font-semibold text-white disabled:cursor-not-allowed transition-all hover:opacity-90"
+                  style={{
+                    backgroundColor: canSubmitNewCategory && !loading ? GOLEE.accent : '#CBD5E1',
+                  }}
                 >
-                  {loading ? 'Creazione...' : 'Aggiungi Categoria'}
+                  {loading ? 'Creazione in corso...' : 'Aggiungi Categoria'}
                 </button>
               </form>
             </div>
 
-            {/* Lista Categorie */}
-            <div className="card p-6">
-              <h2 className="text-2xl font-bold text-navy mb-4">Categorie Esistenti</h2>
+            <div
+              className={`${goleeCardClass} p-4 w-full h-full flex flex-col min-h-0`}
+              style={{ borderColor: GOLEE.border }}
+            >
+              <TrainingVenuesPanel />
+            </div>
+          </div>
+
+          {/* Categorie esistenti: larghezza piena pagina */}
+          <div className={`${goleeCardClass} p-5 md:p-6 w-full`} style={{ borderColor: GOLEE.border }}>
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: GOLEE.infoSoft }}>
+                  <Layers className="w-5 h-5" style={{ color: GOLEE.info }} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold" style={{ color: GOLEE.text }}>Categorie Esistenti</h2>
+                  <p className="text-sm mt-0.5" style={{ color: GOLEE.textMuted }}>{categories.length} categorie configurate</p>
+                </div>
+              </div>
               
               {categories.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <div className="text-4xl mb-4">📋</div>
-                  <p>Nessuna categoria trovata</p>
+                <div className="text-center py-10 rounded-xl border border-dashed" style={{ borderColor: GOLEE.border, color: GOLEE.textMuted }}>
+                  <Layers className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                  <p className="text-sm">Nessuna categoria trovata</p>
                 </div>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-3 w-full">
+                  {/* Intestazione colonne */}
+                  <div className="hidden lg:flex w-full items-center pb-1 leading-tight">
+                    <div className="w-12 shrink-0" aria-hidden />
+                    <div className="grid flex-1 min-w-0 grid-cols-[auto_minmax(150px,1.2fr)_1fr_1fr_1fr_auto] items-center gap-4 px-5">
+                      <span className="text-[12pt] font-semibold uppercase tracking-wide" style={{ color: GOLEE.textMuted }}>Attiva</span>
+                      <span className="text-[12pt] font-semibold uppercase tracking-wide" style={{ color: GOLEE.textMuted }}>Categoria</span>
+                      <span className="text-[12pt] font-semibold uppercase tracking-wide" style={{ color: GOLEE.textMuted }}>Allenamento 1</span>
+                      <span className="text-[12pt] font-semibold uppercase tracking-wide" style={{ color: GOLEE.textMuted }}>Allenamento 2</span>
+                      <span className="text-[12pt] font-semibold uppercase tracking-wide" style={{ color: GOLEE.textMuted }}>Allenamento 3</span>
+                      <span className="text-[12pt] font-semibold uppercase tracking-wide text-right" style={{ color: GOLEE.textMuted }}>Azioni</span>
+                    </div>
+                  </div>
                   {categories.map((category) => (
-                    <div key={category.id} className={`flex items-center justify-between p-4 rounded-lg transition-colors duration-200 ${
-                      category.active 
-                        ? 'bg-green-50 border border-green-200' 
-                        : 'bg-red-50 border border-red-200'
-                    }`}>
-                      <div className="flex items-center space-x-4 relative">
-                        {/* Checkbox per attivazione */}
-                                                <div className="relative z-20">
-                          <input
-                            type="checkbox"
-                            checked={category.active || false}
-                            onChange={(e) => {
-                              handleToggleActive(category.id, category.active || false)
-                            }}
-                            className="w-5 h-5 text-sky-600 border-gray-300 rounded focus:ring-sky-500 cursor-pointer"
-                            style={{ pointerEvents: 'auto' }}
-                            title={category.active ? 'Disattiva categoria' : 'Attiva categoria'}
-                          />
-                        </div>
-                        
-                        <div>
-                          <div className="font-semibold text-lg">{category.code}</div>
-                          {editingCategory === category.id ? (
-                            <div className="flex items-center space-x-2">
-                              <input
-                                type="text"
-                                value={editingName}
-                                onChange={(e) => setEditingName(e.target.value)}
-                                className="text-sm border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-sky-500"
-                                autoFocus
-                              />
-                              <button
-                                onClick={() => handleSaveCategory(category.id)}
-                                className="text-sm bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600"
-                              >
-                                Salva
-                              </button>
-                              <button
-                                onClick={handleCancelEdit}
-                                className="text-sm bg-gray-500 text-white px-2 py-1 rounded hover:bg-gray-600"
-                              >
-                                Annulla
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="text-sm text-gray-600">{category.name}</div>
-                          )}
-                          <div className="text-xs text-gray-500">
-                            Creata il {new Date(category.created_at).toLocaleDateString('it-IT')}
-                            {category.active ? (
-                              <span className="ml-2 text-green-600">✓ Attiva</span>
-                            ) : (
-                              <span className="ml-2 text-red-700">✗ Non attiva</span>
-                            )}
-                          </div>
-                          
-                          {/* Sedi di Allenamento */}
-                          {categoryTrainingLocations[category.id] && categoryTrainingLocations[category.id].length > 0 && (
-                            <div className="mt-2">
-                              <div className="text-xs font-medium text-gray-700 mb-1">Sedi di Allenamento:</div>
-                              <div className="space-y-1">
-                                {categoryTrainingLocations[category.id].map((location, index) => (
-                                  <div key={index} className="text-xs text-gray-600 bg-gray-50 px-2 py-1 rounded">
-                                    <span className="font-medium">{location.weekday}</span> - {location.location} 
-                                    <span className="text-gray-500 ml-1">
-                                      ({location.start_time} - {location.end_time})
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center space-x-2">
-                        {editingCategory !== category.id && (
-                          <button
-                            onClick={() => openEditModal(category)}
-                            className="btn bg-blue-500 text-white px-3 py-2 text-sm hover:bg-blue-600"
-                            title="Modifica categoria e sedi di allenamento"
-                          >
-                            Modifica
-                          </button>
-                        )}
-                        
+                    editingCategory === category.id ? (
+                      <div
+                        key={category.id}
+                        className="flex flex-wrap items-center gap-3 p-4 rounded-xl border"
+                        style={{ backgroundColor: GOLEE.surface, borderColor: GOLEE.border }}
+                      >
+                        <input
+                          type="text"
+                          value={editingName}
+                          onChange={(e) => setEditingName(e.target.value)}
+                          className={`${goleeInputClass} max-w-xs`}
+                          style={goleeInputStyle}
+                          autoFocus
+                        />
                         <button
-                          onClick={() => handleDeleteCategory(category.id)}
-                          className="btn bg-red-500 text-white px-3 py-2 text-sm hover:bg-red-600"
-                          title="Elimina categoria"
+                          onClick={() => handleSaveCategory(category.id)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white"
+                          style={{ backgroundColor: GOLEE.accent }}
                         >
-                          🗑️
+                          Salva
+                        </button>
+                        <button
+                          onClick={handleCancelEdit}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium border"
+                          style={{ borderColor: GOLEE.border, color: GOLEE.textMuted }}
+                        >
+                          Annulla
                         </button>
                       </div>
+                    ) : (
+                    <div
+                      key={category.id}
+                      className="group flex w-full items-stretch rounded-xl border overflow-hidden transition-shadow hover:shadow-sm leading-tight"
+                      style={{
+                        borderColor: category.active ? GOLEE.success : GOLEE.danger,
+                      }}
+                    >
+                      {/* Riquadro abbreviazione categoria (stile Attività) */}
+                      <div
+                        className={`w-12 shrink-0 flex items-center justify-center text-[11pt] font-bold ${getCategoryCircleClass(category)}`}
+                        title={category.name}
+                      >
+                        {getCategoryDisplayAbbrev(category) || '—'}
+                      </div>
+
+                      <div
+                        className="grid flex-1 min-w-0 grid-cols-1 lg:grid-cols-[auto_minmax(150px,1.2fr)_1fr_1fr_1fr_auto] items-center gap-3 lg:gap-4 py-3 lg:py-4 px-4 lg:px-5"
+                        style={{
+                          backgroundColor: category.active ? GOLEE.successSoft : GOLEE.dangerSoft,
+                        }}
+                      >
+                      {/* Colonna: attiva/disattiva */}
+                      <div className="flex items-center justify-center px-1">
+                        <input
+                          type="checkbox"
+                          checked={category.active || false}
+                          onChange={() => handleToggleActive(category.id, category.active || false)}
+                          className="w-4 h-4 rounded cursor-pointer accent-[#00C48C]"
+                          title={category.active ? 'Disattiva categoria' : 'Attiva categoria'}
+                        />
+                      </div>
+
+                      {/* Colonna: nome */}
+                      <div className="min-w-0 flex items-center">
+                        <span className="font-semibold text-[13.5pt] lg:text-[15pt] truncate" style={{ color: GOLEE.text }}>
+                          {category.name}
+                        </span>
+                      </div>
+
+                      {/* Colonne: allenamenti (3 slot fissi incolonnati) */}
+                      {[0, 1, 2].map((slot) => {
+                        const loc = categoryTrainingLocations[category.id]?.[slot]
+                        const total = categoryTrainingLocations[category.id]?.length || 0
+                        return (
+                          <div key={slot} className="min-w-0">
+                            {loc ? (
+                              <span
+                                className="inline-flex items-center gap-1.5 text-[12pt] leading-none px-2.5 py-0.5 rounded-lg border whitespace-nowrap max-w-full overflow-hidden"
+                                style={{ backgroundColor: GOLEE.surface, borderColor: GOLEE.border, color: GOLEE.text }}
+                              >
+                                <MapPin className="w-3.5 h-3.5 shrink-0" style={{ color: GOLEE.accent }} />
+                                <span className="font-medium">{loc.weekday}</span>
+                                <span style={{ color: GOLEE.textMuted }}>{loc.location}</span>
+                                <Clock className="w-3.5 h-3.5 shrink-0" style={{ color: GOLEE.textMuted }} />
+                                <span style={{ color: GOLEE.textMuted }}>{loc.start_time?.substring(0, 5)}–{loc.end_time?.substring(0, 5)}</span>
+                              </span>
+                            ) : slot === 0 && total === 0 ? (
+                              <span className="text-[12pt] italic leading-none" style={{ color: GOLEE.textMuted }}>Nessun allenamento</span>
+                            ) : null}
+                          </div>
+                        )
+                      })}
+
+                      {/* Colonna: azioni (visibili solo al passaggio del mouse) */}
+                      <div className="flex items-center justify-end gap-2 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150">
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(category)}
+                          className="p-2 rounded-xl transition-colors border hover:opacity-90"
+                          style={{ backgroundColor: GOLEE.surface, borderColor: GOLEE.info, color: GOLEE.info }}
+                          title="Modifica categoria e sedi di allenamento"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => requestDeleteCategory(category)}
+                          className="p-2 rounded-xl transition-colors border hover:opacity-90"
+                          style={{ backgroundColor: GOLEE.surface, borderColor: GOLEE.danger, color: GOLEE.danger }}
+                          title="Elimina categoria"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                      </div>
                     </div>
+                    )
                   ))}
                 </div>
               )}
-            </div>
+          </div>
           </div>
         )}
+
+        {activeTab === 'event-types' && <EventTypesSettings />}
 
         {/* Tab Sistema */}
         {activeTab === 'system' && (
@@ -998,6 +1235,24 @@ export default function Settings() {
               <h2 className="text-2xl font-bold text-navy mb-4">Impostazioni Sistema</h2>
               
               <div className="space-y-6">
+                <div className="p-4 bg-sky-50 rounded-lg flex items-center justify-between">
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-sky-800 mb-2">📅 Tipi evento calendario</h3>
+                    <p className="text-sm text-sky-700">
+                      Configura menu Tipo Evento, flag sportivo e campi del form creazione evento.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setActiveTab('event-types')
+                      navigate('/settings?tab=event-types', { replace: true })
+                    }}
+                    className="btn bg-sky-600 text-white px-4 py-2 text-sm hover:bg-sky-700 ml-4"
+                  >
+                    📅 Gestisci tipi
+                  </button>
+                </div>
+
                 {/* Personalizzazione Brand */}
                 <div className="p-4 bg-gradient-to-r from-pink-50 to-purple-50 rounded-lg flex items-center justify-between">
                   <div className="flex-1">
@@ -1023,41 +1278,64 @@ export default function Settings() {
                     </p>
                   </div>
                   <button
-                    onClick={() => navigate('/create-user')}
+                    onClick={() => navigate('/users-management')}
                     className="btn bg-green-600 text-white px-4 py-2 text-sm hover:bg-green-700 ml-4"
                   >
-                    ➕ Crea Nuovo Utente
+                    👥 Gestisci Utenti
                   </button>
                 </div>
 
-                {/* Gestione Giocatori */}
-                <div className="p-4 bg-orange-50 rounded-lg flex items-center justify-between">
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-orange-800 mb-2">🏉 Gestione Giocatori</h3>
-                    <p className="text-sm text-orange-700">
-                      Registrazione giocatori e assegnazione alle categorie appropriate.
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => navigate('/create-player')}
-                    className="btn bg-orange-600 text-white px-4 py-2 text-sm hover:bg-orange-700 ml-4"
-                  >
-                    ➕ Crea Nuovo Giocatore
-                  </button>
-                </div>
+      <div className="p-4 bg-blue-50 rounded-lg flex items-center justify-between">
+        <div className="flex-1">
+          <h3 className="font-semibold text-blue-800 mb-2">🔐 Gestione Permessi</h3>
+          <p className="text-sm text-blue-700">
+            Assegna e rimuovi permessi agli utenti del sistema come amministratore.
+          </p>
+        </div>
+        <button
+          onClick={() => setActiveTab('permissions')}
+          className="btn bg-blue-600 text-white px-4 py-2 text-sm hover:bg-blue-700 ml-4"
+        >
+          ⚙️ Gestisci Permessi
+        </button>
+      </div>
 
-                <div className="p-4 bg-blue-50 rounded-lg">
-                  <h3 className="font-semibold text-blue-800 mb-2">🔐 Autenticazione</h3>
-                  <p className="text-sm text-blue-700">
-                    Sistema di autenticazione personalizzato con gestione profili e ruoli.
-                  </p>
-                </div>
-                
+      <div className="p-4 bg-purple-50 rounded-lg flex items-center justify-between">
+        <div className="flex-1">
+          <h3 className="font-semibold text-purple-800 mb-2">🎭 Configurazione Ruoli</h3>
+          <p className="text-sm text-purple-700">
+            Modifica i permessi di default per ogni ruolo del sistema (Admin, Allenatore, etc.).
+          </p>
+        </div>
+        <button
+          onClick={() => navigate('/role-permissions')}
+          className="btn bg-purple-600 text-white px-4 py-2 text-sm hover:bg-purple-700 ml-4"
+        >
+          🎭 Gestisci Ruoli
+        </button>
+      </div>
+
                 <div className="p-4 bg-purple-50 rounded-lg">
                   <h3 className="font-semibold text-purple-800 mb-2">📊 Presenze</h3>
                   <p className="text-sm text-purple-700">
                     Sistema di tracciamento presenze per sessioni e allenamenti.
                   </p>
+                </div>
+
+                {/* Infermeria / Assicurazione */}
+                <div className="p-4 bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg flex items-center justify-between">
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-amber-800 mb-2">🏥 Infermeria / Assicurazione</h3>
+                    <p className="text-sm text-amber-700">
+                      Gestione infortuni, attività di fisioterapia e comunicazioni con l'assicurazione.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => navigate('/infortuni-assicurazione')}
+                    className="btn bg-gradient-to-r from-amber-500 to-orange-500 text-white px-4 py-2 text-sm hover:from-amber-600 hover:to-orange-600 ml-4"
+                  >
+                    🏥 Gestisci
+                  </button>
                 </div>
 
                 {/* Gestione Consiglio */}
@@ -1073,6 +1351,23 @@ export default function Settings() {
                     className="btn bg-yellow-600 text-white px-4 py-2 text-sm hover:bg-yellow-700 ml-4"
                   >
                     ⚙️ Gestisci Consiglio
+                  </button>
+                </div>
+
+                {/* Società di rugby */}
+                <div className="p-4 bg-teal-50 rounded-lg flex items-center justify-between">
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-teal-800 mb-2">🏉 Aggiungi Società di Rugby</h3>
+                    <p className="text-sm text-teal-700">
+                      Gestisci l&apos;elenco delle società di rugby: serve per indicare la squadra di origine dei giocatori
+                      e per selezionare le squadre quando crei eventi (partite, tornei, feste del rugby e altri eventi con una o più società).
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => navigate('/clubs')}
+                    className="btn bg-teal-600 text-white px-4 py-2 text-sm hover:bg-teal-700 ml-4"
+                  >
+                    Gestisci
                   </button>
                 </div>
 
@@ -1165,10 +1460,18 @@ export default function Settings() {
           </div>
         )}
 
-        {/* Tab Email */}
-        {activeTab === 'emails' && (
-          <div className="space-y-8">
-            <EmailTemplateViewer />
+        {/* Tab Template: tre contenitori affiancati orizzontalmente */}
+        {activeTab === 'templates' && (
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-8">
+            <div className="lg:min-w-0">
+              <MessageTemplatesManager />
+            </div>
+            <div className="lg:min-w-0">
+              <ReceiptHeaderForm />
+            </div>
+            <div className="lg:min-w-0">
+              <TemplatesRicevuteSection />
+            </div>
           </div>
         )}
 
@@ -1302,154 +1605,363 @@ export default function Settings() {
         )}
 
         {/* Modal di modifica categoria */}
-        {showEditModal && editingCategoryData && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-              {/* Header */}
-              <div className="px-6 py-4 border-b border-gray-100">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-xl font-semibold text-gray-900">Modifica Categoria</h3>
-                    <p className="text-sm text-gray-500">{editingCategoryData.name}</p>
-                  </div>
-                  <button
-                    onClick={closeEditModal}
-                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                  >
-                    ✕
-                  </button>
+        {showEditModal && editingCategoryData && createPortal(
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] p-3 sm:p-4">
+            <div
+              className={`rounded-2xl shadow-2xl max-w-3xl w-full flex flex-col overflow-hidden border ${
+                editingTrainingLocations.length > 3 ? 'max-h-[96vh]' : ''
+              }`}
+              style={{ backgroundColor: GOLEE.surface, borderColor: GOLEE.border }}
+            >
+              {/* Header premium */}
+              <div
+                className="px-6 py-4 border-b flex items-center gap-4 shrink-0"
+                style={{ borderColor: GOLEE.border, backgroundColor: GOLEE.surfaceMuted }}
+              >
+                <div
+                  className={`w-14 h-14 rounded-2xl flex items-center justify-center text-base font-bold shrink-0 shadow-sm ${getCategoryCircleClass(editingCategoryData)}`}
+                >
+                  {getCategoryDisplayAbbrev(editingCategoryData) || '—'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-xl font-bold tracking-tight" style={{ color: GOLEE.text }}>
+                    Modifica Categoria
+                  </h3>
+                  <p className="text-sm mt-0.5 truncate" style={{ color: GOLEE.textMuted }}>
+                    {editingCategoryData.code} · {editingCategoryData.name}
+                  </p>
                 </div>
               </div>
 
-              {/* Content */}
-              <div className="px-6 py-4">
-                {/* Nome categoria */}
-                <div className="mb-6">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Nome Categoria *
-                  </label>
-                  <input
-                    type="text"
-                    value={editingCategoryData.name}
-                    onChange={(e) => setEditingCategoryData(prev => prev ? { ...prev, name: e.target.value } : null)}
-                    className="w-full p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-sky-500 focus:border-transparent"
-                    placeholder="Nome della categoria"
-                  />
+              {/* Body: scroll solo oltre 3 allenamenti */}
+              <div
+                className={`px-6 py-5 space-y-5 ${
+                  editingTrainingLocations.length > 3 ? 'flex-1 min-h-0 overflow-y-auto' : ''
+                }`}
+              >
+                {/* Sezione identità */}
+                <div className="rounded-2xl border p-4" style={{ borderColor: GOLEE.border, backgroundColor: GOLEE.surface }}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Layers className="w-4 h-4" style={{ color: GOLEE.accent }} />
+                    <h4 className="text-sm font-semibold uppercase tracking-wide" style={{ color: GOLEE.text }}>
+                      Identità categoria
+                    </h4>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-[1fr_120px] gap-4">
+                    <div>
+                      <label className={goleeLabelClass} style={{ color: GOLEE.textMuted }}>Nome categoria *</label>
+                      <input
+                        type="text"
+                        value={editingCategoryData.name}
+                        onChange={(e) => setEditingCategoryData(prev => prev ? { ...prev, name: e.target.value } : null)}
+                        className={goleeInputClass}
+                        style={goleeInputStyle}
+                        placeholder="Nome della categoria"
+                      />
+                    </div>
+                    <div>
+                      <label className={goleeLabelClass} style={{ color: GOLEE.textMuted }}>Abbreviazione</label>
+                      <input
+                        type="text"
+                        value={editingCategoryData.abbreviation ?? ''}
+                        onChange={(e) => setEditingCategoryData(prev => prev ? { ...prev, abbreviation: e.target.value } : null)}
+                        className={`${goleeInputClass} text-center font-semibold`}
+                        style={goleeInputStyle}
+                        placeholder="U12"
+                        maxLength={20}
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                {/* Sedi di Allenamento */}
+                {/* Sezione allenamenti */}
                 <div>
-                  <h4 className="text-lg font-semibold text-gray-900 mb-4">Sedi di Allenamento *</h4>
-                  <div className="space-y-4">
-                    {editingTrainingLocations.map((location, index) => (
-                      <div key={index} className="grid grid-cols-1 md:grid-cols-5 gap-4 p-4 bg-gray-50 rounded-lg">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Sede *
-                          </label>
-                          <select
-                            required
-                            value={location.location}
-                            onChange={(e) => handleEditTrainingLocationChange(index, 'location', e.target.value)}
-                            className="w-full p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-sky-500 focus:border-transparent"
-                          >
-                            <option value="">Seleziona sede</option>
-                            <option value="Brescia">Brescia</option>
-                            <option value="Ospitaletto">Ospitaletto</option>
-                            <option value="Gussago">Gussago</option>
-                          </select>
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Giorno *
-                          </label>
-                          <select
-                            required
-                            value={location.weekday}
-                            onChange={(e) => handleEditTrainingLocationChange(index, 'weekday', e.target.value)}
-                            className="w-full p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-sky-500 focus:border-transparent"
-                          >
-                            <option value="">Seleziona giorno</option>
-                            <option value="Lunedì">Lunedì</option>
-                            <option value="Martedì">Martedì</option>
-                            <option value="Mercoledì">Mercoledì</option>
-                            <option value="Giovedì">Giovedì</option>
-                            <option value="Venerdì">Venerdì</option>
-                            <option value="Sabato">Sabato</option>
-                            <option value="Domenica">Domenica</option>
-                          </select>
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Dalle *
-                          </label>
-                          <input
-                            type="time"
-                            required
-                            value={location.start_time}
-                            onChange={(e) => handleEditTrainingLocationChange(index, 'start_time', e.target.value)}
-                            className="w-full p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-sky-500 focus:border-transparent"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Alle *
-                          </label>
-                          <input
-                            type="time"
-                            required
-                            value={location.end_time}
-                            onChange={(e) => handleEditTrainingLocationChange(index, 'end_time', e.target.value)}
-                            className="w-full p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-sky-500 focus:border-transparent"
-                          />
-                        </div>
-                        
-                        <div className="flex items-end">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4" style={{ color: GOLEE.accent }} />
+                      <h4 className="text-sm font-semibold uppercase tracking-wide" style={{ color: GOLEE.text }}>
+                        Orari di allenamento <span style={{ color: GOLEE.danger }}>*</span>
+                      </h4>
+                    </div>
+                    <span
+                      className="text-xs font-medium px-2.5 py-1 rounded-full"
+                      style={{ backgroundColor: GOLEE.accentSoft, color: GOLEE.accent }}
+                    >
+                      {editingTrainingLocations.length} {editingTrainingLocations.length === 1 ? 'sessione' : 'sessioni'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2.5">
+                    {editingTrainingLocations.map((location, index) => {
+                      const isHighlightedEditTraining =
+                        index === highlightedEditTrainingIndex && !isTrainingLocationComplete(location)
+                      return (
+                      <div
+                        key={index}
+                        className="rounded-xl border overflow-hidden transition-all duration-200"
+                        style={getTrainingCardHighlightStyle(isHighlightedEditTraining)}
+                      >
+                        <div
+                          className="flex items-center justify-between px-3 py-2 border-b"
+                          style={{
+                            borderColor: isHighlightedEditTraining ? GOLEE.accent : GOLEE.border,
+                            backgroundColor: GOLEE.surface,
+                          }}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold"
+                              style={{
+                                backgroundColor: isHighlightedEditTraining ? GOLEE.accent : GOLEE.accentSoft,
+                                color: isHighlightedEditTraining ? GOLEE.surface : GOLEE.accent,
+                              }}
+                            >
+                              {index + 1}
+                            </span>
+                            <span className="text-sm font-medium" style={{ color: GOLEE.text }}>
+                              Allenamento {index + 1}
+                            </span>
+                            {isHighlightedEditTraining && (
+                              <span
+                                className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full"
+                                style={{ backgroundColor: GOLEE.accent, color: GOLEE.surface }}
+                              >
+                                Da compilare
+                              </span>
+                            )}
+                            {!isHighlightedEditTraining && isTrainingLocationComplete(location) && (
+                              <span
+                                className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full"
+                                style={{ backgroundColor: GOLEE.successSoft, color: GOLEE.success }}
+                              >
+                                Completo
+                              </span>
+                            )}
+                          </div>
                           {editingTrainingLocations.length > 1 && (
                             <button
                               type="button"
                               onClick={() => removeEditTrainingLocation(index)}
-                              className="w-full p-3 bg-red-500 text-white rounded-2xl hover:bg-red-600 transition-colors"
+                              className="p-2 rounded-lg transition-colors hover:opacity-80"
+                              style={{ color: GOLEE.danger }}
+                              title="Rimuovi allenamento"
                             >
-                              🗑️ Rimuovi
+                              <Trash2 className="w-4 h-4" />
                             </button>
                           )}
                         </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-3">
+                          <div>
+                            <label className={goleeLabelClass} style={{ color: GOLEE.textMuted }}>Sede *</label>
+                            <TrainingVenueSelect
+                              required
+                              scheduleOnly
+                              value={location.location}
+                              onChange={(value) => handleEditTrainingLocationChange(index, 'location', value)}
+                            />
+                          </div>
+                          <div>
+                            <label className={goleeLabelClass} style={{ color: GOLEE.textMuted }}>Giorno *</label>
+                            <select
+                              required
+                              value={location.weekday}
+                              onChange={(e) => handleEditTrainingLocationChange(index, 'weekday', e.target.value)}
+                              className={goleeInputClass}
+                              style={goleeInputStyle}
+                            >
+                              <option value="">Seleziona giorno</option>
+                              <option value="Lunedì">Lunedì</option>
+                              <option value="Martedì">Martedì</option>
+                              <option value="Mercoledì">Mercoledì</option>
+                              <option value="Giovedì">Giovedì</option>
+                              <option value="Venerdì">Venerdì</option>
+                              <option value="Sabato">Sabato</option>
+                              <option value="Domenica">Domenica</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className={goleeLabelClass} style={{ color: GOLEE.textMuted }}>Dalle *</label>
+                            <input
+                              type="time"
+                              required
+                              value={location.start_time}
+                              onChange={(e) => handleEditTrainingLocationChange(index, 'start_time', e.target.value)}
+                              className={goleeInputClass}
+                              style={goleeInputStyle}
+                            />
+                          </div>
+                          <div>
+                            <label className={goleeLabelClass} style={{ color: GOLEE.textMuted }}>Alle *</label>
+                            <input
+                              type="time"
+                              required
+                              value={location.end_time}
+                              onChange={(e) => handleEditTrainingLocationChange(index, 'end_time', e.target.value)}
+                              className={goleeInputClass}
+                              style={goleeInputStyle}
+                            />
+                          </div>
+                        </div>
                       </div>
-                    ))}
-                    
-                    <button
-                      type="button"
-                      onClick={addEditTrainingLocation}
-                      className="w-full p-3 bg-green-500 text-white rounded-2xl hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
-                    >
-                      ➕ Aggiungi Sede di Allenamento
-                    </button>
+                    )})}
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={addEditTrainingLocation}
+                    className="mt-3 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed text-sm font-semibold transition-colors hover:opacity-90"
+                    style={{ borderColor: GOLEE.accent, color: GOLEE.accent, backgroundColor: GOLEE.accentSoft }}
+                  >
+                    <Plus className="w-4 h-4" />
+                    Aggiungi allenamento
+                  </button>
                 </div>
               </div>
 
-              {/* Actions */}
-              <div className="px-6 py-4 bg-gray-50 flex space-x-3">
+              {/* Footer fisso */}
+              <div
+                className="px-6 py-3.5 border-t flex gap-3 shrink-0"
+                style={{ borderColor: GOLEE.border, backgroundColor: GOLEE.surfaceMuted }}
+              >
                 <button
+                  type="button"
                   onClick={closeEditModal}
-                  className="flex-1 px-4 py-3 bg-white border border-gray-300 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors"
+                  className="flex-1 px-4 py-3 rounded-xl text-sm font-medium border transition-colors hover:opacity-90"
+                  style={{ borderColor: GOLEE.border, color: GOLEE.text, backgroundColor: GOLEE.surface }}
                 >
                   Annulla
                 </button>
                 <button
+                  type="button"
                   onClick={saveCategoryEdit}
                   disabled={loading}
-                  className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 px-4 py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-50 transition-opacity hover:opacity-90 shadow-sm"
+                  style={{ backgroundColor: GOLEE.accent }}
                 >
-                  {loading ? 'Salvataggio...' : 'Salva Modifiche'}
+                  {loading ? 'Salvataggio...' : 'Salva modifiche'}
                 </button>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
+        )}
+
+        {/* Modal conferma eliminazione categoria */}
+        {deleteConfirmModal && createPortal(
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+            <div className="rounded-2xl shadow-2xl max-w-md w-full border overflow-hidden" style={{ backgroundColor: GOLEE.surface, borderColor: GOLEE.border }}>
+              <div className="px-6 py-5 border-b flex items-start gap-4" style={{ borderColor: GOLEE.border }}>
+                <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: GOLEE.dangerSoft }}>
+                  <AlertTriangle className="w-5 h-5" style={{ color: GOLEE.danger }} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold" style={{ color: GOLEE.text }}>Elimina categoria</h3>
+                  <p className="text-sm mt-1" style={{ color: GOLEE.textMuted }}>Azione irreversibile</p>
+                </div>
+              </div>
+              <div className="px-6 py-5">
+                <p className="text-[13.5pt] leading-relaxed" style={{ color: GOLEE.text }}>
+                  Sei sicuro di voler eliminare la categoria{' '}
+                  <span className="font-semibold">&quot;{deleteConfirmModal.name}&quot;</span>?
+                </p>
+                <p className="text-sm mt-2" style={{ color: GOLEE.textMuted }}>
+                  Questa azione non può essere annullata.
+                </p>
+              </div>
+              <div className="px-6 py-4 border-t flex gap-3" style={{ borderColor: GOLEE.border, backgroundColor: GOLEE.surfaceMuted }}>
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirmModal(null)}
+                  disabled={deletingCategory}
+                  className="flex-1 px-4 py-3 rounded-xl text-sm font-medium border transition-colors disabled:opacity-50"
+                  style={{ borderColor: GOLEE.border, color: GOLEE.text, backgroundColor: GOLEE.surface }}
+                >
+                  Annulla
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { void confirmDeleteCategory() }}
+                  disabled={deletingCategory}
+                  className="flex-1 px-4 py-3 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                  style={{ backgroundColor: GOLEE.danger }}
+                >
+                  {deletingCategory ? 'Eliminazione...' : 'Elimina'}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+        {/* Modal impossibile eliminare categoria */}
+        {deleteBlockedModal && createPortal(
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+            <div className="rounded-2xl shadow-2xl max-w-lg w-full border overflow-hidden max-h-[90vh] flex flex-col" style={{ backgroundColor: GOLEE.surface, borderColor: GOLEE.border }}>
+              <div className="px-6 py-5 border-b flex items-start gap-4 shrink-0" style={{ borderColor: GOLEE.border }}>
+                <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: GOLEE.dangerSoft }}>
+                  <AlertTriangle className="w-5 h-5" style={{ color: GOLEE.danger }} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold" style={{ color: GOLEE.text }}>Impossibile eliminare</h3>
+                  <p className="text-sm mt-1" style={{ color: GOLEE.textMuted }}>
+                    La categoria &quot;{deleteBlockedModal.name}&quot; è in uso
+                  </p>
+                </div>
+              </div>
+              <div className="px-6 py-5 overflow-y-auto space-y-4">
+                {deleteBlockedModal.players.length > 0 && (
+                  <div>
+                    <p className="text-sm font-semibold mb-2" style={{ color: GOLEE.text }}>
+                      {deleteBlockedModal.players.length} giocatore/i collegati
+                    </p>
+                    <ul className="space-y-1">
+                      {deleteBlockedModal.players.map((player) => (
+                        <li key={player.id} className="text-sm px-3 py-1.5 rounded-lg" style={{ backgroundColor: GOLEE.surfaceMuted, color: GOLEE.text }}>
+                          {player.first_name && player.last_name
+                            ? `${player.first_name} ${player.last_name}`
+                            : player.first_name || player.last_name || 'Nome non disponibile'}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {deleteBlockedModal.users.length > 0 && (
+                  <div>
+                    <p className="text-sm font-semibold mb-2" style={{ color: GOLEE.text }}>
+                      {deleteBlockedModal.users.length} utente/i collegati
+                    </p>
+                    <ul className="space-y-1">
+                      {deleteBlockedModal.users.map((user) => (
+                        <li key={user.id} className="text-sm px-3 py-1.5 rounded-lg" style={{ backgroundColor: GOLEE.surfaceMuted, color: GOLEE.text }}>
+                          {user.full_name || 'Nome non disponibile'}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <div className="rounded-xl p-4 text-sm" style={{ backgroundColor: GOLEE.infoSoft, color: GOLEE.text }}>
+                  <p className="font-semibold mb-1">Cosa fare</p>
+                  <ul className="list-disc list-inside space-y-0.5" style={{ color: GOLEE.textMuted }}>
+                    <li>Sposta giocatori e utenti in un&apos;altra categoria</li>
+                    <li>Oppure elimina prima i collegamenti</li>
+                    <li>Poi riprova a eliminare la categoria</li>
+                  </ul>
+                </div>
+              </div>
+              <div className="px-6 py-4 border-t shrink-0" style={{ borderColor: GOLEE.border, backgroundColor: GOLEE.surfaceMuted }}>
+                <button
+                  type="button"
+                  onClick={() => setDeleteBlockedModal(null)}
+                  className="w-full px-4 py-3 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                  style={{ backgroundColor: GOLEE.accent }}
+                >
+                  Ho capito
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
         )}
 
         {/* Tab Debug */}

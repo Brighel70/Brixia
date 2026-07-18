@@ -98,3 +98,4 @@ SELECT
     injured
 FROM public.people 
 ORDER BY created_at DESC;
+

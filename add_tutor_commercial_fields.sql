@@ -15,3 +15,4 @@ AND column_name IN ('is_sponsor_potential', 'is_club_useful')
 ORDER BY column_name;
 
 
+

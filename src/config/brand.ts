@@ -3,6 +3,8 @@ export interface BrandConfig {
   // Nome e identità del club
   clubName: string
   clubShortName: string
+  /** Nome mostrato nel footer dei PDF (es. presentazione evento). Se non impostato si usa clubName. */
+  footerName?: string
   clubDescription: string
   
   // Colori sociali del club
@@ -24,6 +26,7 @@ export interface BrandConfig {
     phone: string
     address: string
     website: string
+    flowmeAppUrl?: string  // URL app FlowMe per login (link cliccabile nei messaggi WhatsApp)
   }
   
   // Stagione sportiva
@@ -35,7 +38,9 @@ export interface BrandConfig {
     logoAlt: string
     favicon: string
     heroImage?: string  // Immagine di sfondo per la homepage
-    watermark?: string  // Filigrana per i documenti
+    headerCenterLogo?: string  // Logo al centro dell'header (caricabile da Brand)
+    mobileAppLogo?: string     // Logo al centro header app mobile FlowMe (data URL in UI; URL pubblico salvato su Supabase)
+    letterheadLogo?: string    // Logo per carta intestata (ricevute PDF, a destra nell'header)
   }
   
   // Configurazione UI
@@ -51,7 +56,7 @@ export interface BrandConfig {
   customization: {
     showHeroImage: boolean
     heroImageOpacity: number
-    showWatermark: boolean
+    showWatermark?: boolean  // rimosso dall'UI, opzionale per compatibilità
     customCSS?: string
     theme: 'light' | 'dark' | 'auto'
   }
@@ -62,6 +67,7 @@ export const DEFAULT_BRAND_CONFIG: BrandConfig = {
   // Nome e identità del club
   clubName: 'Brixia Rugby',
   clubShortName: 'Brixia',
+  footerName: 'Brixia A.s.d',
   clubDescription: 'Società Sportiva Dilettantistica',
   
   // Colori sociali del club
@@ -82,19 +88,22 @@ export const DEFAULT_BRAND_CONFIG: BrandConfig = {
     email: 'info@brixiarugby.it',
     phone: '+39 030 1234567',
     address: 'Via del Rugby, 123 - Brescia',
-    website: 'www.brixiarugby.it'
+    website: 'www.brixiarugby.it',
+    flowmeAppUrl: 'https://flowme-lemon.vercel.app/login'
   },
   
   // Stagione sportiva
   season: '2025/26',
   
-  // Logo e assets
+  // Logo e assets (logo ufficiale = public/logo bianco e celeste.png, copia come logo-brixia-official.png)
   assets: {
-    logo: '/brixia-logo.svg',
+    logo: '/logo-brixia-official.png',
     logoAlt: 'Logo Brixia Rugby',
     favicon: '/favicon.ico',
     heroImage: '/hero-rugby.jpg',
-    watermark: '/watermark.png'
+    headerCenterLogo: '/TeamFlow%20bubble.png',  // Logo al centro dell'header (sostituibile da Brand)
+    mobileAppLogo: '',  // Logo app mobile: caricato da Brand, pubblicato su Storage per FlowMe
+    letterheadLogo: ''  // Logo per carta intestata (ricevute PDF)
   },
   
   // Configurazione UI
@@ -110,40 +119,119 @@ export const DEFAULT_BRAND_CONFIG: BrandConfig = {
   customization: {
     showHeroImage: true,
     heroImageOpacity: 0.3,
-    showWatermark: false,
     customCSS: '',
     theme: 'light'
   }
 }
 
-// Funzione per ottenere la configurazione personalizzata
-export const getBrandConfig = (): BrandConfig => {
-  try {
-    const saved = localStorage.getItem('brixia-brand-config')
-    if (saved) {
-      return { ...DEFAULT_BRAND_CONFIG, ...JSON.parse(saved) }
+const BRAND_STORAGE_KEY = 'brixia-brand-config'
+const IDB_NAME = 'AppBrixiaBrand'
+const IDB_VERSION = 1
+const IDB_STORE = 'config'
+
+let cachedConfig: BrandConfig | null = null
+
+function openBrandDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, IDB_VERSION)
+    req.onerror = () => reject(req.error)
+    req.onsuccess = () => resolve(req.result)
+    req.onupgradeneeded = (e) => {
+      const db = (e.target as IDBOpenDBRequest).result
+      if (!db.objectStoreNames.contains(IDB_STORE)) {
+        db.createObjectStore(IDB_STORE)
+      }
     }
+  })
+}
+
+async function getBrandFromIDB(): Promise<string | null> {
+  const db = await openBrandDB()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readonly')
+    const req = tx.objectStore(IDB_STORE).get(BRAND_STORAGE_KEY)
+    req.onsuccess = () => { db.close(); resolve(req.result ?? null) }
+    req.onerror = () => { db.close(); reject(req.error) }
+  })
+}
+
+async function setBrandInIDB(json: string): Promise<void> {
+  const db = await openBrandDB()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite')
+    tx.objectStore(IDB_STORE).put(json, BRAND_STORAGE_KEY)
+    tx.oncomplete = () => { db.close(); resolve() }
+    tx.onerror = () => { db.close(); reject(tx.error) }
+  })
+}
+
+/** Inizializza la config (leggendo da IndexedDB o migrando da localStorage). Chiamare prima del primo render. */
+export async function initBrandConfig(): Promise<BrandConfig> {
+  try {
+    let json: string | null = await getBrandFromIDB()
+    if (!json) {
+      const fromLS = localStorage.getItem(BRAND_STORAGE_KEY)
+      if (fromLS) {
+        json = fromLS
+        await setBrandInIDB(json)
+        try { localStorage.removeItem(BRAND_STORAGE_KEY) } catch (_) {}
+      }
+    }
+    if (json) {
+      const parsed = JSON.parse(json)
+      const mergedAssets = { ...DEFAULT_BRAND_CONFIG.assets, ...parsed.assets }
+      cachedConfig = { ...DEFAULT_BRAND_CONFIG, ...parsed, assets: mergedAssets }
+    } else {
+      cachedConfig = DEFAULT_BRAND_CONFIG
+    }
+    updateCSSVariables(cachedConfig)
+    return cachedConfig
   } catch (error) {
-    console.warn('Errore nel caricamento configurazione brand:', error)
+    console.warn('Errore init configurazione brand:', error)
+    cachedConfig = DEFAULT_BRAND_CONFIG
+    return cachedConfig
   }
+}
+
+// Funzione per ottenere la configurazione personalizzata (sincrona, usa cache)
+export const getBrandConfig = (): BrandConfig => {
+  if (cachedConfig) return cachedConfig
+  try {
+    const saved = localStorage.getItem(BRAND_STORAGE_KEY)
+    if (saved) return { ...DEFAULT_BRAND_CONFIG, ...JSON.parse(saved) }
+  } catch (_) {}
   return DEFAULT_BRAND_CONFIG
 }
 
-// Funzione per salvare la configurazione personalizzata
-export const saveBrandConfig = (config: Partial<BrandConfig>) => {
+// Funzione per salvare la configurazione personalizzata (usa IndexedDB, quota molto più alta di localStorage)
+export async function saveBrandConfig(config: Partial<BrandConfig>): Promise<boolean> {
   try {
     const current = getBrandConfig()
-    const updated = { ...current, ...config }
-    localStorage.setItem('brixia-brand-config', JSON.stringify(updated))
-    
-    // Aggiorna le variabili CSS personalizzate
+    const mergedAssets = { ...current.assets, ...(config.assets || {}) }
+    const updated = { ...current, ...config, assets: mergedAssets }
+    cachedConfig = updated
     updateCSSVariables(updated)
-    
+    const json = JSON.stringify(updated)
+    await setBrandInIDB(json)
+    window.dispatchEvent(new CustomEvent('brand-config-updated'))
     return true
   } catch (error) {
     console.error('Errore nel salvataggio configurazione brand:', error)
     return false
   }
+}
+
+/** Aggiorna il favicon del documento con quello dalla config (data URL o path). */
+export function applyFavicon(config: BrandConfig) {
+  const favicon = config.assets?.favicon?.trim()
+  if (!favicon) return
+  let existing = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
+  if (!existing) {
+    existing = document.createElement('link')
+    existing.rel = 'icon'
+    document.head.appendChild(existing)
+  }
+  existing.href = favicon
 }
 
 // Funzione per aggiornare le variabili CSS
@@ -168,6 +256,9 @@ export const updateCSSVariables = (config: BrandConfig) => {
   if (config.customization.theme !== 'auto') {
     document.documentElement.setAttribute('data-theme', config.customization.theme)
   }
+
+  // Favicon dalla config (data URL o path)
+  applyFavicon(config)
 }
 
 // Utility per accedere ai colori

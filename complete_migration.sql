@@ -1,4 +1,25 @@
+-- DEPRECATED: usare people. Script migrazione legacy.
 -- Script per migrazione completa da people3 a people
+-- Aggiunta supporto per ruolo "tutor"
+
+-- Aggiungi "tutor" come ruolo valido se non esiste già
+DO $$ 
+BEGIN
+    -- Controlla se il ruolo "tutor" esiste già
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.check_constraints 
+        WHERE constraint_name LIKE '%staff_roles%' 
+        AND check_clause LIKE '%tutor%'
+    ) THEN
+        -- Aggiorna il constraint per includere "tutor"
+        ALTER TABLE public.people DROP CONSTRAINT IF EXISTS people_staff_roles_check;
+        ALTER TABLE public.people ADD CONSTRAINT people_staff_roles_check 
+        CHECK (staff_roles IS NULL OR (
+            jsonb_typeof(staff_roles) = 'array' AND
+            staff_roles <@ '["giocatore", "allenatore", "medico", "dirigente", "tutor"]'::jsonb
+        ));
+    END IF;
+END $$;
 -- Prima verifichiamo lo stato attuale
 
 -- 1. Conta i record in entrambe le tabelle
@@ -52,3 +73,13 @@ SELECT 'Primi 5 record in people' as info, id, full_name, created_at
 FROM public.people 
 ORDER BY created_at DESC 
 LIMIT 5;
+
+-- 8. Fix foreign key per tutor_athlete_relations
+-- Rimuovi la foreign key esistente che punta a tutors
+ALTER TABLE public.tutor_athlete_relations 
+DROP CONSTRAINT IF EXISTS tutor_athlete_relations_tutor_id_fkey;
+
+-- Aggiungi la nuova foreign key che punta a people
+ALTER TABLE public.tutor_athlete_relations 
+ADD CONSTRAINT tutor_athlete_relations_tutor_id_fkey 
+FOREIGN KEY (tutor_id) REFERENCES public.people(id) ON DELETE CASCADE;

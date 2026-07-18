@@ -31,3 +31,4 @@ GROUP BY injured_place
 ORDER BY injured_place;
 
 
+

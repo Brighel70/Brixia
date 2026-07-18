@@ -1,0 +1,891 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mockup Eventi Premium</title>
+  <style>
+    :root {
+      --app-bg: #071226;
+      --sidebar: #2d365c;
+      --sidebar-2: #222b4c;
+      --panel: #f4f7fb;
+      --card: #ffffff;
+      --ink: #071226;
+      --muted: #667085;
+      --line: #dbe5f0;
+      --blue: #2f6df6;
+      --cyan: #42c8ff;
+      --teal: #10b7a6;
+      --gold: #f4b740;
+      --red: #ff3b3f;
+      --purple: #7c3aed;
+      --green: #10a66a;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background: var(--app-bg);
+    }
+
+    button, input, select { font: inherit; }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 230px 1fr;
+    }
+
+    .sidebar {
+      color: #dce7ff;
+      background: linear-gradient(180deg, var(--sidebar), var(--sidebar-2));
+      padding: 26px 18px;
+      border-right: 1px solid rgba(255, 255, 255, .08);
+    }
+
+    .brand {
+      height: 72px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 26px;
+      color: white;
+      font-size: 25px;
+      font-weight: 900;
+      letter-spacing: 0;
+    }
+
+    .brand-mark {
+      width: 48px;
+      height: 48px;
+      border-radius: 15px;
+      background: linear-gradient(135deg, #42c8ff, #2f6df6);
+      box-shadow: 0 16px 32px rgba(47, 109, 246, .28);
+    }
+
+    .nav {
+      display: grid;
+      gap: 8px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-height: 46px;
+      padding: 0 14px;
+      border-radius: 16px;
+      color: #e5edff;
+      background: transparent;
+      border: 0;
+      cursor: pointer;
+      text-align: left;
+      transition: .18s ease;
+    }
+
+    .nav-item.active {
+      color: white;
+      background: rgba(47, 109, 246, .20);
+      box-shadow: inset 3px 0 0 #42c8ff;
+    }
+
+    .shell {
+      min-width: 0;
+      display: grid;
+      grid-template-rows: 74px 1fr;
+      background: var(--panel);
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: 180px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 20px;
+      padding: 0 28px;
+      color: white;
+      background: #303960;
+      border-bottom: 1px solid rgba(255, 255, 255, .10);
+    }
+
+    .topbar h1 {
+      margin: 0;
+      font-size: 22px;
+      letter-spacing: 0;
+    }
+
+    .header-kpis {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .header-kpi {
+      min-width: 112px;
+      height: 50px;
+      padding: 8px 12px;
+      border: 1px solid rgba(255, 255, 255, .16);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, .08);
+      display: grid;
+      place-items: center;
+      text-align: center;
+    }
+
+    .header-kpi span {
+      display: block;
+      color: #c8d3ed;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .header-kpi strong {
+      display: block;
+      margin-top: 2px;
+      color: white;
+      font-size: 20px;
+      line-height: 1;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-tile {
+      width: 56px;
+      height: 44px;
+      display: grid;
+      place-items: center;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, .08);
+    }
+
+    .logo-tile img {
+      width: 42px;
+      height: 34px;
+      object-fit: contain;
+    }
+
+    .add-btn {
+      height: 48px;
+      min-width: 58px;
+      border: 0;
+      border-radius: 16px;
+      color: white;
+      background: var(--blue);
+      font-size: 27px;
+      cursor: pointer;
+      box-shadow: 0 16px 34px rgba(47, 109, 246, .32);
+    }
+
+    .page {
+      min-width: 0;
+      padding: 24px 28px 30px;
+      overflow: auto;
+    }
+
+    .hero {
+      display: none;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 22px;
+      align-items: end;
+      padding: 22px;
+      border: 1px solid #dbe7f5;
+      border-radius: 28px;
+      background:
+        radial-gradient(circle at 88% 0%, rgba(47, 109, 246, .16), transparent 32%),
+        linear-gradient(135deg, #ffffff, #f8fbff);
+      box-shadow: 0 22px 60px rgba(16, 36, 81, .12);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      height: 28px;
+      padding: 0 12px;
+      border-radius: 999px;
+      background: #edf6ff;
+      color: var(--blue);
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .hero h2 {
+      margin: 12px 0 6px;
+      font-size: 42px;
+      line-height: 1;
+      letter-spacing: 0;
+    }
+
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(4, 142px);
+      gap: 12px;
+    }
+
+    .kpi {
+      min-height: 98px;
+      padding: 15px;
+      border: 1px solid #dce8f5;
+      border-radius: 20px;
+      background: white;
+    }
+
+    .kpi span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .kpi strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 30px;
+      line-height: 1;
+    }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: auto minmax(320px, 1fr) auto;
+      gap: 16px;
+      align-items: center;
+      margin-top: 18px;
+    }
+
+    .tabs, .view-tabs {
+      display: inline-flex;
+      gap: 8px;
+      padding: 6px;
+      border: 1px solid #dce8f5;
+      border-radius: 18px;
+      background: white;
+      box-shadow: 0 12px 28px rgba(16, 36, 81, .08);
+    }
+
+    .tab, .view-tab {
+      min-height: 40px;
+      padding: 0 16px;
+      border: 0;
+      border-radius: 13px;
+      color: #344054;
+      background: transparent;
+      font-weight: 850;
+      cursor: pointer;
+    }
+
+    .tab.active, .view-tab.active {
+      color: white;
+      background: var(--ink);
+    }
+
+    .searchbar {
+      display: grid;
+      grid-template-columns: 1fr 160px 160px 42px;
+      gap: 10px;
+      min-height: 54px;
+      padding: 8px;
+      border: 1px solid #dce8f5;
+      border-radius: 20px;
+      background: white;
+      box-shadow: 0 12px 28px rgba(16, 36, 81, .08);
+    }
+
+    .field {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      padding: 0 12px;
+      border-radius: 14px;
+      background: #f8fbff;
+      border: 1px solid #edf2f7;
+    }
+
+    .field input, .field select {
+      min-width: 0;
+      width: 100%;
+      border: 0;
+      outline: 0;
+      color: var(--ink);
+      background: transparent;
+    }
+
+    .reset {
+      border: 0;
+      border-radius: 14px;
+      color: var(--muted);
+      background: #f8fafc;
+      cursor: pointer;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 18px;
+      margin-top: 18px;
+      align-items: start;
+    }
+
+    .board, .inspector {
+      border: 1px solid #dce8f5;
+      border-radius: 28px;
+      background: white;
+      box-shadow: 0 18px 48px rgba(16, 36, 81, .10);
+      overflow: hidden;
+    }
+
+    .board-head {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      min-height: 68px;
+      padding: 0 20px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .board-head h3 {
+      margin: 0;
+      font-size: 22px;
+    }
+
+    .count-pill {
+      display: inline-flex;
+      align-items: center;
+      height: 34px;
+      padding: 0 14px;
+      border-radius: 999px;
+      color: var(--blue);
+      background: #edf6ff;
+      font-weight: 900;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 8px;
+      padding: 10px 18px 14px;
+    }
+
+    .date-block {
+      display: grid;
+      gap: 5px;
+    }
+
+    .date-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--blue);
+      font-size: 12px;
+      font-weight: 950;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .table-header {
+      display: grid;
+      grid-template-columns: 96px minmax(280px, 1fr) 125px 130px 145px 105px 140px 92px;
+      gap: 12px;
+      align-items: center;
+      padding: 14px 18px 12px 0;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 950;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      border-bottom: 1px solid #e6eef7;
+    }
+
+    .table-header span:first-child {
+      padding-left: 18px;
+    }
+
+    .table-header span:nth-child(2) {
+      padding-left: 4rem;
+      text-align: left;
+      justify-self: stretch;
+    }
+
+    .event-main {
+      justify-self: stretch;
+      text-align: left;
+      padding-left: 4rem;
+    }
+
+    .table-header span,
+    .event-card > * {
+      justify-self: start;
+      text-align: left;
+    }
+
+    .table-header span:last-child,
+    .event-card > .mini-status {
+      justify-self: stretch;
+    }
+
+    .event-card {
+      display: grid;
+      grid-template-columns: 96px minmax(280px, 1fr) 125px 130px 145px 105px 140px 92px;
+      align-items: center;
+      gap: 12px;
+      min-height: 48px;
+      padding: 5px 18px 5px 0;
+      border: 1px solid #dce8f5;
+      border-radius: 22px;
+      background: #ffffff;
+      cursor: pointer;
+      transition: .18s ease;
+    }
+
+    .event-card:hover, .event-card.active {
+      transform: translateY(-2px);
+      border-color: var(--accent);
+      box-shadow: 0 16px 34px rgba(16, 36, 81, .12);
+    }
+
+    .category {
+      width: 96px;
+      height: 48px;
+      min-height: 48px;
+      display: grid;
+      place-items: center;
+      align-self: stretch;
+      color: white;
+      background: var(--accent);
+      font-weight: 950;
+      border-radius: 18px 0 0 18px;
+      justify-self: stretch;
+    }
+
+    .event-main strong {
+      display: block;
+      font-size: 13px;
+      color: #002077;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-align: left;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 8px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: #f4edff;
+      color: #6d28d9;
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    .meta {
+      color: #002077;
+      font-size: 11px;
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .meta span {
+      display: none;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      margin-bottom: 5px;
+    }
+
+    .result {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 0;
+      height: 26px;
+      padding: 0 9px;
+      border-radius: 9px;
+      color: #344054;
+      background: #f3f6fb;
+      font-weight: 900;
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      justify-self: start;
+    }
+
+    .mini-status {
+      display: inline-flex;
+      align-items: center;
+      height: 22px;
+      padding: 0 7px;
+      border-radius: 7px;
+      color: #047857;
+      background: #dff8e9;
+      font-size: 9px;
+      font-weight: 900;
+      white-space: nowrap;
+      justify-self: start;
+    }
+
+    .result.win {
+      color: #047857;
+      background: #ecfdf5;
+    }
+
+    .result.gold {
+      color: #9a6700;
+      background: #fff7db;
+    }
+
+    .result.blue {
+      color: #1d4ed8;
+      background: #edf6ff;
+    }
+
+    .calendar {
+      display: none;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 10px;
+      padding: 18px;
+    }
+
+    .day {
+      min-height: 118px;
+      padding: 12px;
+      border: 1px solid #e1eaf4;
+      border-radius: 18px;
+      background: #f8fbff;
+    }
+
+    .day strong {
+      display: block;
+      margin-bottom: 10px;
+    }
+
+    .calendar-chip {
+      display: block;
+      margin-top: 7px;
+      padding: 7px;
+      border-radius: 10px;
+      color: white;
+      background: var(--blue);
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    .inspector { display: none; }
+
+    .inspector h3 {
+      margin: 0 0 14px;
+      font-size: 20px;
+    }
+
+    .detail-card {
+      padding: 16px;
+      border: 1px solid #e1eaf4;
+      border-radius: 20px;
+      background: #f8fbff;
+      margin-bottom: 12px;
+    }
+
+    .detail-card.dark {
+      color: white;
+      background: linear-gradient(135deg, #071226, #102451);
+      border: 0;
+    }
+
+    .detail-card p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .detail-card.dark p { color: #c8d3ed; }
+
+    .quick-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .quick-actions button {
+      min-height: 42px;
+      border: 0;
+      border-radius: 14px;
+      color: white;
+      background: var(--blue);
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    .quick-actions .ghost {
+      color: #344054;
+      background: #eef3fa;
+    }
+
+    @media (max-width: 1280px) {
+      .app { grid-template-columns: 84px 1fr; }
+      .brand span, .nav-item span { display: none; }
+      .workspace { grid-template-columns: 1fr; }
+      .hero { grid-template-columns: 1fr; }
+      .kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .toolbar { grid-template-columns: 1fr; }
+      .searchbar { grid-template-columns: 1fr 1fr; }
+      .table-header { display: none; }
+    .event-card { grid-template-columns: 72px minmax(160px, 1fr) 140px; }
+      .event-card .meta:nth-last-child(-n+2) { display: none; }
+      .result { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand"><div class="brand-mark"></div><span>TeamFlow</span></div>
+      <nav class="nav">
+        <button class="nav-item"><span>Dashboard</span></button>
+        <button class="nav-item"><span>Anagrafiche</span></button>
+        <button class="nav-item"><span>Squadre</span></button>
+        <button class="nav-item active"><span>Eventi</span></button>
+        <button class="nav-item"><span>Quote</span></button>
+        <button class="nav-item"><span>Infermeria</span></button>
+        <button class="nav-item"><span>Report</span></button>
+      </nav>
+    </aside>
+
+    <section class="shell">
+      <header class="topbar">
+        <h1>Eventi</h1>
+        <div class="header-kpis">
+          <article class="header-kpi"><span>Prossimo</span><strong>U18</strong></article>
+          <article class="header-kpi"><span>Eventi</span><strong>5</strong></article>
+          <article class="header-kpi"><span>Partite</span><strong>2</strong></article>
+          <article class="header-kpi"><span>Tornei</span><strong>1</strong></article>
+          <article class="header-kpi"><span>Consigli</span><strong>1</strong></article>
+        </div>
+        <div class="top-actions">
+          <div class="logo-tile"><img src="../../public/logo-brixia-official.png" alt="Brixia Rugby" /></div>
+          <button class="add-btn" title="Nuovo evento">+</button>
+        </div>
+      </header>
+
+      <main class="page">
+        <section class="hero" aria-hidden="true">
+          <div>
+            <span class="eyebrow">Agenda operativa</span>
+            <h2>Eventi del club</h2>
+            <p>Calendario, partite, tornei, consigli e feste del club, etc.</p>
+          </div>
+          <div class="kpis">
+            <article class="kpi"><span>Prossimo</span><strong>U18</strong></article>
+            <article class="kpi"><span>Eventi</span><strong>5</strong></article>
+            <article class="kpi"><span>Tornei</span><strong>1</strong></article>
+            <article class="kpi"><span>Consigli</span><strong>1</strong></article>
+          </div>
+        </section>
+
+        <section class="toolbar">
+          <div class="tabs">
+            <button class="tab active" data-tab="eventi">Eventi</button>
+            <button class="tab" data-tab="archivio">Archiviate</button>
+          </div>
+          <div class="searchbar">
+            <label class="field"><span>⌕</span><input id="search" placeholder="Cerca evento, luogo, squadra..." /></label>
+            <label class="field"><select id="typeFilter"><option value="">Tutti i tipi</option><option>Partita</option><option>Torneo</option><option>Consiglio</option><option>Festa del Club</option></select></label>
+            <label class="field"><select id="catFilter"><option value="">Tutte le categorie</option><option>U18</option><option>U12</option><option>B</option><option>CON</option><option>FDC</option></select></label>
+            <button class="reset" id="reset">↺</button>
+          </div>
+          <div class="view-tabs">
+            <button class="view-tab active" data-view="timeline">Timeline</button>
+            <button class="view-tab" data-view="calendar">Mese</button>
+          </div>
+        </section>
+
+        <section class="workspace">
+          <section class="board">
+            <div class="board-head">
+              <h3 id="boardTitle">Prossimi eventi</h3>
+              <span class="count-pill" id="eventCount">5 eventi</span>
+            </div>
+            <div class="table-header" id="tableHeader">
+              <span>Cat.</span>
+              <span>Evento</span>
+              <span>Tipo</span>
+              <span>Luogo</span>
+              <span>Data</span>
+              <span>Orario</span>
+              <span>Esito</span>
+              <span>Info</span>
+            </div>
+            <div class="timeline" id="timeline"></div>
+            <div class="calendar" id="calendar"></div>
+          </section>
+        </section>
+      </main>
+    </section>
+  </div>
+
+  <script>
+    const events = [
+      { id: 1, date: 'Sabato 4 luglio', day: 4, category: 'U18', accent: '#ffcc00', type: 'Partita', tag: 'Campionato', title: 'Brixia U18 vs Castellana U18', place: 'Gussago', time: '18:30', detail: 'Partita di campionato. Categoria U18.', outcome: '22 - 20', outcomeStyle: 'win', status: 'Vittoria' },
+      { id: 2, date: 'Domenica 5 luglio', day: 5, category: 'U12', accent: '#2f6df6', type: 'Torneo', tag: 'Torneo', title: 'Due Laghi', place: 'Brescia', time: '10:00', detail: 'Torneo con gironi e squadre partecipanti.', outcome: 'Vinc. Brescia', outcomeStyle: 'gold', status: '32 sq.' },
+      { id: 3, date: 'Domenica 5 luglio', day: 5, category: 'B', accent: '#ff3b3f', type: 'Partita', tag: 'Campionato', title: 'Bologna (B) vs Brixia (B)', place: 'Bologna', time: '14:30', detail: 'Partita di campionato. Categoria B.', outcome: '20 - 22', outcomeStyle: 'win', status: 'Vittoria' },
+      { id: 4, date: 'Giovedi 16 luglio', day: 16, category: 'CON', accent: '#f5d991', type: 'Consiglio', tag: 'Consiglio', title: 'Consiglio del 16/07/2026', place: 'Brescia', time: '20:30-23:00', detail: 'Riunione consiglio direttivo.', outcome: '7 partecipanti', outcomeStyle: 'blue', status: '1 inv.' },
+      { id: 5, date: 'Venerdi 24 luglio', day: 24, endDay: 26, category: 'FDC', accent: '#3f6cff', type: 'Festa del Club', tag: 'Festa del Club', title: 'Festa della Birra', place: 'Gussago', time: '24 lug - 26 lug', detail: 'Evento sociale del club.', outcome: '3 giorni', outcomeStyle: '', status: 'club' }
+    ];
+
+    let activeTab = 'eventi';
+    let activeView = 'timeline';
+    let activeEvent = events[0];
+
+    const timeline = document.getElementById('timeline');
+    const calendar = document.getElementById('calendar');
+    const search = document.getElementById('search');
+    const typeFilter = document.getElementById('typeFilter');
+    const catFilter = document.getElementById('catFilter');
+    const count = document.getElementById('eventCount');
+    const boardTitle = document.getElementById('boardTitle');
+    const tableHeader = document.getElementById('tableHeader');
+
+    function filteredEvents() {
+      const q = search.value.trim().toLowerCase();
+      return events.filter(event => {
+        if (typeFilter.value && event.type !== typeFilter.value) return false;
+        if (catFilter.value && event.category !== catFilter.value) return false;
+        const haystack = `${event.title} ${event.place} ${event.type} ${event.category} ${event.tag}`.toLowerCase();
+        return haystack.includes(q);
+      });
+    }
+
+    function grouped(items) {
+      return items.reduce((acc, event) => {
+        if (!acc[event.date]) acc[event.date] = [];
+        acc[event.date].push(event);
+        return acc;
+      }, {});
+    }
+
+    function setDetail(event) {
+      activeEvent = event;
+      document.getElementById('detailTitle').textContent = event.title;
+      document.getElementById('detailMeta').textContent = `${event.date} • ${event.place} • ${event.time}`;
+      document.getElementById('detailPriority').textContent = event.detail;
+      render();
+    }
+
+    function eventCard(event) {
+      const card = document.createElement('button');
+      card.className = `event-card ${activeEvent.id === event.id ? 'active' : ''}`;
+      card.style.setProperty('--accent', event.accent);
+      card.onclick = () => setDetail(event);
+      card.innerHTML = `
+        <div class="category">${event.category}</div>
+        <div class="event-main">
+          <strong>${event.title}</strong>
+        </div>
+        <div class="meta"><span>Tipo</span>${event.tag}</div>
+        <div class="meta"><span>Luogo</span>${event.place}</div>
+        <div class="meta"><span>Data</span>${event.date}</div>
+        <div class="meta"><span>Orario</span>${event.time}</div>
+        <div class="result ${event.outcomeStyle}" title="${event.outcome}">${event.outcome}</div>
+        <div class="mini-status">${event.status}</div>
+      `;
+      return card;
+    }
+
+    function renderTimeline(items) {
+      timeline.innerHTML = '';
+      const byDate = grouped(items);
+      Object.keys(byDate).forEach(date => {
+        const block = document.createElement('section');
+        block.className = 'date-block';
+        block.innerHTML = `<div class="date-title">▦ ${date}</div>`;
+        byDate[date].forEach(event => block.appendChild(eventCard(event)));
+        timeline.appendChild(block);
+      });
+    }
+
+    function renderCalendar(items) {
+      calendar.innerHTML = '';
+      for (let day = 1; day <= 28; day++) {
+        const cell = document.createElement('div');
+        cell.className = 'day';
+        cell.innerHTML = `<strong>${day}</strong>`;
+        items.filter(event => day >= event.day && day <= (event.endDay || event.day)).forEach(event => {
+          const chip = document.createElement('button');
+          chip.className = 'calendar-chip';
+          chip.style.background = event.accent;
+          chip.textContent = event.endDay && event.endDay !== event.day ? `${event.category} giorno ${day - event.day + 1}` : event.category + ' ' + event.time;
+          chip.onclick = () => setDetail(event);
+          cell.appendChild(chip);
+        });
+        calendar.appendChild(cell);
+      }
+    }
+
+    function render() {
+      const items = filteredEvents();
+      count.textContent = `${items.length} eventi`;
+      boardTitle.textContent = activeTab === 'eventi' ? 'Prossimi eventi' : 'Eventi archiviati';
+      timeline.style.display = activeView === 'timeline' ? 'grid' : 'none';
+      calendar.style.display = activeView === 'calendar' ? 'grid' : 'none';
+      tableHeader.style.display = activeView === 'timeline' ? 'grid' : 'none';
+      renderTimeline(items);
+      renderCalendar(items);
+    }
+
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(item => item.classList.remove('active'));
+        tab.classList.add('active');
+        activeTab = tab.dataset.tab;
+        render();
+      });
+    });
+
+    document.querySelectorAll('.view-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.view-tab').forEach(item => item.classList.remove('active'));
+        tab.classList.add('active');
+        activeView = tab.dataset.view;
+        render();
+      });
+    });
+
+    [search, typeFilter, catFilter].forEach(control => control.addEventListener('input', render));
+    document.getElementById('reset').addEventListener('click', () => {
+      search.value = '';
+      typeFilter.value = '';
+      catFilter.value = '';
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>

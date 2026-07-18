@@ -10,11 +10,10 @@ interface PlayerData {
   id?: string
   first_name: string
   last_name: string
-  birth_date: string
+  date_of_birth: string
   fir_code: string
   role_on_field: string
   injured: boolean
-  aggregated_seniores: boolean
   categories: string[]
 }
 
@@ -35,11 +34,10 @@ const PlayerTab: React.FC<PlayerTabProps> = ({ personId, onPlayerDataChange }) =
   const [playerData, setPlayerData] = useState<PlayerData>({
     first_name: '',
     last_name: '',
-    birth_date: '',
+    date_of_birth: '',
     fir_code: '',
     role_on_field: '',
     injured: false,
-    aggregated_seniores: false,
     categories: []
   })
   const [roles, setRoles] = useState<Role[]>([])
@@ -59,7 +57,7 @@ const PlayerTab: React.FC<PlayerTabProps> = ({ personId, onPlayerDataChange }) =
   const loadRoles = async () => {
     try {
       const { data, error } = await supabase
-        .from('roles')
+        .from('player_positions')
         .select('*')
         .order('position_order')
 
@@ -117,11 +115,10 @@ const PlayerTab: React.FC<PlayerTabProps> = ({ personId, onPlayerDataChange }) =
           id: player.id,
           first_name: player.first_name || '',
           last_name: player.last_name || '',
-          birth_date: player.birth_date || '',
+          date_of_birth: player.date_of_birth || '',
           fir_code: player.fir_code || '',
           role_on_field: player.role_on_field || '',
           injured: player.injured || false,
-          aggregated_seniores: player.aggregated_seniores || false,
           categories: player.player_categories?.map((pc: any) => pc.category_id) || []
         })
       }
@@ -155,7 +152,7 @@ const PlayerTab: React.FC<PlayerTabProps> = ({ personId, onPlayerDataChange }) =
       setMessage('')
 
       // Valida i dati obbligatori
-      if (!playerData.first_name || !playerData.last_name || !playerData.birth_date) {
+      if (!playerData.first_name || !playerData.last_name || !playerData.date_of_birth) {
         setMessage('Nome, cognome e data di nascita sono obbligatori')
         return
       }
@@ -167,11 +164,10 @@ const PlayerTab: React.FC<PlayerTabProps> = ({ personId, onPlayerDataChange }) =
           .update({
             first_name: playerData.first_name,
             last_name: playerData.last_name,
-            birth_date: playerData.birth_date,
+            date_of_birth: playerData.date_of_birth,
             fir_code: playerData.fir_code,
             role_on_field: playerData.role_on_field,
-            injured: playerData.injured,
-            aggregated_seniores: playerData.aggregated_seniores
+            injured: playerData.injured
           })
           .eq('id', personId)
 
@@ -206,11 +202,10 @@ const PlayerTab: React.FC<PlayerTabProps> = ({ personId, onPlayerDataChange }) =
           .insert({
             first_name: playerData.first_name,
             last_name: playerData.last_name,
-            birth_date: playerData.birth_date,
+            date_of_birth: playerData.date_of_birth,
             fir_code: playerData.fir_code,
             role_on_field: playerData.role_on_field,
-            injured: playerData.injured,
-            aggregated_seniores: playerData.aggregated_seniores
+            injured: playerData.injured
           })
           .select()
           .single()
@@ -296,8 +291,8 @@ const PlayerTab: React.FC<PlayerTabProps> = ({ personId, onPlayerDataChange }) =
           </label>
           <input
             type="date"
-            value={playerData.birth_date}
-            onChange={(e) => handleInputChange('birth_date', e.target.value)}
+            value={playerData.date_of_birth}
+            onChange={(e) => handleInputChange('date_of_birth', e.target.value)}
             className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
         </div>
@@ -349,15 +344,6 @@ const PlayerTab: React.FC<PlayerTabProps> = ({ personId, onPlayerDataChange }) =
             <span className="ml-2 text-sm text-gray-700">Infortunato</span>
           </label>
 
-          <label className="flex items-center">
-            <input
-              type="checkbox"
-              checked={playerData.aggregated_seniores}
-              onChange={(e) => handleInputChange('aggregated_seniores', e.target.checked)}
-              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-            />
-            <span className="ml-2 text-sm text-gray-700">Aggregato Seniores</span>
-          </label>
         </div>
       </div>
 
@@ -416,5 +402,6 @@ const PlayerTab: React.FC<PlayerTabProps> = ({ personId, onPlayerDataChange }) =
 }
 
 export default PlayerTab
+
 
 

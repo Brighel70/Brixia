@@ -28,10 +28,9 @@ interface Player {
   id: string
   first_name: string
   last_name: string
-  birth_date: string
+  date_of_birth: string
   fir_code: string
   injured: boolean
-  aggregated_seniores: boolean
 }
 
 interface Staff {
@@ -113,7 +112,7 @@ const CategoryManagement: React.FC = () => {
     try {
       const { data, error } = await supabase
         .from('players')
-        .select('id, first_name, last_name, birth_date, fir_code, injured, aggregated_seniores')
+        .select('id, first_name, last_name, date_of_birth, fir_code, injured')
         .order('last_name, first_name')
 
       if (error) throw error
@@ -359,7 +358,7 @@ const CategoryManagement: React.FC = () => {
         <nav className="-mb-px flex space-x-8">
           {[
             { id: 'overview', name: 'Panoramica', icon: '📊' },
-            { id: 'players', name: 'Giocatori', icon: '⚽' },
+            { id: 'players', name: 'Giocatori', icon: '🏉' },
             { id: 'staff', name: 'Staff', icon: '👥' },
             { id: 'locations', name: 'Sedi Allenamento', icon: '🏟️' }
           ].map(tab => (

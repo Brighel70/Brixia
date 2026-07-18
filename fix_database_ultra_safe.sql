@@ -146,3 +146,4 @@ WHERE table_name = 'sessions'
 ORDER BY ordinal_position;
 
 
+

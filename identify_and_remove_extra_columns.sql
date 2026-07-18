@@ -1,3 +1,4 @@
+-- DEPRECATED: usare people. Script legacy people/people3.
 -- ========================================
 -- IDENTIFICA E RIMUOVI LE 2 COLONNE EXTRA DA PEOPLE
 -- ========================================
@@ -162,3 +163,4 @@ FROM information_schema.columns
 WHERE table_name = 'people' 
 AND table_schema = 'public'
 ORDER BY ordinal_position;
+
