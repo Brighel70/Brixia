@@ -16,6 +16,51 @@ type Profile = {
   person_id?: string; // Aggiunto per compatibilità con mobile app
 }
 
+const teamflowProfileRoles: Profile['role'][] = [
+  'Admin',
+  'Dirigente',
+  'Segreteria',
+  'Direttore Sportivo',
+  'Direttore Tecnico',
+  'Allenatore',
+  'Team Manager',
+  'Accompagnatore',
+  'Player',
+  'Preparatore',
+  'Medico',
+  'Fisio',
+  'Famiglia'
+]
+
+const normalizeRoleName = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ')
+
+async function resolveTeamflowProfileRole(roleId: string | null | undefined): Promise<Profile['role']> {
+  if (!roleId) return 'Famiglia'
+
+  const { data } = await supabase
+    .from('user_roles')
+    .select('name')
+    .eq('id', roleId)
+    .maybeSingle()
+
+  const roleName = data?.name?.trim()
+  if (roleName && teamflowProfileRoles.includes(roleName as Profile['role'])) {
+    return roleName as Profile['role']
+  }
+
+  const aliases: Record<string, Profile['role']> = {
+    admin: 'Admin',
+    giocatore: 'Player',
+    player: 'Player',
+    famiglia: 'Famiglia',
+    family: 'Famiglia',
+    fisioterapista: 'Fisio',
+    fisio: 'Fisio'
+  }
+
+  return aliases[normalizeRoleName(roleName || roleId)] || 'Famiglia'
+}
+
 interface AuthState {
   userId: string | null
   profile: Profile | null
@@ -128,6 +173,8 @@ export const useAuth = create<AuthState>((set, get) => ({
         throw new Error('Email o codice TeamFlow non corretti. Usa l\'email della scheda persona e il Codice TeamFlow (sezione "Codice accesso TeamFlow" nel tab TeamFlow/Flowme), non il Codice Flowme.')
       }
 
+      const profileRole = await resolveTeamflowProfileRole(person.teamflow_app_role)
+
       // Prova il login: prima con il codice salvato nel DB, poi con quello digitato (per massima compatibilità)
       const storedCode = String(person.invite_code_teamflow).trim()
       let authData: { user: any } | null = null
@@ -162,7 +209,6 @@ export const useAuth = create<AuthState>((set, get) => ({
         }
         // Profilo mancante (es. primo accesso dopo conferma email): crealo ora che l'utente è in auth.users
         if (!profileData && person) {
-          const role = (person.teamflow_app_role === 'admin' ? 'Admin' : 'Famiglia') as Profile['role']
           const { data: created, error: createErr } = await supabase
             .from('profiles')
             .insert({
@@ -171,7 +217,7 @@ export const useAuth = create<AuthState>((set, get) => ({
               first_name: person.given_name || '',
               last_name: person.family_name || '',
               full_name: person.given_name || person.family_name ? `${person.given_name || ''} ${person.family_name || ''}`.trim() : null,
-              role,
+              role: profileRole,
               person_id: person.id
             })
             .select()
@@ -214,14 +260,13 @@ export const useAuth = create<AuthState>((set, get) => ({
         }
 
         // Crea o aggiorna il profilo collegato alla persona (id auth = id profilo, person_id = people.id)
-        const role = (person.teamflow_app_role === 'admin' ? 'Admin' : 'Famiglia') as Profile['role']
         const profilePayload = {
           id: signUpData.user.id,
           email: person.email || emailTrim,
           first_name: person.given_name || '',
           last_name: person.family_name || '',
           full_name: person.given_name || person.family_name ? `${person.given_name || ''} ${person.family_name || ''}`.trim() : null,
-          role,
+          role: profileRole,
           person_id: person.id
         }
         const { data: upsertedProfile, error: profileInsertError } = await supabase
@@ -245,7 +290,7 @@ export const useAuth = create<AuthState>((set, get) => ({
             profileForState = { ...existingProfile, password: '' }
             // Aggiorna person_id se non impostato (così la persona resta collegata)
             if (!existingProfile.person_id) {
-              await supabase.from('profiles').update({ person_id: person.id, role }).eq('id', signUpData.user.id)
+              await supabase.from('profiles').update({ person_id: person.id, role: profileRole }).eq('id', signUpData.user.id)
             }
           }
         }

@@ -12,6 +12,7 @@
 1. **001_people3_to_people_bridge.sql** – Ponte people3 → people (colonna bridge, tabella mapping).
 2. **002_player_guardian_fk_to_people.sql** – FK player_guardian su people.
 3. **003_player_guardian_unique.sql** – Vincolo unique su player_guardian.
+4. **004_reconcile_legacy_fee_payments.sql** – Crea il registro dei pagamenti e riallinea eventuali quote storiche già saldate.
 
 Per nuove modifiche: aggiungere il prossimo numero (es. 004_…) in `database/migrations/` e documentarlo qui.
 

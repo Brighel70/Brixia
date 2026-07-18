@@ -143,9 +143,9 @@ export async function loadCategoryConfig(
 
     if (catError || !category) return null
 
-    const orderedLocations = locations
-      .map((loc: { weekday: string }) => ({ ...loc, weekday: normalizeWeekday(loc.weekday) }))
-      .sort((a: { weekday: string }, b: { weekday: string }) =>
+    const orderedLocations: TrainingLocationConfig[] = (locations as TrainingLocationConfig[])
+      .map((loc) => ({ ...loc, weekday: normalizeWeekday(loc.weekday) }))
+      .sort((a, b) =>
         WEEKDAY_ORDER.indexOf(a.weekday) - WEEKDAY_ORDER.indexOf(b.weekday)
       )
 
@@ -153,11 +153,11 @@ export async function loadCategoryConfig(
       category_id: categoryId,
       category_name: category.name,
       category_code: category.code,
-      ordered_weekdays: orderedLocations.map((loc: { weekday: string }) => loc.weekday.toLowerCase()),
+      ordered_weekdays: orderedLocations.map((loc) => loc.weekday.toLowerCase()),
       schedule: {}
     }
 
-    orderedLocations.forEach((loc: { weekday: string; location: string; start_time: string; end_time: string }) => {
+    orderedLocations.forEach((loc) => {
       config.schedule[loc.weekday.toLowerCase()] = {
         location: loc.location,
         start_time: loc.start_time,

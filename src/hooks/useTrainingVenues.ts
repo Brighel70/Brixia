@@ -26,8 +26,39 @@ export function useTrainingVenues() {
 
       if (error) throw error
       const rows = sortTrainingVenues((data || []).map(rowToTrainingVenue))
-      setVenues(rows)
-      setFromDatabase(rows.length > 0)
+      if (rows.length > 0) {
+        setVenues(rows)
+        setFromDatabase(true)
+        return
+      }
+
+      // The registry migration may not have been applied yet. Keep every
+      // scheduling screen usable by deriving the temporary registry from the
+      // existing recurring schedules, without changing historical sessions.
+      const { data: scheduledLocations, error: schedulesError } = await supabase
+        .from('training_locations')
+        .select('location')
+
+      if (schedulesError) throw schedulesError
+
+      const scheduleVenues = Array.from(new Set(
+        (scheduledLocations || [])
+          .map((row) => String(row.location || '').trim())
+          .filter(Boolean)
+      )).map((name, index) => ({
+        name,
+        is_home_venue: true,
+        requires_away_detail: false,
+        active: true,
+        sort_order: index + 1,
+      }))
+
+      setVenues(sortTrainingVenues([
+        ...scheduleVenues,
+        { name: 'Trasferta', is_home_venue: false, requires_away_detail: true, active: true, sort_order: 900 },
+        { name: 'Altro', is_home_venue: false, requires_away_detail: false, active: true, sort_order: 910 },
+      ]))
+      setFromDatabase(false)
     } catch {
       setVenues([])
       setFromDatabase(false)

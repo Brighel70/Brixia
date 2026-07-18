@@ -42,11 +42,13 @@ export default function PlayersView() {
       
       // APPROCCIO DIVERSO: Carica giocatori e categorie separatamente
       
-      // 1. Carica tutti i giocatori
+      // people is the authoritative roster source; legacy players only contains
+      // a historical subset of the actual squad.
       const { data: playersData, error: playersError } = await supabase
-        .from('players')
-        .select('*')
-        .order('last_name', { ascending: true })
+        .from('people')
+        .select('id, person_id:id, first_name:given_name, last_name:family_name, date_of_birth, fir_code, created_at, player_categories, player_positions')
+        .eq('is_player', true)
+        .order('family_name', { ascending: true })
 
       if (playersError) throw playersError
 
@@ -120,6 +122,14 @@ export default function PlayersView() {
         }
       })
 
+      const { data: categoriesData, error: categoriesError } = await supabase
+        .from('categories')
+        .select('id, code, name')
+
+      if (categoriesError) throw categoriesError
+
+      const categoriesById = new Map((categoriesData || []).map(category => [category.id, category]))
+
 
       // 4. Formatta i giocatori: Anno (people/players o stimato da FIR), Categoria (player_categories o FIR), Ruolo (position_id o role_on_field + player_positions)
       const categoryMapping: Record<string, { id: string; code: string; name: string }> = {
@@ -149,11 +159,14 @@ export default function PlayersView() {
         created_at?: string
         role_on_field?: string
         position_id?: string
+        player_categories?: string[]
+        player_positions?: string[]
       }
 
       const formattedPlayers = (playersData || []).map((player: PlayerRow) => {
-        // Categoria: da player_categories (player_id = players.id) o da FIR
-        let categories = (categoriesMap.get(player.id) || categoriesMap.get(player.person_id) || []) as { id?: string; code?: string; name?: string }[]
+        let categories = (Array.isArray(player.player_categories) ? player.player_categories : [])
+          .map(categoryId => categoriesById.get(categoryId))
+          .filter(Boolean) as { id?: string; code?: string; name?: string }[]
         if (categories.length === 0 && player.fir_code) {
           const firParts = player.fir_code.split('-')
           if (firParts.length >= 2) {
@@ -164,7 +177,7 @@ export default function PlayersView() {
 
         const personInfo = peopleMap.get(player.person_id)
         const birthDate = personInfo?.date_of_birth || player.birth_date || player.date_of_birth || ''
-        const roleId = player.position_id || player.role_on_field
+        const roleId = player.player_positions?.[0] || player.position_id || player.role_on_field
         const position = roleId ? positionsMap.get(roleId) : null
 
         return {

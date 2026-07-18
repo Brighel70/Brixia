@@ -9,7 +9,8 @@ import {
   hasChanges,
   canEditInstallment as canEditInstallmentCore,
   calculateFeeTotals as calculateFeeTotalsCore,
-  markInstallmentsPaid
+  markInstallmentsPaid,
+  fromCents
 } from '@/lib/fees/paymentsCore'
 
 interface Fee {
@@ -393,7 +394,7 @@ const FeesTab: React.FC<FeesTabProps> = ({
 
       const modalInstallments = feeAssignments?.map((a: any) => ({
         id: a.id,
-        amount: (a.amount / 100).toFixed(2),
+        amount: fromCents(a.amount).toFixed(2),
         due_date: a.due_date,
         notes: a.notes,
         status: a.status,
@@ -452,6 +453,7 @@ const FeesTab: React.FC<FeesTabProps> = ({
 
   const handleInstallmentToggle = (installmentId: string, installmentIndex: number) => {
     if (!canEditInstallment(installmentIndex)) return
+    if (initialPaymentStatus[installmentId]) return
     const isCurrentlySelected = selectedInstallments[installmentId]
     setSelectedInstallments(prev => ({ ...prev, [installmentId]: !isCurrentlySelected }))
     if (!isCurrentlySelected) {
@@ -1079,8 +1081,8 @@ const FeesTab: React.FC<FeesTabProps> = ({
                           id={`installment-${installment.id}`}
                           checked={selectedInstallments[installment.id] || false}
                           onChange={() => handleInstallmentToggle(installment.id, index)}
-                          disabled={!canEditInstallment(index)}
-                          className={`w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 ${!canEditInstallment(index) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          disabled={!canEditInstallment(index) || initialPaymentStatus[installment.id]}
+                          className={`w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 ${!canEditInstallment(index) || initialPaymentStatus[installment.id] ? 'opacity-50 cursor-not-allowed' : ''}`}
                         />
                         <div>
                           <label htmlFor={`installment-${installment.id}`} className={`text-sm font-medium ${canEditInstallment(index) ? 'text-gray-900 cursor-pointer' : 'text-gray-500 cursor-not-allowed'}`}>
@@ -1121,7 +1123,7 @@ const FeesTab: React.FC<FeesTabProps> = ({
                         )}
                       </div>
                     </div>
-                    {selectedInstallments[installment.id] && canEditInstallment(index) && (
+                    {selectedInstallments[installment.id] && canEditInstallment(index) && !initialPaymentStatus[installment.id] && (
                       <div className="pl-8 pt-2 border-t border-gray-200">
                         <div className="flex items-center space-x-4">
                           <span className="text-sm font-medium text-gray-900">Metodo di pagamento:</span>

@@ -43,6 +43,7 @@ export default function MatchSummaryModal({
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [isHome, setIsHome] = useState(true)
+  const [eventInfoReady, setEventInfoReady] = useState(false)
   const [eventDetails, setEventDetails] = useState<{
     title?: string
     opponent?: string
@@ -52,6 +53,7 @@ export default function MatchSummaryModal({
 
   useEffect(() => {
     if (isOpen && matchListId) {
+      setEventInfoReady(false)
       loadEventInfo()
       buildTimeline()
     }
@@ -60,6 +62,7 @@ export default function MatchSummaryModal({
   const loadEventInfo = async () => {
     if (!eventId) {
       setIsHome(true)
+      setEventInfoReady(true)
       return
     }
 
@@ -90,6 +93,8 @@ export default function MatchSummaryModal({
       setEventDetails({
         opponent: opponentName
       })
+    } finally {
+      setEventInfoReady(true)
     }
   }
 
@@ -389,8 +394,10 @@ export default function MatchSummaryModal({
 
   // Salva automaticamente il risultato finale nella tabella events quando disponibile
   useEffect(() => {
-    if (finalScore && eventId && isOpen && timelineEvents.length > 0) {
-      const matchResult = `${finalScore.home}-${finalScore.away}`
+    if (finalScore && eventId && isOpen && eventInfoReady && timelineEvents.length > 0) {
+      const matchResult = isHome
+        ? `${finalScore.home}-${finalScore.away}`
+        : `${finalScore.away}-${finalScore.home}`
       
       // Verifica se il risultato è già salvato per evitare aggiornamenti inutili
       supabase
@@ -400,7 +407,7 @@ export default function MatchSummaryModal({
         .single()
         .then(({ data: currentEvent }) => {
           // Salva solo se il risultato è diverso o non esiste
-          if (!currentEvent?.match_result || currentEvent.match_result !== matchResult) {
+          if (!currentEvent?.match_result?.trim()) {
             supabase
               .from('events')
               .update({ match_result: matchResult })
@@ -418,10 +425,14 @@ export default function MatchSummaryModal({
           console.error('Errore nel controllo risultato esistente:', error)
         })
     }
-  }, [finalScore, eventId, isOpen, timelineEvents.length])
+  }, [finalScore, eventId, isOpen, isHome, eventInfoReady, timelineEvents.length])
   const brandConfig = getBrandConfig()
-  const homeTeamName = brandConfig.clubName || 'Brixia Rugby'
-  const awayTeamName = eventDetails?.opponent || opponentName || 'Avversario'
+  const clubTeamName = brandConfig.clubName || 'Brixia Rugby'
+  const opponentTeamName = eventDetails?.opponent || opponentName || 'Avversario'
+  const homeTeamName = isHome ? clubTeamName : opponentTeamName
+  const awayTeamName = isHome ? opponentTeamName : clubTeamName
+  const homeScore = finalScore ? (isHome ? finalScore.home : finalScore.away) : null
+  const awayScore = finalScore ? (isHome ? finalScore.away : finalScore.home) : null
 
   if (!isOpen) return null
 
@@ -441,8 +452,8 @@ export default function MatchSummaryModal({
           <div className="flex items-center relative">
             {/* Squadra di casa e punteggio - a sinistra */}
             <div className="flex items-center gap-4 flex-1 justify-end pr-16">
-              {finalScore && (
-                <div className="text-4xl font-bold text-white">{finalScore.home}</div>
+              {homeScore !== null && (
+                <div className="text-4xl font-bold text-white">{homeScore}</div>
               )}
               <div className="text-lg font-semibold text-white">{homeTeamName}</div>
             </div>
@@ -455,8 +466,8 @@ export default function MatchSummaryModal({
             {/* Squadra avversaria e punteggio - a destra */}
             <div className="flex items-center gap-4 flex-1 justify-start pl-16">
               <div className="text-lg font-semibold text-white">{awayTeamName}</div>
-              {finalScore && (
-                <div className="text-4xl font-bold text-white">{finalScore.away}</div>
+              {awayScore !== null && (
+                <div className="text-4xl font-bold text-white">{awayScore}</div>
               )}
             </div>
           </div>

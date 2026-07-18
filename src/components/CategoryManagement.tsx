@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
+import { loadCategoryMembershipCounts, removeCategoryFromPeople } from '@/lib/categoryMemberships'
 import PlayerCategoryAssignment from './PlayerCategoryAssignment'
 import TrainingLocationsManager from './TrainingLocationsManager'
 
@@ -86,19 +87,17 @@ const CategoryManagement: React.FC = () => {
     try {
       const { data, error } = await supabase
         .from('categories')
-        .select(`
-          *,
-          player_categories(count),
-          staff_categories(count)
-        `)
+        .select('*')
         .order('sort')
 
       if (error) throw error
 
+      const { playerCounts, staffCounts } = await loadCategoryMembershipCounts()
+
       const categoriesWithCounts = data?.map(cat => ({
         ...cat,
-        player_count: cat.player_categories?.[0]?.count || 0,
-        staff_count: cat.staff_categories?.[0]?.count || 0
+        player_count: playerCounts.get(cat.id) || 0,
+        staff_count: staffCounts.get(cat.id) || 0
       })) || []
 
       setCategories(categoriesWithCounts)
@@ -270,6 +269,8 @@ const CategoryManagement: React.FC = () => {
     try {
       setLoading(true)
       setMessage('')
+
+      await removeCategoryFromPeople(categoryId)
 
       // Prima rimuovi le associazioni
       await supabase

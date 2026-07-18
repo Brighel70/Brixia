@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
+import { loadCategoryMembershipCounts, removeCategoryFromPeople } from '@/lib/categoryMemberships'
 
 interface Category {
   id: string
@@ -35,19 +36,17 @@ export const useCategories = () => {
 
       const { data, error } = await supabase
         .from('categories')
-        .select(`
-          *,
-          player_categories(count),
-          staff_categories(count)
-        `)
+        .select('*')
         .order('sort')
 
       if (error) throw error
 
+      const { playerCounts, staffCounts } = await loadCategoryMembershipCounts()
+
       const categoriesWithCounts = data?.map(cat => ({
         ...cat,
-        player_count: cat.player_categories?.[0]?.count || 0,
-        staff_count: cat.staff_categories?.[0]?.count || 0
+        player_count: playerCounts.get(cat.id) || 0,
+        staff_count: staffCounts.get(cat.id) || 0
       })) || []
 
       setCategories(categoriesWithCounts)
@@ -146,6 +145,8 @@ export const useCategories = () => {
     try {
       setLoading(true)
       setError(null)
+
+      await removeCategoryFromPeople(categoryId)
 
       // Prima rimuovi le associazioni
       await supabase

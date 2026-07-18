@@ -240,7 +240,8 @@ export default function StatsDashboard({ categoryId, categoryName, section }: St
     let totalDropGoals = 0
     let totalYellowCards = 0
     let totalRedCards = 0
-    let totalPoints = 0
+    let pointsScoredFromResults = 0
+    let pointsConcededFromResults = 0
     const uniquePlayersInMatches = new Set<string>()
     
     // Calcola numero totale di giocatori entrati in campo (anche solo un minuto)
@@ -262,7 +263,16 @@ export default function StatsDashboard({ categoryId, categoryName, section }: St
       totalDropGoals += stat.drop_goals || 0
       totalYellowCards += stat.yellow_cards || 0
       totalRedCards += stat.red_cards || 0
-      totalPoints += (stat.tries || 0) * 5 + (stat.conversions || 0) * 2 + (stat.drop_goals || 0) * 3
+    })
+
+    events.forEach((event: any) => {
+      const match = String(event.match_result || '').trim().match(/^(\d+)\s*[-–]\s*(\d+)$/)
+      if (!match) return
+
+      const homeScore = Number(match[1])
+      const awayScore = Number(match[2])
+      pointsScoredFromResults += event.is_home ? homeScore : awayScore
+      pointsConcededFromResults += event.is_home ? awayScore : homeScore
     })
 
     // Calcola trasformazioni totali (assumiamo che ogni meta possa avere una trasformazione)
@@ -282,8 +292,8 @@ export default function StatsDashboard({ categoryId, categoryName, section }: St
       dropGoalsMade: totalDropGoals,
       dropGoalsTotal: dropGoalsTotal,
       dropGoalsPercentage: dropGoalsPercentage,
-      pointsScored: totalPoints,
-      pointsConceded: 0, // Da calcolare quando avremo i dati delle partite avversarie
+      pointsScored: pointsScoredFromResults,
+      pointsConceded: pointsConcededFromResults,
       triesConceded: 0, // Da calcolare quando avremo i dati delle partite avversarie
       dropGoalsConceded: 0, // Da calcolare quando avremo i dati delle partite avversarie
       yellowCards: totalYellowCards,

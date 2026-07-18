@@ -6,7 +6,11 @@ import { supabase } from '../lib/supabaseClient'
 import {
   getInstallmentStatus,
   calculateDaysLate,
-  canEditInstallment as canEditInstallmentCore
+  canEditInstallment as canEditInstallmentCore,
+  recordAssignmentPayment,
+  markInstallmentsPaid,
+  toCents,
+  fromCents
 } from '@/lib/fees/paymentsCore'
 import { formatCurrency, feeMatchesCategoryFilter, getPersonCategoryLabel, personMatchesCategoryFilter } from '@/utils/feeUtils'
 import { useActiveCategoriesForSelect } from '@/hooks/useActiveCategoriesForSelect'
@@ -2125,42 +2129,15 @@ Brixia Rugby`
     try {
       setLoading(true)
       
-      // Insert payment record
-      const { error: paymentError } = await supabase
-        .from('payments')
-        .insert([{
-          assignment_id: selectedAssignment.id,
-          amount: paymentData.amount,
-          payment_method: paymentData.payment_method,
-          payment_date: paymentData.payment_date,
-          reference: paymentData.reference || null,
-          notes: paymentData.notes || null
-        }])
-
-      if (paymentError) throw paymentError
-
-      // Check if assignment is now fully paid
-      const { data: paymentsData, error: paymentsError } = await supabase
-        .from('payments')
-        .select('amount')
-        .eq('assignment_id', selectedAssignment.id)
-
-      if (paymentsError) throw paymentsError
-
-      const totalPaid = paymentsData?.reduce((sum, payment) => sum + payment.amount, 0) || 0
-      
-      // Update assignment status if fully paid
-      if (totalPaid >= selectedAssignment.amount) {
-        const { error: updateError } = await supabase
-          .from('fee_assignments')
-          .update({
-            status: 'paid',
-            paid_date: paymentData.payment_date
-          })
-          .eq('id', selectedAssignment.id)
-
-        if (updateError) throw updateError
-      }
+      const paymentAmountInCents = toCents(paymentData.amount)
+      const paymentResult = await recordAssignmentPayment({
+        assignmentId: selectedAssignment.id,
+        amountInCents: paymentAmountInCents,
+        paymentMethod: paymentData.payment_method,
+        paymentDate: paymentData.payment_date,
+        reference: paymentData.reference || null,
+        notes: paymentData.notes || null
+      })
 
       setMessage('Pagamento registrato con successo!')
       setShowPaymentModal(false)
@@ -2176,8 +2153,8 @@ Brixia Rugby`
       // Update assignments immediately
       const updatedAssignments = assignments.map(assignment => {
         if (assignment.id === selectedAssignment.id) {
-          const newPaidAmount = (assignment.paid_amount || 0) + paymentData.amount
-          const newStatus = newPaidAmount >= assignment.amount ? 'paid' : assignment.status
+          const newPaidAmount = paymentResult.paidAmount
+          const newStatus = paymentResult.isFullyPaid ? 'paid' : 'pending'
           return {
             ...assignment,
             paid_amount: newPaidAmount,
@@ -2195,7 +2172,7 @@ Brixia Rugby`
       
       // Update payments in accordion immediately
       if (selectedAssignment) {
-        const newPaidAmount = (selectedAssignment.paid_amount || 0) + paymentData.amount
+        const newPaidAmount = paymentResult.paidAmount
         
         // If assignment now has payments, expand it (and close others)
         if (newPaidAmount > 0) {
@@ -2260,7 +2237,7 @@ Brixia Rugby`
           // Se non ci sono rate configurate, usa le assegnazioni esistenti
           modalInstallments = feeAssignments.map((assignment: any) => ({
             id: assignment.id,
-            amount: assignment.amount,
+            amount: fromCents(assignment.amount),
             due_date: assignment.due_date,
             notes: assignment.notes || 'Rata',
             status: assignment.status || 'pending',
@@ -2368,68 +2345,54 @@ Brixia Rugby`
         }
       }
       
-      // Aggiorna tutte le rate selezionate
-      for (const [installmentId, isSelected] of Object.entries(selectedInstallments)) {
-        console.log(`🔍 DEBUG: Aggiornando rata ${installmentId}, selezionata: ${isSelected}`)
-        
-        // Trova la rata corrispondente per verificare se è una assegnazione reale
-        const installment = paymentInstallments.find(i => i.id === installmentId)
-        
-        if (installment?.isRealAssignment) {
-          // È una assegnazione reale esistente - aggiorna
-          const paymentDate = paymentDates[installmentId] ? new Date(paymentDates[installmentId]).toISOString() : new Date().toISOString()
-          console.log('🔍 DEBUG: Data di pagamento per rata:', paymentDate)
-          
-          const updateData = { 
-            status: isSelected ? 'paid' : 'pending',
-            paid_at: isSelected ? paymentDate : null,
-            payment_method: isSelected ? paymentMethods[installmentId] : null
-          }
-          console.log('🔍 DEBUG: Dati da aggiornare:', updateData)
-          
-          const { error } = await supabase
-            .from('fee_assignments')
-            .update(updateData)
-            .eq('id', installmentId)
+      const realInstallmentUpdates = selectedInstallmentIds.reduce<Array<{
+        id: string
+        isSelected: boolean
+        paymentMethod: string
+        paymentDate: string
+      }>>((updates, installmentId) => {
+          const installment = paymentInstallments.find(item => item.id === installmentId)
+          if (!installment?.isRealAssignment) return updates
+          updates.push({
+            id: installmentId,
+            isSelected: true,
+            paymentMethod: paymentMethods[installmentId],
+            paymentDate: paymentDates[installmentId] || new Date().toISOString().split('T')[0]
+          })
+          return updates
+        }, [])
 
-          if (error) {
-            console.error('❌ ERRORE Supabase:', error)
-            throw error
-          } else {
-            console.log('✅ Rata aggiornata con successo')
-          }
-        } else {
-          // È una rata temporanea - crea nuova assegnazione
-          console.log('🔍 DEBUG: Creando nuova assegnazione per rata temporanea')
-          
-          const installmentData = paymentInstallments.find(i => i.id === installmentId)
-          if (!installmentData) continue
-          
-          const paymentDate = paymentDates[installmentId] ? new Date(paymentDates[installmentId]).toISOString() : new Date().toISOString()
-          
-          const newAssignment = {
+      if (realInstallmentUpdates.length > 0) {
+        await markInstallmentsPaid(realInstallmentUpdates)
+      }
+
+      for (const installmentId of selectedInstallmentIds) {
+        const installment = paymentInstallments.find(item => item.id === installmentId)
+        if (!installment || installment.isRealAssignment) continue
+
+        const paymentDate = paymentDates[installmentId] || new Date().toISOString().split('T')[0]
+        const amountInCents = toCents(Number(installment.amount))
+        const { data: createdAssignment, error: createError } = await supabase
+          .from('fee_assignments')
+          .insert({
             fee_id: selectedAssignment.fee_id,
             person_id: selectedAssignment.person_id,
-            amount: installmentData.amount,
-            due_date: installmentData.due_date,
-            notes: installmentData.notes,
-            installment_number: installmentData.installment_number,
-            status: isSelected ? 'paid' : 'pending',
-            paid_at: isSelected ? paymentDate : null,
-            payment_method: isSelected ? paymentMethods[installmentId] : null
-          }
-          
-          const { error } = await supabase
-            .from('fee_assignments')
-            .insert(newAssignment)
+            amount: amountInCents,
+            due_date: installment.due_date,
+            notes: installment.notes,
+            installment_number: installment.installment_number,
+            status: 'pending'
+          })
+          .select('id')
+          .single()
+        if (createError) throw createError
 
-          if (error) {
-            console.error('❌ ERRORE Supabase creazione:', error)
-            throw error
-          } else {
-            console.log('✅ Nuova assegnazione creata con successo')
-          }
-        }
+        await recordAssignmentPayment({
+          assignmentId: createdAssignment.id,
+          amountInCents,
+          paymentMethod: paymentMethods[installmentId],
+          paymentDate
+        })
       }
       
       // Chiudi il modal e ricarica i dati

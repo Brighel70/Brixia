@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabaseClient'
+import { updatePlayerCategoryMembership } from '@/lib/categoryMemberships'
 
 interface Player {
   id: string
@@ -68,20 +69,21 @@ const PlayerCategoryAssignment: React.FC<PlayerCategoryAssignmentProps> = ({ cat
   const loadPlayers = async () => {
     try {
       const { data, error } = await supabase
-        .from('players')
-        .select(`
-          *,
-          player_categories (
-            category_id
-          )
-        `)
-        .order('last_name, first_name')
+        .from('people')
+        .select('id, given_name, family_name, date_of_birth, fir_code, injured, player_categories')
+        .eq('is_player', true)
+        .order('family_name, given_name')
 
       if (error) throw error
 
-      const playersWithCategories = data?.map(player => ({
-        ...player,
-        categories: player.player_categories?.map((pc: any) => pc.category_id) || []
+      const playersWithCategories = data?.map(person => ({
+        id: person.id,
+        first_name: person.given_name || '',
+        last_name: person.family_name || '',
+        date_of_birth: person.date_of_birth || '',
+        fir_code: person.fir_code || '',
+        injured: Boolean(person.injured),
+        categories: Array.isArray(person.player_categories) ? person.player_categories : []
       })) || []
 
       setPlayers(playersWithCategories)
@@ -117,40 +119,18 @@ const PlayerCategoryAssignment: React.FC<PlayerCategoryAssignmentProps> = ({ cat
       setSaving(true)
       setMessage('')
 
-      if (isAssigned) {
-        // Rimuovi associazione
-        const { error } = await supabase
-          .from('player_categories')
-          .delete()
-          .eq('player_id', playerId)
-          .eq('category_id', categoryId)
+      await updatePlayerCategoryMembership([playerId], categoryId, !isAssigned)
 
-        if (error) throw error
-
-        // Aggiorna stato locale
-        setPlayers(prev => prev.map(player => 
-          player.id === playerId 
-            ? { ...player, categories: player.categories.filter(id => id !== categoryId) }
-            : player
-        ))
-      } else {
-        // Aggiungi associazione
-        const { error } = await supabase
-          .from('player_categories')
-          .insert({
-            player_id: playerId,
-            category_id: categoryId
-          })
-
-        if (error) throw error
-
-        // Aggiorna stato locale
-        setPlayers(prev => prev.map(player => 
-          player.id === playerId 
-            ? { ...player, categories: [...player.categories, categoryId] }
-            : player
-        ))
-      }
+      setPlayers(prev => prev.map(player =>
+        player.id === playerId
+          ? {
+              ...player,
+              categories: isAssigned
+                ? player.categories.filter(id => id !== categoryId)
+                : Array.from(new Set([...player.categories, categoryId]))
+            }
+          : player
+      ))
 
       setMessage('✅ Associazione aggiornata con successo!')
     } catch (error: any) {
@@ -166,42 +146,18 @@ const PlayerCategoryAssignment: React.FC<PlayerCategoryAssignmentProps> = ({ cat
       setSaving(true)
       setMessage('')
 
-      if (assign) {
-        // Aggiungi associazioni
-        const associations = playerIds.map(playerId => ({
-          player_id: playerId,
-          category_id: categoryId
-        }))
+      await updatePlayerCategoryMembership(playerIds, categoryId, assign)
 
-        const { error } = await supabase
-          .from('player_categories')
-          .insert(associations)
-
-        if (error) throw error
-
-        // Aggiorna stato locale
-        setPlayers(prev => prev.map(player => 
-          playerIds.includes(player.id)
-            ? { ...player, categories: [...player.categories, categoryId] }
-            : player
-        ))
-      } else {
-        // Rimuovi associazioni
-        const { error } = await supabase
-          .from('player_categories')
-          .delete()
-          .in('player_id', playerIds)
-          .eq('category_id', categoryId)
-
-        if (error) throw error
-
-        // Aggiorna stato locale
-        setPlayers(prev => prev.map(player => 
-          playerIds.includes(player.id)
-            ? { ...player, categories: player.categories.filter(id => id !== categoryId) }
-            : player
-        ))
-      }
+      setPlayers(prev => prev.map(player =>
+        playerIds.includes(player.id)
+          ? {
+              ...player,
+              categories: assign
+                ? Array.from(new Set([...player.categories, categoryId]))
+                : player.categories.filter(id => id !== categoryId)
+            }
+          : player
+      ))
 
       setMessage(`✅ ${playerIds.length} giocatori ${assign ? 'assegnati' : 'rimossi'} con successo!`)
     } catch (error: any) {
@@ -444,6 +400,5 @@ const PlayerCategoryAssignment: React.FC<PlayerCategoryAssignmentProps> = ({ cat
 }
 
 export default PlayerCategoryAssignment
-
 
 
