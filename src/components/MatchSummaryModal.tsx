@@ -400,30 +400,33 @@ export default function MatchSummaryModal({
         : `${finalScore.away}-${finalScore.home}`
       
       // Verifica se il risultato è già salvato per evitare aggiornamenti inutili
-      supabase
-        .from('events')
-        .select('match_result')
-        .eq('id', eventId)
-        .single()
-        .then(({ data: currentEvent }) => {
+      const saveResult = async () => {
+        try {
+          const { data: currentEvent } = await supabase
+            .from('events')
+            .select('match_result')
+            .eq('id', eventId)
+            .single()
+          
           // Salva solo se il risultato è diverso o non esiste
           if (!currentEvent?.match_result?.trim()) {
-            supabase
+            const { error } = await supabase
               .from('events')
               .update({ match_result: matchResult })
               .eq('id', eventId)
-              .then(({ error }) => {
-                if (error) {
-                  console.error('Errore nel salvataggio risultato partita:', error)
-                } else {
-                  console.log('✅ Risultato partita salvato automaticamente:', matchResult)
-                }
-              })
+            
+            if (error) {
+              console.error('Errore nel salvataggio risultato partita:', error)
+            } else {
+              console.log('✅ Risultato partita salvato automaticamente:', matchResult)
+            }
           }
-        })
-        .catch((error) => {
+        } catch (error) {
           console.error('Errore nel controllo risultato esistente:', error)
-        })
+        }
+      }
+      
+      saveResult()
     }
   }, [finalScore, eventId, isOpen, isHome, eventInfoReady, timelineEvents.length])
   const brandConfig = getBrandConfig()

@@ -363,7 +363,7 @@ class QueryOptimizer {
             .from('sessions')
             .select('id', { count: 'exact', head: true })
             .eq('category_id', categoryId)
-            .then(({ count }) => ({ categorySessions: count || 0 }))
+            .then(({ count }) => ({ categorySessions: count || 0 })) as any
         )
       }
 

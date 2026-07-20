@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import { formatDisplayPersonParts } from '@/lib/formatPersonName'
 
 interface Player {
   id: string
@@ -100,11 +101,13 @@ export default function PlayerSelectionModal({
           .in('player_id', playerIds)
 
         personIdToCategoryNames = {}
-        ;(assocData || []).forEach((row: { player_id: string; category_id: string; categories?: { id: string; name: string; code?: string } }) => {
+        ;(assocData || []).forEach((row: { player_id: string; category_id: string; categories: { id: string; name: string; code?: string }[] }) => {
           const personId = personIdByPlayerId[row.player_id]
           if (!personId) return
           if (!personIdToCategoryNames[personId]) personIdToCategoryNames[personId] = []
-          const name = row.categories?.name || catMap[row.category_id]?.name || row.category_id
+          // Supabase returns categories as an array
+          const category = Array.isArray(row.categories) ? row.categories[0] : row.categories
+          const name = category?.name || catMap[row.category_id]?.name || row.category_id
           if (name) personIdToCategoryNames[personId].push(name)
         })
       }
@@ -225,7 +228,7 @@ export default function PlayerSelectionModal({
                     />
                     <div className="ml-3 flex-1">
                       <div className="font-medium text-gray-900">
-                        {player.given_name} {player.family_name}
+                        {formatDisplayPersonParts(player.given_name, player.family_name)}
                       </div>
                       <div className="text-sm text-gray-500">
                         {categoryNames && <span className="font-medium">{categoryNames}</span>}

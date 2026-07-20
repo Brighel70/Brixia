@@ -99,11 +99,17 @@ export default function GuardiansTab({ guardianId, isEditing, initialRelationshi
 
       if (error) throw error
 
-      setRelationships(data || [])
+      // Transform the data to handle Supabase join results
+      const transformedData = (data || []).map(rel => ({
+        ...rel,
+        player: Array.isArray(rel.player) ? rel.player[0] : rel.player
+      }))
+
+      setRelationships(transformedData)
       
       // Notifica il componente padre del cambiamento
       if (onRelationshipsChange) {
-        onRelationshipsChange(data || [])
+        onRelationshipsChange(transformedData)
       }
     } catch (err) {
       console.error('Errore nel caricamento delle relazioni:', err)

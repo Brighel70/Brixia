@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabaseClient'
 import QRCodeScanner from './QRCodeScanner'
 
 interface MobileAttendanceProps {
-  onClose: () => void
+  onClose?: () => void
 }
 
 export default function MobileAttendance({ onClose }: MobileAttendanceProps) {
@@ -94,7 +94,7 @@ export default function MobileAttendance({ onClose }: MobileAttendanceProps) {
             <p className="text-blue-100 text-sm">Scegli una sessione per scansionare</p>
           </div>
           <button
-            onClick={onClose}
+            onClick={onClose ? onClose : undefined}
             className="text-white/80 hover:text-white transition-colors"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

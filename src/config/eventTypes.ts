@@ -282,6 +282,7 @@ export const FORM_FIELD_LABELS: Record<keyof Omit<EventTypeFormFields, 'timeFiel
   showAllegati: 'Allegati (PDF / Office / immagini)',
   listUsesColumns: 'Layout a colonne in lista',
   requiresCategory: 'Categoria obbligatoria',
+  isClubParty: 'Festa del club',
   allowsTournamentWinner: 'Previsto vincitore (torneo / festa)',
   isStaffMeeting: 'Incontro staff (Coach / Area medica / Atletica)',
 }

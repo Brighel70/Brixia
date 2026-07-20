@@ -13,6 +13,7 @@ import { getCategoryBgClass, getCategoryCircleClass, getCategoryTextClass } from
 import { getCategorySortOrder } from '@/config/categories'
 import TrainingVenueSelect from '@/components/TrainingVenueSelect'
 import { useTrainingVenues } from '@/hooks/useTrainingVenues'
+import { readCategoryIds, personHasCategory } from '@/lib/categoryMemberships'
 
 /** Palette Goleee – allineata a Memo, Eventi, Infermeria */
 const GOLEE = {
@@ -605,17 +606,17 @@ export default function Activities({ embedInLayout = false }: ActivitiesProps) {
       }
 
       const list = (peopleData || []).filter((p: any) => {
-        const cats = p.player_categories
-        return Array.isArray(cats) && cats.length > 0
+        const cats = readCategoryIds(p.player_categories)
+        return cats.length > 0
       }).map((p: any) => {
         const birthYear = p.date_of_birth ? new Date(p.date_of_birth).getFullYear() : null
-        const categoryIds = Array.isArray(p.player_categories) ? p.player_categories : []
+        const categoryIds = readCategoryIds(p.player_categories)
         const categoryItems = categoryIds
           .map((id: string) => {
             const cat = categories.find(c => c.id === id)
             return cat ? { id: cat.id, name: cat.name, code: cat.code } : null
           })
-          .filter((c): c is { id: string; name: string; code?: string } => c != null)
+          .filter(Boolean) as Array<{ id: string; name: string; code?: string | null }>
         const positionIds = Array.isArray(p.player_positions) ? p.player_positions : []
         const roleLabel = positionIds.map((id: string) => getPositionDisplayName(positionsMap[id] || id)).filter(Boolean).join(', ') || '—'
         return {
@@ -751,7 +752,9 @@ export default function Activities({ embedInLayout = false }: ActivitiesProps) {
       session_date: '',
       location: '',
       away_location: '',
-      description: ''
+      description: '',
+      start_time: '',
+      end_time: ''
     })
   }
 
@@ -917,11 +920,7 @@ export default function Activities({ embedInLayout = false }: ActivitiesProps) {
 
       // Filtra i giocatori per categoria e per data inserimento (solo chi era in rosa alla data della sessione)
       const players = (allPlayers || []).filter((player: any) => {
-        if (!player.player_categories) return false
-        const categories = Array.isArray(player.player_categories) 
-          ? player.player_categories 
-          : (() => { try { return JSON.parse(player.player_categories || '[]') } catch { return [] } })()
-        if (!categories.includes(categoryId)) return false
+        if (!personHasCategory(player.player_categories, categoryId)) return false
         if (sessionDateOnly && player.created_at) {
           try {
             const playerCreated = new Date(player.created_at).toISOString().split('T')[0]

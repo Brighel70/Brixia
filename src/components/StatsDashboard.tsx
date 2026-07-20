@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
+import { readCategoryIds } from '@/lib/categoryMemberships'
 
 interface StatsData {
   // Statistiche Generali
@@ -127,7 +128,7 @@ export default function StatsDashboard({ categoryId, categoryName, section }: St
       if (peopleErr) {
         const { data: allPeople } = await supabase.from('people').select('id, full_name, player_categories')
         peopleInCategory = (allPeople || []).filter((p: any) => {
-          const cats = Array.isArray(p.player_categories) ? p.player_categories : (() => { try { return JSON.parse(p.player_categories || '[]') } catch { return [] } })()
+          const cats = readCategoryIds(p.player_categories)
           return cats.includes(categoryId)
         })
       } else {

@@ -9,6 +9,9 @@ import { PermissionsDebug } from '@/components/PermissionsDebug'
 import QueryPerformanceMonitor from '@/components/QueryPerformanceMonitor'
 import { useAuth } from '@/store/auth'
 import EventTypesSettings from '@/components/EventTypesSettings'
+import { AccountingCategorySettings } from '@/features/accounting/components/AccountingCategorySettings'
+import { usePermissions } from '@/hooks/usePermissions'
+import { PERMISSIONS } from '@/config/permissions'
 import TrainingVenuesPanel from '@/components/TrainingVenuesPanel'
 import TrainingVenueSelect from '@/components/TrainingVenueSelect'
 import { GOLEE, goleeCardClass, goleeInputClass, goleeInputStyle, goleeLabelClass } from '@/config/goleeTheme'
@@ -106,7 +109,12 @@ export default function Settings({ embedInLayout = false }: SettingsProps) {
   const [highlightedEditTrainingIndex, setHighlightedEditTrainingIndex] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
-  const [activeTab, setActiveTab] = useState<'categories' | 'event-types' | 'system' | 'templates' | 'permissions' | 'debug' | 'performance'>('system')
+  const [activeTab, setActiveTab] = useState<'categories' | 'event-types' | 'system' | 'templates' | 'permissions' | 'debug' | 'performance' | 'accounting'>('system')
+  const { hasPermission, isAdmin } = usePermissions()
+  const canViewAccountingSettings =
+    isAdmin() ||
+    hasPermission(PERMISSIONS.ACCOUNTING.VIEW) ||
+    hasPermission(PERMISSIONS.ACCOUNTING.MANAGE_SETTINGS)
   const [editingCategory, setEditingCategory] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
   const [showEditModal, setShowEditModal] = useState(false)
@@ -137,8 +145,8 @@ export default function Settings({ embedInLayout = false }: SettingsProps) {
     const urlParams = new URLSearchParams(window.location.search)
     const tabParam = urlParams.get('tab')
     
-    if (tabParam && ['categories', 'event-types', 'system', 'templates', 'emails', 'permissions', 'debug', 'performance'].includes(tabParam)) {
-      setActiveTab((tabParam === 'emails' ? 'templates' : tabParam) as 'categories' | 'event-types' | 'system' | 'templates' | 'permissions' | 'debug' | 'performance')
+    if (tabParam && ['categories', 'event-types', 'system', 'templates', 'emails', 'permissions', 'debug', 'performance', 'accounting'].includes(tabParam)) {
+      setActiveTab((tabParam === 'emails' ? 'templates' : tabParam) as 'categories' | 'event-types' | 'system' | 'templates' | 'permissions' | 'debug' | 'performance' | 'accounting')
     }
   }, [])
 
@@ -788,6 +796,19 @@ export default function Settings({ embedInLayout = false }: SettingsProps) {
           </button>
           <button
             onClick={() => {
+              setActiveTab('accounting')
+              navigate('/settings?tab=accounting', { replace: true })
+            }}
+            className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
+              activeTab === 'accounting'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-600 hover:text-gray-800'
+            }`}
+          >
+            Contabilità
+          </button>
+          <button
+            onClick={() => {
               setActiveTab('system')
               navigate('/settings?tab=system', { replace: true })
             }}
@@ -1223,6 +1244,18 @@ export default function Settings({ embedInLayout = false }: SettingsProps) {
                 </div>
               )}
           </div>
+          </div>
+        )}
+
+        {activeTab === 'accounting' && (
+          <div className="w-full">
+            {canViewAccountingSettings ? (
+              <AccountingCategorySettings />
+            ) : (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                Serve il permesso accounting.view o accounting.manage_settings.
+              </div>
+            )}
           </div>
         )}
 

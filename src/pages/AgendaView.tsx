@@ -848,10 +848,12 @@ export default function AgendaView({ embedInLayout = false }: AgendaViewProps) {
             .select('id, person_id, injury_type, body_part, injury_date, updated_at')
             .eq('current_status', 'Guarito')
             .order('updated_at', { ascending: false })
-          injuries = (fallback || []).map((i: { updated_at?: string }) => ({
-            ...i,
+          injuries = ((fallback || []) as any[]).map((i: { id: string; person_id: string; injury_date: string; updated_at?: string }) => ({
+            id: i.id,
+            person_id: i.person_id,
+            injury_date: i.injury_date,
             injury_closed_date: i.updated_at ? i.updated_at.slice(0, 10) : null
-          }))
+          } as any))
         } else throw error
       } else {
         injuries = data || []
@@ -1119,9 +1121,9 @@ export default function AgendaView({ embedInLayout = false }: AgendaViewProps) {
         tecar: !!a.tecar,
         laser: !!a.laser,
         activity_date: (a.activity_date as string) || '',
-        activity_time: a.activity_time,
-        ricontrollo: a.ricontrollo,
-        ricontrollo_time: a.ricontrollo_time,
+        activity_time: (a.activity_time as string) || '',
+        ricontrollo: (a.ricontrollo as string) || null,
+        ricontrollo_time: (a.ricontrollo_time as string) || null,
         duration_minutes: a.duration_minutes as number | null,
         buffer_minuti: a.buffer_minuti as number | null
       })).filter((a) => (a.ricontrollo_time ?? a.activity_time) != null)
@@ -1564,9 +1566,9 @@ export default function AgendaView({ embedInLayout = false }: AgendaViewProps) {
         tecar: !!a.tecar,
         laser: !!a.laser,
         activity_date: (a.activity_date as string) || '',
-        activity_time: a.activity_time,
-        ricontrollo: a.ricontrollo,
-        ricontrollo_time: a.ricontrollo_time,
+        activity_time: (a.activity_time as string) || '',
+        ricontrollo: (a.ricontrollo as string) || null,
+        ricontrollo_time: (a.ricontrollo_time as string) || null,
         duration_minutes: a.duration_minutes as number | null,
         buffer_minuti: a.buffer_minuti as number | null
       })).filter((a) => (a.ricontrollo_time ?? a.activity_time) != null)

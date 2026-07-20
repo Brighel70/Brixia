@@ -22,3 +22,24 @@ export {
   type SessionToCreate,
   type ExistingSession,
 } from './sessionScheduler'
+
+export {
+  ROLE_ACCESS_MATRIX,
+  ALL_FLOWME_SECTIONS,
+  RLS_READINESS,
+  getRoleAccessRule,
+  type AccessApp,
+  type TeamflowRoleName,
+  type FlowmeSectionId,
+  type DataScope,
+  type RoleAccessRule,
+} from './accessModel'
+
+export {
+  normalizeCorrespondenceParty,
+  canMessageParty,
+  SOCIETY_RECIPIENT_ID,
+  type CorrespondenceParty,
+  type EligibleRecipient,
+  type EligibleRecipientKind,
+} from './correspondenceRules'

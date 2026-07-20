@@ -74,31 +74,31 @@ export default function TutorCoGuardiansList({
         const athleteIdSet = new Set(ids)
         const missingAthleteIds = [...new Set(relations.map((r) => r.athlete_id).filter((id) => id && !athleteNamesById[id]))]
 
-        const peopleQueries = [
-          supabase
-            .from('people')
-            .select('id, given_name, family_name, full_name, phone')
-            .in('id', tutorIds),
-        ]
+        // Fetch tutor data
+        const { data: tutorData } = await supabase
+          .from('people')
+          .select('id, given_name, family_name, full_name, phone')
+          .in('id', tutorIds)
+
+        // Fetch missing athlete data if needed
+        let athleteData: any[] = []
         if (missingAthleteIds.length > 0) {
-          peopleQueries.push(
-            supabase
-              .from('people')
-              .select('id, given_name, family_name, full_name')
-              .in('id', missingAthleteIds),
-          )
+          const { data } = await supabase
+            .from('people')
+            .select('id, given_name, family_name, full_name')
+            .in('id', missingAthleteIds)
+          athleteData = data || []
         }
 
-        const peopleResults = await Promise.all(peopleQueries)
         if (cancelled) return
 
         const tutorMap = new Map<string, { name: string; phone?: string }>()
-        for (const p of peopleResults[0].data || []) {
+        for (const p of tutorData || []) {
           tutorMap.set(p.id, { name: personName(p), phone: p.phone || undefined })
         }
 
         const athleteMap = new Map<string, string>(Object.entries(athleteNamesById))
-        for (const p of peopleResults[1]?.data || []) {
+        for (const p of athleteData) {
           athleteMap.set(p.id, personName(p))
         }
 

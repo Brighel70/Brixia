@@ -16,6 +16,7 @@ interface Event {
   location: string
   away_location?: string
   is_home: boolean
+  is_championship?: boolean
   opponent?: string
   opponents?: string[]
   description?: string

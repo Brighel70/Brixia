@@ -11,6 +11,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./overlapCheck": "./src/overlapCheck.ts",
-    "./sessionScheduler": "./src/sessionScheduler.ts"
+    "./sessionScheduler": "./src/sessionScheduler.ts",
+    "./accessModel": "./src/accessModel.ts"
   }
 }

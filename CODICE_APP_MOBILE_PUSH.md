@@ -9,7 +9,7 @@ L’obiettivo: dopo il login (o all’avvio se l’utente è già loggato), otte
 
 - **Firebase / FCM** già configurato (o **Expo Notifications** che usa FCM).
 - **Supabase client** già usato per il login (auth).
-- Tabella **`push_tokens`** creata in Supabase (script `create_push_tokens_table.sql`).
+- Tabella **`push_tokens`** già presente in Supabase (nessuno script SQL locale da rieseguire).
 
 ---
 

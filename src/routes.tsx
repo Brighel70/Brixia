@@ -35,6 +35,7 @@ import PeopleView from '@/pages/PeopleView'
 import CreatePersonView from '@/pages/CreatePersonView'
 import AgendaView from '@/pages/AgendaView'
 import FeesManagement from '@/pages/FeesManagement'
+import AccountingManagement from '@/pages/AccountingManagement'
 import AlertsPage from '@/pages/AlertsPage'
 import ResocontoSettimanale from '@/pages/ResocontoSettimanale'
 import MemoPage from '@/pages/MemoPage'
@@ -116,7 +117,7 @@ export const router = createBrowserRouter([
     path: '/council-management',
     element: (
       <AuthLayout requireAuth={true}>
-        <PermissionGuard requiredPermission={PERMISSIONS.CAN_MANAGE_COUNCIL}>
+        <PermissionGuard requiredPermission={PERMISSIONS.COUNCIL.MANAGE}>
           <DashboardLayout>
             <CouncilManagement embedInLayout />
           </DashboardLayout>
@@ -188,6 +189,18 @@ export const router = createBrowserRouter([
         <DashboardLayout>
           <FeesManagement embedInLayout />
         </DashboardLayout>
+      </AuthLayout>
+    )
+  },
+  {
+    path: '/accounting',
+    element: (
+      <AuthLayout requireAuth={true}>
+        <PermissionGuard requiredPermission={PERMISSIONS.ACCOUNTING.VIEW}>
+          <DashboardLayout>
+            <AccountingManagement embedInLayout />
+          </DashboardLayout>
+        </PermissionGuard>
       </AuthLayout>
     )
   },

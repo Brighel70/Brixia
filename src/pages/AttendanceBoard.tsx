@@ -94,13 +94,17 @@ export default function AttendanceBoard({ variant = 'classic', embedInLayout = f
         return
       }
 
-      pickCategory(sessionData.categories)
-      setCurrentSession(sessionData)
+      // Type cast sessionData to include categories array
+      const sessionWithCategories = sessionData as any
+      const categoryArray = sessionWithCategories.categories as { id: string; code: string; name: string }[]
+      const category = Array.isArray(categoryArray) ? categoryArray[0] : categoryArray
+      pickCategory(category as any)
+      setCurrentSession(sessionWithCategories)
       if (isHybrid) {
-        setQrActive((sessionData as any).qr_active || false)
+        setQrActive(sessionWithCategories.qr_active || false)
       }
 
-      await loadPlayers(sessionData.categories.id)
+      await loadPlayers(category.id)
       if (isHybrid) {
         await loadAttendanceData(sessionId)
       }
@@ -217,6 +221,7 @@ export default function AttendanceBoard({ variant = 'classic', embedInLayout = f
                   <AttendanceRowEnhanced
                     key={player.id}
                     player={player as any}
+                    sessionId={currentSession.id}
                     attendanceData={attendanceData[player.id]}
                   />
                 ))
@@ -227,7 +232,7 @@ export default function AttendanceBoard({ variant = 'classic', embedInLayout = f
         {showQRGenerator && currentSession && (
           <QRCodeGenerator
             sessionId={currentSession.id}
-            categoryName={currentCategory.name}
+            categoryName={(currentCategory as any).name || currentCategory.code}
             onClose={() => setShowQRGenerator(false)}
           />
         )}
@@ -247,7 +252,7 @@ export default function AttendanceBoard({ variant = 'classic', embedInLayout = f
                 <p>Nessun giocatore trovato per questa categoria</p>
               </div>
             ) : (
-              players.map(p => <AttendanceRow key={p.id} player={p as any} />)
+              players.map(p => <AttendanceRow key={p.id} player={p as any} sessionId={currentSession.id} />)
             )}
           </div>
         </div>

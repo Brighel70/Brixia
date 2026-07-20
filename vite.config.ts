@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
@@ -38,5 +39,9 @@ export default defineConfig({
     watch: {
       ignored: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/.vite/**']
     }
+  },
+  test: {
+    environment: 'node',
+    include: ['src/**/*.test.ts', 'packages/shared/src/**/*.test.ts']
   }
 })

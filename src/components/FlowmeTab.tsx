@@ -498,8 +498,11 @@ const FlowmeTab: React.FC<FlowmeTabProps> = ({
                           <button
                             type="button"
                             onClick={() => {
-                              if (confirm('Rigenerare il codice Flowme? Il vecchio codice non funzionerà più.')) {
-                                handleInputChange('invite_code', '')
+                              if (confirm('Rigenerare il codice Flowme? Il vecchio codice non funzionerà più. Dopo il salvataggio l\'utente potrà accedere subito con il nuovo codice.')) {
+                                const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
+                                let code = ''
+                                for (let i = 0; i < 12; i++) code += chars.charAt(Math.floor(Math.random() * chars.length))
+                                handleInputChange('invite_code', code)
                                 handleInputChange('generate_invite_code', true)
                               }
                             }}
@@ -790,8 +793,11 @@ const FlowmeTab: React.FC<FlowmeTabProps> = ({
                           <button
                             type="button"
                             onClick={() => {
-                              if (confirm('Rigenerare il codice TeamFlow? Il vecchio codice non funzionerà più.')) {
-                                handleInputChange('invite_code_teamflow', '')
+                              if (confirm('Rigenerare il codice TeamFlow? Il vecchio codice non funzionerà più. Dopo il salvataggio l\'utente potrà accedere subito con il nuovo codice.')) {
+                                const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
+                                let code = ''
+                                for (let i = 0; i < 12; i++) code += chars.charAt(Math.floor(Math.random() * chars.length))
+                                handleInputChange('invite_code_teamflow', code)
                                 handleInputChange('generate_invite_code_teamflow', true)
                               }
                             }}

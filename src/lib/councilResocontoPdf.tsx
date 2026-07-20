@@ -331,7 +331,7 @@ function NamesGrid({
                     isLast ? styles.nameChipLast : null,
                   ]}
                 >
-                  <Text style={[textStyle, styles.nameChipText]}>{name}</Text>
+                  <Text style={[textStyle, styles.nameChipText] as any}>{name}</Text>
                 </View>
               )
             })}

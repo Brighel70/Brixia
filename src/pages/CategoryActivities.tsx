@@ -18,6 +18,8 @@ import MatchScorecard from '@/components/MatchScorecard'
 import jsPDF from 'jspdf'
 import TrainingVenueSelect from '@/components/TrainingVenueSelect'
 import { useTrainingVenues } from '@/hooks/useTrainingVenues'
+import { readCategoryIds, personHasCategory } from '@/lib/categoryMemberships'
+import { formatDisplayPersonName } from '@/lib/formatPersonName'
 
 const statuses = [
   { key: 'PRESENTE', short: 'P' },
@@ -482,7 +484,7 @@ export default function CategoryActivities({ embedInLayout = false }: CategoryAc
     return pageCategory?.code ?? currentCategory?.code ?? searchParams.get('category') ?? ''
   }
 
-  const getEventCategoryCode = (event: EventType): string => {
+  const getEventCategoryCode = (event: Event): string => {
     // Supabase può restituire categories come oggetto singolo o array
     const cat = (event as any).categories ?? (event as any).category
     if (cat && typeof cat === 'object' && !Array.isArray(cat) && 'code' in cat) return (cat as { code: string }).code
@@ -1023,11 +1025,7 @@ export default function CategoryActivities({ embedInLayout = false }: CategoryAc
 
       // Filtra per categoria
       const categoryPlayers = (allPeople || []).filter((person: any) => {
-        if (!person.player_categories) return false
-        const categories = Array.isArray(person.player_categories) 
-          ? person.player_categories 
-          : JSON.parse(person.player_categories || '[]')
-        return categories.includes(categoryId)
+        return personHasCategory(person.player_categories, categoryId)
       })
 
       const totalPlayers = categoryPlayers.length
@@ -1362,11 +1360,7 @@ export default function CategoryActivities({ embedInLayout = false }: CategoryAc
       const sessionDateOnly = sessionDateObj ? sessionDateObj.toISOString().split('T')[0] : null
 
       const allPlayers = (allPeople || []).filter((p: any) => {
-        if (!p.player_categories) return false
-        const categories = Array.isArray(p.player_categories) 
-          ? p.player_categories 
-          : (() => { try { return JSON.parse(p.player_categories || '[]') } catch { return [] } })()
-        if (!categories.includes(resolvedCategoryId)) return false
+        if (!personHasCategory(p.player_categories, resolvedCategoryId)) return false
         if (sessionDateOnly && p.created_at) {
           try {
             const playerCreated = new Date(p.created_at).toISOString().split('T')[0]
@@ -2065,7 +2059,7 @@ export default function CategoryActivities({ embedInLayout = false }: CategoryAc
         return {
           player_id: selectedPlayer.player_id,
           number: selectedPlayer.number,
-          name: player?.full_name || 'Giocatore non trovato',
+          name: formatDisplayPersonName(player?.full_name) || 'Giocatore non trovato',
           role: getRoleFromNumber(selectedPlayer.number)
         }
       })
@@ -2123,7 +2117,7 @@ export default function CategoryActivities({ embedInLayout = false }: CategoryAc
         const player = playersData?.find(p => p.id === selectedPlayer.player_id)
         return {
           number: selectedPlayer.number,
-          name: player?.full_name || 'Giocatore non trovato',
+          name: formatDisplayPersonName(player?.full_name) || 'Giocatore non trovato',
           role: getRoleFromNumber(selectedPlayer.number)
         }
       })
@@ -2197,7 +2191,7 @@ export default function CategoryActivities({ embedInLayout = false }: CategoryAc
         const player = playersData?.find(p => p.id === selectedPlayer.player_id)
         return {
           ...selectedPlayer,
-          name: player?.full_name || 'Giocatore non trovato',
+          name: formatDisplayPersonName(player?.full_name) || 'Giocatore non trovato',
           role: getRoleFromNumber(selectedPlayer.number)
         }
       })
@@ -3175,14 +3169,14 @@ export default function CategoryActivities({ embedInLayout = false }: CategoryAc
                         )
                       }
                       const weekdays = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato']
-                      const getTipoLabel = (ev: EventType) => {
+                      const getTipoLabel = (ev: Event) => {
                         if (ev.event_type === 'TOURNAMENT' || ev.event_type === 'torneo') return 'Torneo'
                         if (ev.event_type === 'partita' && ev.is_championship) return 'Campionato'
                         if (ev.event_type === 'partita' && ev.is_friendly) return 'Amichevole'
                         if (ev.event_type === 'MATCH') return 'Partita'
                         return '—'
                       }
-                      const getLuogo = (ev: EventType) => (ev as any).away_location?.trim() || (ev as any).location?.trim() || '—'
+                      const getLuogo = (ev: Event) => (ev as any).away_location?.trim() || (ev as any).location?.trim() || '—'
                       const ourTeamName = categoryName || pageCategory?.name || ''
                       const getAvversario = (title: string) => {
                         if (!title || !ourTeamName) return title
@@ -3294,17 +3288,16 @@ export default function CategoryActivities({ embedInLayout = false }: CategoryAc
                           {allPastMatches.map((match, index) => {
                             const hasResult = (match as any).match_result && (match as any).match_result.trim() !== ''
                             const result = hasResult ? analyzeMatchResult((match as any).match_result, match.is_home) : null
-                            const title = hasResult ? `${match.title} - ${result.display}` : `${match.title} - Non giocata`
                             if (!result || result.status === 'unknown') {
-                              return <Square key={`${match.id}-${index}`} className="w-4 h-4 text-slate-400 shrink-0 fill-current" title={title} />
+                              return <Square key={`${match.id}-${index}`} className="w-4 h-4 text-slate-400 shrink-0 fill-current" />
                             }
                             if (result.status === 'win') {
-                              return <Triangle key={`${match.id}-${index}`} className="w-4 h-4 text-green-500 shrink-0 fill-current" title={title} />
+                              return <Triangle key={`${match.id}-${index}`} className="w-4 h-4 text-green-500 shrink-0 fill-current" />
                             }
                             if (result.status === 'loss') {
-                              return <Triangle key={`${match.id}-${index}`} className="w-4 h-4 text-red-500 shrink-0 fill-current rotate-180" title={title} />
+                              return <Triangle key={`${match.id}-${index}`} className="w-4 h-4 text-red-500 shrink-0 fill-current rotate-180" />
                             }
-                            return <Square key={`${match.id}-${index}`} className="w-4 h-4 text-slate-400 shrink-0 fill-current" title={title} />
+                            return <Square key={`${match.id}-${index}`} className="w-4 h-4 text-slate-400 shrink-0 fill-current" />
                           })}
                         </div>
                       )
@@ -3345,14 +3338,14 @@ export default function CategoryActivities({ embedInLayout = false }: CategoryAc
                         )
                       }
                       const weekdays = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato']
-                      const getEsito = (ev: EventType) => {
+                      const getEsito = (ev: Event) => {
                         const result = (ev as any).match_result ? analyzeMatchResult((ev as any).match_result, ev.is_home ?? false) : null
                         if (!result || result.status === 'unknown') return { label: '—', class: 'bg-slate-100 text-slate-600 border border-slate-200' }
                         if (result.status === 'win') return { label: 'Vittoria', class: 'bg-emerald-50 text-emerald-700 border border-emerald-100' }
                         if (result.status === 'loss') return { label: 'Sconfitta', class: 'bg-rose-50 text-rose-700 border border-rose-100' }
                         return { label: 'Pareggio', class: 'bg-amber-50 text-amber-700 border border-amber-100' }
                       }
-                      const getLuogoGiocate = (ev: EventType) => (ev as any).away_location?.trim() || (ev as any).location?.trim() || '—'
+                      const getLuogoGiocate = (ev: Event) => (ev as any).away_location?.trim() || (ev as any).location?.trim() || '—'
                       const ourTeamNameGiocate = categoryName || pageCategory?.name || ''
                       const getAvversarioGiocate = (title: string) => {
                         if (!title || !ourTeamNameGiocate) return title
@@ -3504,7 +3497,7 @@ export default function CategoryActivities({ embedInLayout = false }: CategoryAc
                             {player.family_name[0]}
                           </div>
                           <div className="truncate leading-tight">
-                            <div className="font-semibold text-gray-900">{player.family_name} {player.given_name}</div>
+                            <div className="font-semibold text-gray-900">{formatDisplayPersonName(player.family_name)} {formatDisplayPersonName(player.given_name)}</div>
                             {current?.status === 'INFORTUNATO' && (
                               <div className="text-xs text-gray-500">{current.injured_place === 'PALESTRA' ? 'Palestra' : 'Casa'}</div>
                             )}

@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useActiveCategoriesForSelect } from '@/hooks/useActiveCategoriesForSelect'
 import { formatCurrency, feeMatchesCategoryFilter, personMatchesCategoryFilter } from '@/utils/feeUtils'
+import { readCategoryIds } from '@/lib/categoryMemberships'
 
 interface Person {
   id: string
   given_name: string
   family_name: string
+  full_name?: string
   date_of_birth: string
   is_player: boolean
   is_staff: boolean
@@ -26,8 +28,9 @@ interface Fee {
   installment_count?: number
   installment_frequency?: 'monthly' | 'weekly'
   installment_start_date?: string
-  installments?: Array<{ amount: number; due_date: string; notes?: string }>
+  installments?: Array<{ amount: number; due_date: string; notes?: string; installment_number?: number }>
   applicable_categories?: string[] // Array delle categorie applicabili
+  due_date?: string
 }
 
 interface CompleteFeeAssignmentModalProps {
@@ -63,10 +66,10 @@ const CompleteFeeAssignmentModal: React.FC<CompleteFeeAssignmentModalProps> = ({
   const [installmentFrequency, setInstallmentFrequency] = useState<'monthly' | 'weekly'>('monthly')
   
   // Custom installments for assignment
-  const [customInstallments, setCustomInstallments] = useState<Array<{ amount: number; due_date: string; notes?: string }>>([])
+  const [customInstallments, setCustomInstallments] = useState<Array<{ amount: number; due_date: string; notes?: string; installment_number?: number }>>([])
   
   // User configured installments (to maintain configurations when changing plan)
-  const [userConfiguredInstallments, setUserConfiguredInstallments] = useState<Array<{ amount: number; due_date: string; notes?: string }>>([])
+  const [userConfiguredInstallments, setUserConfiguredInstallments] = useState<Array<{ amount: number; due_date: string; notes?: string; installment_number?: number }>>([])
   const [dbCategories, setDbCategories] = useState<{ id: string; name: string; code: string }[]>([])
 
   // Solo categorie attivate nell'app
@@ -95,8 +98,8 @@ const CompleteFeeAssignmentModal: React.FC<CompleteFeeAssignmentModalProps> = ({
       setDbCategories(categoriesData || [])
 
       let readableCategories: string[] = []
-      if (personData.player_categories?.length) {
-        readableCategories = personData.player_categories.map((catId: string) => {
+      if (personData.player_categories) {
+        readableCategories = readCategoryIds(personData.player_categories).map((catId: string) => {
           if (typeof catId === 'string' && !catId.includes('-')) return catId
           const cat = categoriesData?.find((c: { id: string }) => c.id === catId)
           return cat?.code || cat?.name || catId
@@ -296,8 +299,9 @@ const CompleteFeeAssignmentModal: React.FC<CompleteFeeAssignmentModalProps> = ({
       const peopleWithReadableCategories = (data || []).map(person => {
         let readableCategories: string[] = []
         
-        if (person.player_categories && person.player_categories.length > 0) {
-          readableCategories = person.player_categories.map(categoryId => {
+        const categoryIds = readCategoryIds(person.player_categories)
+        if (categoryIds.length > 0) {
+          readableCategories = categoryIds.map(categoryId => {
             // Se è già una stringa leggibile (es. "U18"), usala direttamente
             if (typeof categoryId === 'string' && !categoryId.includes('-')) {
               return categoryId

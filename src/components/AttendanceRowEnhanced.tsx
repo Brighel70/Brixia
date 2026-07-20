@@ -1,6 +1,7 @@
 import StatusPill from './StatusPill'
 import { useData, type InjuredPlace } from '@/store/data'
 import { useState } from 'react'
+import { formatDisplayPersonName } from '@/lib/formatPersonName'
 
 const statuses = [
   { key: 'PRESENTE', short: 'P' },
@@ -12,27 +13,29 @@ const statuses = [
 
 export default function AttendanceRowEnhanced({ 
   player, 
+  sessionId,
   onExpandPopup, 
   onCollapsePopup,
   attendanceData
 }: {
   player: { id: string; first_name: string; last_name: string; injured: boolean }
+  sessionId: string
   onExpandPopup?: () => void
   onCollapsePopup?: () => void
   attendanceData?: {
     status: string
     injured_place?: string
     scanned_at?: string
-    created_at: string
+    created_at?: string
   }
 }) {
   const { attendance, setAttendance } = useData()
-  const current = attendance[player.id]
+  const current = attendance[`${sessionId}-${player.id}`]
   const [showInfMenu, setShowInfMenu] = useState(false)
 
   // Determina se la presenza è stata registrata via QR
-  const isQRScanned = attendanceData?.scanned_at || current?.scanned_at
-  const isManualEntry = !isQRScanned && current?.status
+  const isQRScanned = attendanceData?.scanned_at
+  const isManualEntry = !isQRScanned && (current?.status || attendanceData?.status)
 
   return (
     <div className="relative grid grid-cols-[auto,1fr,auto] items-center gap-2 py-1 px-2 border-b border-white/50">
@@ -58,7 +61,7 @@ export default function AttendanceRowEnhanced({
             ? 'text-orange-600'
             : 'text-navy'
         }`}>
-          {player.last_name} {player.first_name}
+          {formatDisplayPersonName(player.last_name)} {formatDisplayPersonName(player.first_name)}
         </div>
         
         {/* Informazioni aggiuntive */}
@@ -76,9 +79,9 @@ export default function AttendanceRowEnhanced({
           )}
           
           {/* Timestamp */}
-          {current?.created_at && (
+          {attendanceData?.created_at && (
             <span className="text-gray-500">
-              {new Date(current.created_at).toLocaleTimeString('it-IT', { 
+              {new Date(attendanceData.created_at).toLocaleTimeString('it-IT', { 
                 hour: '2-digit', 
                 minute: '2-digit' 
               })}
@@ -97,7 +100,7 @@ export default function AttendanceRowEnhanced({
                 setShowInfMenu(true)
                 onExpandPopup?.()
               } else {
-                setAttendance(player.id, s.key as any)
+                setAttendance(sessionId, player.id, s.key as any)
                 setShowInfMenu(false)
                 onCollapsePopup?.()
               }
@@ -117,7 +120,7 @@ export default function AttendanceRowEnhanced({
               <div className="space-y-2">
                 <button
                   onClick={() => {
-                    setAttendance(player.id, 'INFORTUNATO', 'PALESTRA')
+                    setAttendance(sessionId, player.id, 'INFORTUNATO', 'PALESTRA')
                     setShowInfMenu(false)
                     onCollapsePopup?.()
                   }}
@@ -128,7 +131,7 @@ export default function AttendanceRowEnhanced({
                 </button>
                 <button
                   onClick={() => {
-                    setAttendance(player.id, 'INFORTUNATO', 'CASA')
+                    setAttendance(sessionId, player.id, 'INFORTUNATO', 'CASA')
                     setShowInfMenu(false)
                     onCollapsePopup?.()
                   }}

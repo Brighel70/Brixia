@@ -27,11 +27,12 @@ const MIN_CHARS = 2
 const inputClass =
   'w-full px-3 py-2.5 pr-10 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-500 text-blue-900 shadow-sm transition-all duration-200'
 
-function personName(p: { family_name?: string; given_name?: string; full_name?: string }): string {
+function personName(p: { id?: string; family_name?: string; given_name?: string; full_name?: string }): string {
   return [p.family_name, p.given_name].filter(Boolean).join(' ')
     || p.full_name
     || [p.given_name, p.family_name].filter(Boolean).join(' ')
     || p.id
+    || ''
 }
 
 function formatPhone(phone?: string | null): string {

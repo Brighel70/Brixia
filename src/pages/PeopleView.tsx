@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabaseClient'
 import Header from '@/components/Header'
 import DeleteConfirmModal from '@/components/DeleteConfirmModal'
 import { getPositionDisplayName } from '@/utils/personUtils'
+import { formatDisplayPersonName } from '@/lib/formatPersonName'
 import { setPeopleNavIds } from '@/lib/peopleNavStorage'
 
 const PEOPLE_VIEW_SCROLL_KEY = 'people-view-scroll'
@@ -40,6 +41,7 @@ interface Person {
   injury_date?: string
   injury_duration_days?: number
   invite_code?: string | null
+  player_positions?: string[] | null
   // Dati aggiuntivi per la visualizzazione
   age: number
   role: string
@@ -174,7 +176,7 @@ export default function PeopleView({ embedInLayout = false }: PeopleViewProps) {
 
   // Persistenza filtri in sessionStorage (restano attivi quando si esce e si torna)
   useEffect(() => {
-    saveFiltersToStorage({ searchTerm, roleFilter, categoryFilter, birthYearFilter, activeFilter })
+    saveFiltersToStorage({ searchTerm, roleFilter, categoryFilter, birthYearFilter, activeFilter, statusFilter })
   }, [searchTerm, roleFilter, categoryFilter, birthYearFilter, statusFilter, activeFilter])
 
   // Ripristino scroll al ritorno dalla scheda modifica (navigazione indietro)
@@ -851,7 +853,7 @@ export default function PeopleView({ embedInLayout = false }: PeopleViewProps) {
   }
 
   const openDeleteModal = (person: { id: string; full_name: string }) => {
-    setDeleteModalPerson({ id: person.id, name: person.full_name })
+    setDeleteModalPerson({ id: person.id, name: formatDisplayPersonName(person.full_name) })
     setDeleteModalOpen(true)
   }
 
@@ -1402,7 +1404,7 @@ export default function PeopleView({ embedInLayout = false }: PeopleViewProps) {
                           </div>
                           <div className="ml-4">
                             <div className="text-base font-semibold text-slate-900">
-                              {person.full_name}
+                              {formatDisplayPersonName(person.full_name)}
                             </div>
                           </div>
                         </div>

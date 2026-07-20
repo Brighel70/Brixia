@@ -1,10 +1,21 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import type { GoleeAlertVariant } from '@/components/GoleeAlertModal'
+import { syncInviteAuthPassword } from '@/lib/syncInviteAuthPassword'
+
+export type PersonFormFeedback = {
+  title: string
+  message: string
+  variant?: GoleeAlertVariant
+  confirmLabel?: string
+}
 
 export interface PersonForm {
+  id?: string
   given_name: string
   family_name: string
+  full_name?: string
   date_of_birth: string
   gender: string
   fiscal_code: string
@@ -29,6 +40,7 @@ export interface PersonForm {
   injury_duration_days?: number
   disqualified?: boolean
   disqualification_end_date?: string
+  disqualification_notes?: string
   fir_code?: string
   csen_card?: string
   csen_card_issued_at?: string
@@ -202,6 +214,8 @@ export const usePersonForm = (options?: UsePersonFormOptions) => {
   const [categories, setCategories] = useState<any[]>([])
   const [playerPositions, setPlayerPositions] = useState<any[]>([])
   const [availableRoles, setAvailableRoles] = useState<any[]>([])
+  const [feedbackAlert, setFeedbackAlert] = useState<PersonFormFeedback | null>(null)
+  const clearFeedbackAlert = () => setFeedbackAlert(null)
 
   // Funzione per generare automaticamente il numero tessera
   const generateMembershipNumber = async () => {
@@ -769,6 +783,22 @@ export const usePersonForm = (options?: UsePersonFormOptions) => {
           .eq('id', editId)
 
         if (error) throw error
+
+        // Allinea Auth al codice FlowMe (una sola password Auth → priorità FlowMe)
+        const emailForSync = String(personData.email || form.email || '').trim()
+        if (emailForSync && form.invite_code) {
+          await syncInviteAuthPassword({
+            email: emailForSync,
+            code: String(form.invite_code).trim(),
+            door: 'flowme',
+          })
+        } else if (emailForSync && form.invite_code_teamflow) {
+          await syncInviteAuthPassword({
+            email: emailForSync,
+            code: String(form.invite_code_teamflow).trim(),
+            door: 'teamflow',
+          })
+        }
         
         // Gestisci infortuni per persona esistente
         await handleInjuryData(editId)
@@ -833,11 +863,32 @@ export const usePersonForm = (options?: UsePersonFormOptions) => {
         // Il codice invito è già presente nel form, quindi viene salvato automaticamente
         if (form.generate_invite_code && form.invite_code) {
           console.log('🎫 Codice invito salvato:', form.invite_code)
-          const roleText = form.app_role ? ` (Ruolo: ${form.app_role})` : ''
-          alert(`✅ Persona creata con successo!${roleText}\n\n🎫 Il codice invito è stato salvato e mostrato sotto.`)
+          const roleName =
+            availableRoles.find((r: { id: string; name: string }) => r.id === form.app_role)?.name ||
+            null
+          setFeedbackAlert({
+            title: 'Persona creata',
+            message: [
+              roleName ? `Ruolo: ${roleName}` : null,
+              'Il codice invito è stato salvato e lo trovi qui sotto nella scheda.',
+            ]
+              .filter(Boolean)
+              .join('\n\n'),
+            variant: 'success',
+            confirmLabel: 'Ok',
+          })
         }
 
         if (error) throw error
+
+        const emailForSync = String(personData.email || form.email || '').trim()
+        if (emailForSync && form.invite_code) {
+          await syncInviteAuthPassword({
+            email: emailForSync,
+            code: String(form.invite_code).trim(),
+            door: 'flowme',
+          })
+        }
         
         const hasTutorRole = form.app_role === 'tutor' || form.staff_roles?.includes('tutor') || (form.additional_roles || []).some((rid: string) => rid === 'tutor')
         const relations = Array.isArray(form.tutor_athlete_relations) && form.tutor_athlete_relations.length > 0
@@ -914,9 +965,19 @@ export const usePersonForm = (options?: UsePersonFormOptions) => {
           ...prev,
           membership_number: newNumber
         }))
-        alert(`Numero tessera duplicato. Generato nuovo numero: ${newNumber}. Riprova a salvare.`)
+        setFeedbackAlert({
+          title: 'Numero tessera aggiornato',
+          message: `Il numero tessera era già in uso.\n\nNuovo numero generato: ${newNumber}\n\nRiprova a salvare.`,
+          variant: 'warning',
+          confirmLabel: 'Ok',
+        })
       } else {
-        alert(`Errore nel salvataggio: ${error.message || 'Errore sconosciuto'}`)
+        setFeedbackAlert({
+          title: 'Errore nel salvataggio',
+          message: error.message || 'Errore sconosciuto. Riprova o contatta l\'assistenza.',
+          variant: 'error',
+          confirmLabel: 'Chiudi',
+        })
       }
       return null
     } finally {
@@ -926,7 +987,7 @@ export const usePersonForm = (options?: UsePersonFormOptions) => {
 
   /** Salva la persona e restituisce l'ID (create) o editId (update). null se fallisce. FIX 2: per relazioni familiari. */
   const handleSaveWithId = async (): Promise<string | null> => {
-    return handleSubmit(new Event('submit') as React.FormEvent)
+    return handleSubmit(new Event('submit') as unknown as React.FormEvent)
   }
 
   const isFieldDisabled = () => {
@@ -942,7 +1003,7 @@ export const usePersonForm = (options?: UsePersonFormOptions) => {
   }
 
   const handleSave = async () => {
-    await handleSubmit(new Event('submit') as React.FormEvent)
+    await handleSubmit(new Event('submit') as unknown as React.FormEvent)
     setIsEditMode(false)
   }
 
@@ -952,7 +1013,12 @@ export const usePersonForm = (options?: UsePersonFormOptions) => {
       if (missing.length > 0) {
         setLinkRelationErrorIds(missing)
         setSaveValidationError('Impossibile procedere: imposta la relazione per ogni persona collegata.')
-        alert('Non puoi chiudere la scheda finché non imposti la relazione per ogni contatto collegato inserito.')
+        setFeedbackAlert({
+          title: 'Relazioni incomplete',
+          message: 'Non puoi chiudere la scheda finché non imposti la relazione per ogni contatto collegato inserito.',
+          variant: 'warning',
+          confirmLabel: 'Ok',
+        })
         return
       }
     }
@@ -985,7 +1051,9 @@ export const usePersonForm = (options?: UsePersonFormOptions) => {
     handleEdit,
     exitEditMode,
     handleSave,
-    handleCancel
+    handleCancel,
+    feedbackAlert,
+    clearFeedbackAlert,
   }
 }
 

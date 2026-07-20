@@ -19,7 +19,12 @@ import {
   UserPlus,
   CalendarPlus,
   ClipboardCheck,
-  Send
+  Send,
+  MessageCircle,
+  ExternalLink,
+  ChevronDown,
+  ChevronUp,
+  X,
 } from 'lucide-react'
 import { getBirthdayMessage } from '@/lib/birthdayMessage'
 import { useDashboardStats } from '@/hooks/useDashboardStats'
@@ -28,6 +33,9 @@ import WhatsAppOpenModal from '@/components/WhatsAppOpenModal'
 import { useAuth } from '@/store/auth'
 import { supabase } from '@/lib/supabaseClient'
 import { getBrandConfig } from '@/config/brand'
+import { readCategoryIds } from '@/lib/categoryMemberships'
+import { listInboxMessagesForDashboard, hideThreadInboxFromHome, markHomeInboxThreadOpened, type CorrInboxItem } from '@/lib/correspondence'
+import { formatDisplayPersonName } from '@/lib/formatPersonName'
 
 /** Palette Goleee – sezioni dashboard sotto il blocco hero */
 const GOLEE = {
@@ -253,7 +261,7 @@ const getDashboardMemoGroups = (memos: UserMemo[]) =>
 
 export default function ModernDashboard() {
   const navigate = useNavigate()
-  const { profile, userId } = useAuth()
+  const { profile, userId, signOut } = useAuth()
   const [, setTick] = useState(0)
   const { stats, loading, error } = useDashboardStats()
   const { getLabel: getEventTypeLabel, isSporting } = useEventTypes()
@@ -313,6 +321,9 @@ export default function ModernDashboard() {
   const [alertsCount, setAlertsCount] = useState({ documents: 0, notes: 0, fees: 0 })
   const [userMemos, setUserMemos] = useState<UserMemo[]>([])
   const [loadingMemos, setLoadingMemos] = useState(false)
+  const [inboxMessages, setInboxMessages] = useState<CorrInboxItem[]>([])
+  const [loadingInbox, setLoadingInbox] = useState(false)
+  const [expandedInboxId, setExpandedInboxId] = useState<string | null>(null)
   const [injuriesList, setInjuriesList] = useState<Array<{ id: string; full_name: string; categoryLabel: string; status: string }>>([])
   const [loadingInjuriesList, setLoadingInjuriesList] = useState(false)
 
@@ -464,7 +475,7 @@ export default function ModernDashboard() {
         setInjuriesList(
           (rows as any[]).map((i: any) => {
             const p = peopleMap[i.person_id]
-            const catIds = (p?.player_categories || []) as string[]
+            const catIds = readCategoryIds(p?.player_categories)
             const rawLabels = catIds.length ? catIds.map((id) => catMap[id] || id) : []
             const label = formatCategoryLabel(rawLabels)
             return {
@@ -666,6 +677,57 @@ export default function ModernDashboard() {
     loadUserMemos()
   }, [userId])
 
+  // Messaggi chat interna (FlowMe / TeamFlow) per la home
+  const reloadInbox = async () => {
+    try {
+      setLoadingInbox(true)
+      const items = await listInboxMessagesForDashboard(80)
+      setInboxMessages(items)
+    } catch {
+      setInboxMessages([])
+    } finally {
+      setLoadingInbox(false)
+    }
+  }
+
+  useEffect(() => {
+    void reloadInbox()
+    const onFocus = () => {
+      void reloadInbox()
+    }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [])
+
+  const handleDismissInboxThread = async (threadId: string) => {
+    if (!userId) return
+    if (!confirm('Nascondere questa conversazione dalla home? Resterà disponibile in Anagrafica → Corrispondenza.')) {
+      return
+    }
+    try {
+      await hideThreadInboxFromHome({ threadId, authUserId: userId, reason: 'dismissed' })
+      setInboxMessages((prev) => prev.filter((m) => m.threadId !== threadId))
+      if (expandedInboxId === threadId) setExpandedInboxId(null)
+    } catch (e) {
+      console.error('hideThreadInboxFromHome:', e)
+      alert('Impossibile nascondere. Esegui gli script SQL 008 e 009 in Supabase e riprova.')
+    }
+  }
+
+  const handleOpenInboxRow = async (threadId: string) => {
+    const willExpand = expandedInboxId !== threadId
+    setExpandedInboxId(willExpand ? threadId : null)
+    if (!willExpand || !userId) return
+    try {
+      await markHomeInboxThreadOpened({ threadId, authUserId: userId })
+      setInboxMessages((prev) =>
+        prev.map((m) => (m.threadId === threadId ? { ...m, unread: false } : m))
+      )
+    } catch (e) {
+      console.warn('markHomeInboxThreadOpened:', e)
+    }
+  }
+
   // Carica compleanni nei prossimi 5 giorni (incluso oggi)
   useEffect(() => {
     const loadUpcomingBirthdays = async () => {
@@ -751,10 +813,10 @@ export default function ModernDashboard() {
 
   const getFirstNameForMessage = (p: { given_name?: string | null; full_name?: string; family_name?: string | null }) => {
     const gn = (p.given_name || '').trim()
-    if (gn) return gn
+    if (gn) return formatDisplayPersonName(gn)
     const full = (p.full_name || '').trim()
-    if (full) return full.split(/\s+/)[0] || full
-    return [p.given_name, p.family_name].filter(Boolean)[0]?.trim() || ''
+    if (full) return formatDisplayPersonName(full.split(/\s+/)[0] || full)
+    return formatDisplayPersonName([p.given_name, p.family_name].filter(Boolean)[0]?.trim() || '')
   }
 
   const getPhoneForWhatsApp = (p: { phone?: string | null; emergency_contact_phone?: string | null }) => {
@@ -809,7 +871,7 @@ export default function ModernDashboard() {
       const whatsappNumber = digits.startsWith('39') ? digits : (digits.startsWith('0') ? '39' + digits.slice(1) : '39' + digits)
       const url = `whatsapp://send?phone=${whatsappNumber}&text=${encodeURIComponent(message)}`
       setWhatsAppModal({ open: true, url })
-      setBirthdayConfirmModal({ personId: person.id, personName: person.full_name })
+      setBirthdayConfirmModal({ personId: person.id, personName: formatDisplayPersonName(person.full_name) })
     }
   }
 
@@ -874,7 +936,7 @@ export default function ModernDashboard() {
                   >
                     <span className="text-3xl">🎂</span>
                     <div>
-                      <p className="font-bold text-amber-950 text-lg">{person.full_name}</p>
+                      <p className="font-bold text-amber-950 text-lg">{formatDisplayPersonName(person.full_name)}</p>
                       <p className="text-white font-bold text-sm">Compie {person.age} anni</p>
                     </div>
                   </div>
@@ -1090,7 +1152,7 @@ export default function ModernDashboard() {
                         : `${c.daysUntilExpiry} gg`
                       return (
                         <p key={c.id} className="text-sm text-blue-100">
-                          • {c.full_name} – {formatExpiryDate(c.expiry_date)} – {daysText}
+                          • {formatDisplayPersonName(c.full_name)} – {formatExpiryDate(c.expiry_date)} – {daysText}
                         </p>
                       )
                     })}
@@ -1271,7 +1333,7 @@ export default function ModernDashboard() {
                 }
 
                 const renderDateLabelRow = (dateStr: string) => (
-                  <tr>
+                  <tr key={`date-${dateStr}`}>
                     <td colSpan={4} className={`pt-3 pb-1 ${CARD.sm} font-semibold uppercase tracking-wide`} style={{ color: GOLEE.textMuted }}>
                       {new Date(dateStr + 'T12:00:00').toLocaleDateString('it-IT', {
                         weekday: 'short',
@@ -1386,71 +1448,150 @@ export default function ModernDashboard() {
             </div>
           </div>
 
-          {/* Memo */}
+          {/* Messaggi (chat interna FlowMe / TeamFlow) */}
           <div
-            onClick={() => navigate('/memo')}
-            className={`${goleeCardClass} cursor-pointer hover:shadow-md transition-all flex flex-col min-h-[220px]`}
+            className={`${goleeCardClass} flex flex-col min-h-[220px]`}
             style={{ borderColor: GOLEE.border }}
           >
             <div className="p-4 border-b flex items-center justify-between" style={{ borderColor: GOLEE.border, backgroundColor: GOLEE.surfaceMuted }}>
               <h3 className={`${CARD.md} font-semibold flex items-center gap-2`} style={{ color: GOLEE.text }}>
-                <StickyNote className="w-5 h-5" style={{ color: GOLEE.violet }} />
-                Memo
+                <MessageCircle className="w-5 h-5" style={{ color: GOLEE.info }} />
+                Messaggi
               </h3>
+              {inboxMessages.length > 0 && (
+                <span className={`bg-blue-100 text-blue-700 ${CARD.xs} font-bold px-2 py-0.5 rounded-full`}>
+                  {inboxMessages.length}
+                </span>
+              )}
             </div>
-            <div className="p-4 flex-1 overflow-y-auto max-h-[220px]">
-              {loadingMemos ? (
-                <p className={CARD.sm} style={{ color: GOLEE.textMuted }}>Caricamento...</p>
-              ) : (() => {
-                const groups = getDashboardMemoGroups(userMemos)
-                const totalCount = groups.reduce((sum, group) => sum + group.items.length, 0)
-                if (totalCount === 0) {
-                  return <p className={CARD.sm} style={{ color: GOLEE.textMuted }}>Nessun memo</p>
-                }
-
-                const maxTotal = 10
-                let shown = 0
-
-                return (
-                  <div className="space-y-3">
-                    {groups.map((group) => {
-                      if (shown >= maxTotal) return null
-                      const remaining = maxTotal - shown
-                      const items = group.items.slice(0, Math.min(3, remaining))
-                      shown += items.length
-
+            <div className="flex-1 overflow-y-auto max-h-[280px]">
+              {loadingInbox ? (
+                <p className={`${CARD.sm} p-4`} style={{ color: GOLEE.textMuted }}>Caricamento...</p>
+              ) : inboxMessages.length === 0 ? (
+                <p className={`${CARD.sm} p-4`} style={{ color: GOLEE.textMuted }}>Nessun messaggio in arrivo</p>
+              ) : (
+                <table className={`w-full text-left ${CARD.sm}`}>
+                  <thead className="sticky top-0" style={{ backgroundColor: GOLEE.surfaceMuted }}>
+                    <tr className="border-b" style={{ borderColor: GOLEE.border, color: GOLEE.textMuted }}>
+                      <th className="py-2 px-3 font-medium w-[7.5rem]">Data</th>
+                      <th className="py-2 px-3 font-medium">Mittente</th>
+                      <th className="py-2 px-3 font-medium">Titolo</th>
+                      <th className="py-2 px-2 font-medium w-16" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inboxMessages.map((item) => {
+                      const expanded = expandedInboxId === item.threadId
+                      const dateLabel = new Date(item.createdAt).toLocaleDateString('it-IT', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: '2-digit',
+                      })
+                      const rowBg = item.unread
+                        ? GOLEE.accentSoft
+                        : expanded
+                          ? GOLEE.infoSoft
+                          : GOLEE.surface
                       return (
-                        <div key={group.type}>
-                          <p className={`${CARD.tiny} font-semibold uppercase tracking-wide mb-1.5`} style={{ color: GOLEE.textMuted }}>
-                            {group.label}
-                          </p>
-                          <div className="space-y-1.5">
-                            {items.map((m) => {
-                              const meta = getDashboardMemoMeta(m)
-                              return (
-                                <div key={m.id} className={`flex items-start gap-2 ${CARD.sm} min-w-0`}>
-                                  <span className={`shrink-0 ${CARD.md} leading-5`}>{MEMO_TYPE_ICON[m.type]}</span>
-                                  <div className="min-w-0 flex-1">
-                                    <p className={`truncate ${m.completed ? 'line-through opacity-70' : ''}`} style={{ color: GOLEE.text }}>
-                                      {m.content}
+                        <React.Fragment key={item.threadId}>
+                          <tr
+                            className="border-b cursor-pointer hover:opacity-95"
+                            style={{
+                              borderColor: GOLEE.border,
+                              backgroundColor: rowBg,
+                            }}
+                            onClick={() => {
+                              void handleOpenInboxRow(item.threadId)
+                            }}
+                          >
+                            <td className="py-2 px-3 whitespace-nowrap" style={{ color: GOLEE.textMuted }}>
+                              {dateLabel}
+                            </td>
+                            <td className="py-2 px-3 font-medium truncate max-w-[140px]" style={{ color: GOLEE.text }}>
+                              {item.senderName}
+                            </td>
+                            <td className="py-2 px-3 truncate max-w-[180px]" style={{ color: GOLEE.text }}>
+                              {item.title}
+                            </td>
+                            <td className="py-2 px-2">
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  type="button"
+                                  title="Nascondi dalla home"
+                                  className="rounded-lg p-1 hover:bg-red-50"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    void handleDismissInboxThread(item.threadId)
+                                  }}
+                                >
+                                  <X className="w-4 h-4" style={{ color: GOLEE.danger }} />
+                                </button>
+                                {expanded ? (
+                                  <ChevronUp className="w-4 h-4" style={{ color: GOLEE.textMuted }} />
+                                ) : (
+                                  <ChevronDown className="w-4 h-4" style={{ color: GOLEE.textMuted }} />
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                          {expanded && (
+                            <tr key={`${item.threadId}-expanded`} style={{ backgroundColor: item.unread ? GOLEE.accentSoft : GOLEE.surfaceMuted }}>
+                              <td colSpan={4} className="px-3 pb-3 pt-0">
+                                <div
+                                  className="overflow-hidden rounded-xl border"
+                                  style={{ borderColor: GOLEE.border, backgroundColor: GOLEE.surface }}
+                                >
+                                  <div className="px-4 py-3">
+                                    <p className={`${CARD.sm} whitespace-pre-wrap leading-relaxed`} style={{ color: GOLEE.text }}>
+                                      {item.body}
                                     </p>
-                                    {meta && (
-                                      <p className={`${CARD.tiny} truncate`} style={{ color: GOLEE.textMuted }}>{meta}</p>
+                                  </div>
+                                  <div
+                                    className="flex items-center justify-between gap-3 border-t px-4 py-2.5"
+                                    style={{ borderColor: GOLEE.border, backgroundColor: GOLEE.surfaceMuted }}
+                                  >
+                                    <button
+                                      type="button"
+                                      className={`${CARD.xs} font-medium transition-opacity hover:opacity-70`}
+                                      style={{ color: GOLEE.danger }}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        void handleDismissInboxThread(item.threadId)
+                                      }}
+                                    >
+                                      Nascondi
+                                    </button>
+                                    {item.senderPersonId ? (
+                                      <button
+                                        type="button"
+                                        className={`inline-flex items-center gap-1.5 ${CARD.xs} font-semibold transition-opacity hover:opacity-80`}
+                                        style={{ color: GOLEE.accent }}
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          navigate(
+                                            `/create-person?edit=${item.senderPersonId}&tab=correspondence&thread=${item.threadId}`
+                                          )
+                                        }}
+                                      >
+                                        Apri conversazione
+                                        <ExternalLink className="w-3.5 h-3.5" />
+                                      </button>
+                                    ) : (
+                                      <span className={CARD.xs} style={{ color: GOLEE.textMuted }}>
+                                        Anagrafica non collegata
+                                      </span>
                                     )}
                                   </div>
                                 </div>
-                              )
-                            })}
-                          </div>
-                        </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       )
                     })}
-                    {totalCount > maxTotal && (
-                      <p className={`${CARD.xs} pt-1`} style={{ color: GOLEE.textMuted }}>+{totalCount - maxTotal} altri</p>
-                    )}
-                  </div>
-                )
-              })()}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
 
@@ -1486,7 +1627,7 @@ export default function ModernDashboard() {
                       .sort((a, b) => categoryDisplayOrder(a.categoryLabel) - categoryDisplayOrder(b.categoryLabel))
                       .map((row, idx) => (
                       <tr key={row.id} className="border-b" style={{ borderColor: GOLEE.border, backgroundColor: idx % 2 === 0 ? GOLEE.surface : GOLEE.surfaceMuted }}>
-                        <td className="py-2 px-2 truncate max-w-[120px]" style={{ color: GOLEE.text }}>{row.full_name}</td>
+                        <td className="py-2 px-2 truncate max-w-[120px]" style={{ color: GOLEE.text }}>{formatDisplayPersonName(row.full_name)}</td>
                         <td className="py-2 px-2" style={{ color: GOLEE.textMuted }}>{formatCategoryLabelForDashboard(row.categoryLabel)}</td>
                         <td className="py-2 px-2">
                           <span
@@ -1505,34 +1646,103 @@ export default function ModernDashboard() {
             </div>
           </div>
 
-          {/* Alert */}
-          <div
-            onClick={() => navigate('/alerts')}
-            className={`${goleeCardClass} cursor-pointer hover:shadow-md transition-all flex flex-col min-h-[200px]`}
-            style={{ borderColor: GOLEE.border }}
-          >
-            <div className="p-4 border-b flex items-center justify-between" style={{ borderColor: GOLEE.border, backgroundColor: GOLEE.surfaceMuted }}>
-              <h3 className={`${CARD.md} font-semibold flex items-center gap-2`} style={{ color: GOLEE.text }}>
-                <AlertTriangle className="w-5 h-5" style={{ color: GOLEE.danger }} />
-                Alert
-              </h3>
-              {totalAlerts > 0 && (
-                <span className={`bg-red-100 text-red-700 ${CARD.xs} font-bold px-2 py-0.5 rounded-full`}>{totalAlerts}</span>
-              )}
+          {/* Memo + Alert affiancati (stesso spazio di una sola card) */}
+          <div className="grid grid-cols-2 gap-3 min-h-[200px]">
+            <div
+              onClick={() => navigate('/memo')}
+              className={`${goleeCardClass} cursor-pointer hover:shadow-md transition-all flex flex-col min-h-[200px]`}
+              style={{ borderColor: GOLEE.border }}
+            >
+              <div className="p-3 border-b flex items-center justify-between" style={{ borderColor: GOLEE.border, backgroundColor: GOLEE.surfaceMuted }}>
+                <h3 className={`${CARD.sm} font-semibold flex items-center gap-1.5`} style={{ color: GOLEE.text }}>
+                  <StickyNote className="w-4 h-4" style={{ color: GOLEE.violet }} />
+                  Memo
+                </h3>
+              </div>
+              <div className="p-3 flex-1 overflow-y-auto max-h-[200px]">
+                {loadingMemos ? (
+                  <p className={CARD.xs} style={{ color: GOLEE.textMuted }}>Caricamento...</p>
+                ) : (() => {
+                  const groups = getDashboardMemoGroups(userMemos)
+                  const totalCount = groups.reduce((sum, group) => sum + group.items.length, 0)
+                  if (totalCount === 0) {
+                    return <p className={CARD.xs} style={{ color: GOLEE.textMuted }}>Nessun memo</p>
+                  }
+
+                  const maxTotal = 6
+                  let shown = 0
+
+                  return (
+                    <div className="space-y-2">
+                      {groups.map((group) => {
+                        if (shown >= maxTotal) return null
+                        const remaining = maxTotal - shown
+                        const items = group.items.slice(0, Math.min(2, remaining))
+                        shown += items.length
+
+                        return (
+                          <div key={group.type}>
+                            <p className={`${CARD.tiny} font-semibold uppercase tracking-wide mb-1`} style={{ color: GOLEE.textMuted }}>
+                              {group.label}
+                            </p>
+                            <div className="space-y-1">
+                              {items.map((m) => {
+                                const meta = getDashboardMemoMeta(m)
+                                return (
+                                  <div key={m.id} className={`flex items-start gap-1.5 ${CARD.xs} min-w-0`}>
+                                    <span className="shrink-0 leading-4">{MEMO_TYPE_ICON[m.type]}</span>
+                                    <div className="min-w-0 flex-1">
+                                      <p className={`truncate ${m.completed ? 'line-through opacity-70' : ''}`} style={{ color: GOLEE.text }}>
+                                        {m.content}
+                                      </p>
+                                      {meta && (
+                                        <p className={`${CARD.tiny} truncate`} style={{ color: GOLEE.textMuted }}>{meta}</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )
+                      })}
+                      {totalCount > maxTotal && (
+                        <p className={CARD.tiny} style={{ color: GOLEE.textMuted }}>+{totalCount - maxTotal} altri</p>
+                      )}
+                    </div>
+                  )
+                })()}
+              </div>
             </div>
-            <div className="p-4 flex-1 space-y-2">
-              {alertsCount.documents > 0 && (
-                <p className={CARD.sm} style={{ color: GOLEE.text }}>• {alertsCount.documents} documenti in scadenza</p>
-              )}
-              {alertsCount.notes > 0 && (
-                <p className={CARD.sm} style={{ color: GOLEE.text }}>• {alertsCount.notes} note con promemoria</p>
-              )}
-              {alertsCount.fees > 0 && (
-                <p className={CARD.sm} style={{ color: GOLEE.text }}>• {alertsCount.fees} quote scadute</p>
-              )}
-              {totalAlerts === 0 && (
-                <p className={CARD.sm} style={{ color: GOLEE.textMuted }}>Nessun alert in sospeso</p>
-              )}
+
+            <div
+              onClick={() => navigate('/alerts')}
+              className={`${goleeCardClass} cursor-pointer hover:shadow-md transition-all flex flex-col min-h-[200px]`}
+              style={{ borderColor: GOLEE.border }}
+            >
+              <div className="p-3 border-b flex items-center justify-between" style={{ borderColor: GOLEE.border, backgroundColor: GOLEE.surfaceMuted }}>
+                <h3 className={`${CARD.sm} font-semibold flex items-center gap-1.5`} style={{ color: GOLEE.text }}>
+                  <AlertTriangle className="w-4 h-4" style={{ color: GOLEE.danger }} />
+                  Alert
+                </h3>
+                {totalAlerts > 0 && (
+                  <span className={`bg-red-100 text-red-700 ${CARD.tiny} font-bold px-1.5 py-0.5 rounded-full`}>{totalAlerts}</span>
+                )}
+              </div>
+              <div className="p-3 flex-1 space-y-1.5">
+                {alertsCount.documents > 0 && (
+                  <p className={CARD.xs} style={{ color: GOLEE.text }}>• {alertsCount.documents} documenti in scadenza</p>
+                )}
+                {alertsCount.notes > 0 && (
+                  <p className={CARD.xs} style={{ color: GOLEE.text }}>• {alertsCount.notes} note con promemoria</p>
+                )}
+                {alertsCount.fees > 0 && (
+                  <p className={CARD.xs} style={{ color: GOLEE.text }}>• {alertsCount.fees} quote scadute</p>
+                )}
+                {totalAlerts === 0 && (
+                  <p className={CARD.xs} style={{ color: GOLEE.textMuted }}>Nessun alert in sospeso</p>
+                )}
+              </div>
             </div>
           </div>
         </motion.div>
@@ -1807,7 +2017,7 @@ export default function ModernDashboard() {
                           onClick={() => navigate('/birthdays')}
                           className="flex-1 min-w-0 cursor-pointer"
                         >
-                          <span className="font-medium block" style={{ color: GOLEE.text }}>{person.full_name}</span>
+                          <span className="font-medium block" style={{ color: GOLEE.text }}>{formatDisplayPersonName(person.full_name)}</span>
                           <span className={CARD.sm} style={{ color: GOLEE.textMuted }}>
                             {formattedDate} • {person.age} anni
                           </span>

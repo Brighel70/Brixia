@@ -457,7 +457,7 @@ export function PersonCompletePdf({ form, clubName = 'TeamFlow', sections }: Per
                   return (
                     <View style={styles.statsRow}>
                       {items.map((it, i) => (
-                        <View key={i} style={[styles.statCard, styles[it.color as keyof typeof styles] as object]}>
+                        <View key={i} style={[styles.statCard, styles[it.color as keyof typeof styles] as any]}>
                           <Text style={styles.statValue}>{it.value}</Text>
                           <Text style={styles.statLabel}>{it.label}</Text>
                           {it.badge ? <Text style={styles.statBadge}>{it.badge}</Text> : null}

@@ -1,4 +1,17 @@
-// Configurazione permessi dell'applicazione
+/**
+ * Permessi menu TeamFlow (CRUD per area).
+ * Ambito dati / sezioni FlowMe: vedi `@brixia/shared` → `accessModel.ts`
+ * e `RUOLI_E_PERMESSI.md`.
+ */
+import {
+  ROLE_ACCESS_MATRIX,
+  getRoleAccessRule,
+  type DataScope,
+  type RoleAccessRule,
+} from '@brixia/shared'
+
+export { ROLE_ACCESS_MATRIX, getRoleAccessRule }
+export type { DataScope, RoleAccessRule }
 
 export const PERMISSIONS = {
   PLAYERS: {
@@ -57,6 +70,17 @@ export const PERMISSIONS = {
   },
   BRAND: {
     MANAGE: 'brand.manage'
+  },
+  ACCOUNTING: {
+    VIEW: 'accounting.view',
+    CREATE: 'accounting.create',
+    EDIT_DRAFT: 'accounting.edit_draft',
+    POST: 'accounting.post',
+    VERIFY: 'accounting.verify',
+    CLOSE_PERIOD: 'accounting.close_period',
+    MANAGE_SETTINGS: 'accounting.manage_settings',
+    EXPORT: 'accounting.export',
+    AUDIT_VIEW: 'accounting.audit_view'
   }
 } as const
 
@@ -72,7 +96,8 @@ export const ROLES = {
   TEAM_MANAGER: 'Team Manager',
   ACCOMPAGNATORE: 'Accompagnatore',
   MEDICO: 'Medico',
-  FISIO: 'Fisioterapista'
+  FISIO: 'Fisioterapista',
+  FAMIGLIA: 'Famiglia'
 } as const
 
 export const ROLE_PERMISSIONS = {
@@ -226,6 +251,12 @@ export const ROLE_PERMISSIONS = {
     PERMISSIONS.PLAYERS.EDIT,
     PERMISSIONS.ATTENDANCE.VIEW,
     PERMISSIONS.CATEGORIES.VIEW
+  ],
+  [ROLES.FAMIGLIA]: [
+    // Famiglia: tipicamente FlowMe; su TeamFlow solo lettura minima
+    PERMISSIONS.PLAYERS.VIEW,
+    PERMISSIONS.EVENTS.VIEW,
+    PERMISSIONS.ATTENDANCE.VIEW
   ]
 }
 

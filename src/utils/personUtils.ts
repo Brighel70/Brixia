@@ -2,6 +2,8 @@
  * Utility functions for person management
  */
 
+import { formatDisplayPersonParts } from '@/lib/formatPersonName'
+
 // Calculate age from birth date
 export const calculateAge = (birthDate: string): number => {
   const today = new Date()
@@ -77,9 +79,9 @@ export const getPersonInitials = (givenName: string, familyName: string): string
   return `${givenName?.charAt(0) || ''}${familyName?.charAt(0) || ''}`.toUpperCase()
 }
 
-// Format person full name
+// Format person full name (Title Case — uso fuori scheda anagrafica)
 export const formatPersonName = (givenName: string, familyName: string): string => {
-  return `${givenName || ''} ${familyName || ''}`.trim()
+  return formatDisplayPersonParts(givenName, familyName)
 }
 
 /** Etichette abbreviate per ruoli in campo: Mediano di Mischia → Mediano, Mediano d'Apertura → Apertura */

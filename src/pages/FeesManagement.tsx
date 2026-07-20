@@ -9,6 +9,7 @@ import {
   canEditInstallment as canEditInstallmentCore,
   recordAssignmentPayment,
   markInstallmentsPaid,
+  voidPayment,
   toCents,
   fromCents
 } from '@/lib/fees/paymentsCore'
@@ -42,7 +43,7 @@ interface Fee {
   installment_frequency?: 'monthly' | 'weekly'
   installment_start_date?: string
   // Configurazione manuale delle rate
-  installments?: Array<{ amount: number; due_date: string; notes?: string }>
+  installments?: Array<{ amount: number; due_date: string; notes?: string; installment_number?: number }>
 }
 
 interface FeeAssignment {
@@ -778,6 +779,29 @@ const FeesManagement: React.FC<FeesManagementProps> = ({ embedInLayout = false }
       }))
     } catch (error) {
       console.error('Error loading assignment payments:', error)
+    }
+  }
+
+  // Void a payment
+  const handleVoidPayment = async (paymentId: string, assignmentId: string) => {
+    if (!window.confirm('Sei sicuro di voler annullare questo pagamento? Questa azione non può essere annullata.')) {
+      return
+    }
+
+    try {
+      setLoading(true)
+      await voidPayment(paymentId)
+      setMessage('Pagamento annullato con successo!')
+      
+      // Reload assignments and payments
+      await loadAssignments()
+      await loadAssignmentPayments(assignmentId)
+    } catch (error) {
+      console.error('Error voiding payment:', error)
+      setMessage('Errore nell\'annullamento del pagamento')
+      toast.error('Errore nell\'annullamento del pagamento')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -2158,14 +2182,14 @@ Brixia Rugby`
           return {
             ...assignment,
             paid_amount: newPaidAmount,
-            status: newStatus
+            status: newStatus as 'pending' | 'paid' | 'overdue' | 'cancelled'
           }
         }
         return assignment
       })
       
-      setAssignments(updatedAssignments)
-      setFilteredAssignments(updatedAssignments)
+      setAssignments(updatedAssignments as FeeAssignment[])
+      setFilteredAssignments(updatedAssignments as FeeAssignment[])
       
       // Update status summary immediately
       setAssignmentStatusSummary(calculateStatusSummary(updatedAssignments))
@@ -3482,6 +3506,60 @@ Brixia Rugby`
                                             )
                                           })}
                                         </div>
+
+                                        {/* Payment History Section */}
+                                        {assignmentPayments[assignment.id] && assignmentPayments[assignment.id].length > 0 && (
+                                          <div className="mt-6 pt-4 border-t border-blue-300">
+                                            <h4 className="text-lg font-medium text-gray-900 mb-3">
+                                              Storico Pagamenti
+                                            </h4>
+                                            <div className="space-y-2">
+                                              {assignmentPayments[assignment.id].map((payment: any) => (
+                                                <div key={payment.id} className="p-3 rounded-lg bg-white border border-blue-200">
+                                                  <div className="flex justify-between items-center">
+                                                    <div className="flex-1">
+                                                      <div className="flex items-center space-x-3">
+                                                        <span className="text-base font-medium text-gray-900">
+                                                          {formatCurrency(fromCents(payment.amount))}
+                                                        </span>
+                                                        <span className="text-sm text-gray-500">
+                                                          {new Date(payment.payment_date).toLocaleDateString('it-IT')}
+                                                        </span>
+                                                        <span className="text-sm text-gray-500">
+                                                          ({payment.payment_method === 'cash' ? 'Contanti' :
+                                                            payment.payment_method === 'bank_transfer' ? 'Bonifico' :
+                                                            payment.payment_method === 'card' ? 'Carta' : 'Altro'})
+                                                        </span>
+                                                        {payment.reference && (
+                                                          <span className="text-sm text-gray-500">
+                                                            Rif: {payment.reference}
+                                                          </span>
+                                                        )}
+                                                      </div>
+                                                      {payment.notes && (
+                                                        <div className="mt-1 text-sm text-gray-600">
+                                                          Note: {payment.notes}
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                    {!isReadOnly && (
+                                                      <button
+                                                        onClick={(e) => {
+                                                          e.stopPropagation()
+                                                          handleVoidPayment(payment.id, assignment.id)
+                                                        }}
+                                                        className="ml-3 text-red-600 hover:text-red-800 transition-colors"
+                                                        title="Annulla pagamento"
+                                                      >
+                                                        <Trash2 className="w-4 h-4" />
+                                                      </button>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
                                     </div>
                                   </td>
                                 </tr>

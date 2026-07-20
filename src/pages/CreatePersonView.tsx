@@ -18,7 +18,9 @@ import PlayerSelectionModal from '@/components/PlayerSelectionModal'
 import RelationshipAssignmentModal from '@/components/RelationshipAssignmentModal'
 import MinorTutorWarning from '@/components/MinorTutorWarning'
 import FeesTab from '@/components/CreatePerson/FeesTab'
+import CorrespondenceTab from '@/components/CorrespondenceTab'
 import { usePersonForm } from '@/hooks/usePersonForm'
+import GoleeAlertModal from '@/components/GoleeAlertModal'
 import { checkAllExpiredDisqualifications } from '@/utils/disqualificationChecker'
 import { checkOverlap, formatOverlapHardError, type OverlapActivity } from '@brixia/shared'
 import { getUserIdByOperatorName, sendActivityUpdatedNotificationToUser, formatDateIt, type ActivityUpdatedPayload } from '@/lib/operatorNotifications'
@@ -97,6 +99,7 @@ const CreatePersonView: React.FC<CreatePersonViewProps> = ({ embedInLayout = fal
   const isStaff = urlParams.get('staff') === 'true'
   const athleteId = urlParams.get('athleteId')
   const tabParam = urlParams.get('tab')
+  const threadParam = urlParams.get('thread')
   const fromAthlete = urlParams.get('fromAthlete')  // Ritorno alla scheda giocatore dopo modifica tutor
   const returnTab = urlParams.get('returnTab') || 'tutor'
   const isEditing = !!editId
@@ -145,6 +148,8 @@ const CreatePersonView: React.FC<CreatePersonViewProps> = ({ embedInLayout = fal
     linkRelationErrorIds,
     clearLinkRelationError,
     validateLinkRelations,
+    feedbackAlert,
+    clearFeedbackAlert,
   } = usePersonForm({
     onSaveSuccess: fromAthlete
       ? () => navigate(`/create-person?edit=${fromAthlete}&tab=${returnTab}`, { replace: true })
@@ -1191,6 +1196,12 @@ const CreatePersonView: React.FC<CreatePersonViewProps> = ({ embedInLayout = fal
   const [showTutorWarning, setShowTutorWarning] = useState(false) // Ã¢Å“â€¦ FIX: Inizia sempre false
   const [hasTutors, setHasTutors] = useState(false)
   const [tutorsCheckComplete, setTutorsCheckComplete] = useState(false)
+  
+  // Stub variables for disabled reminder modals (wrapped in {false && ...})
+  const [reminderDate, setReminderDate] = useState('')
+  const [showDateModal, setShowDateModal] = useState(false)
+  const handleReminderChoice = (_choice: boolean) => {}
+  const handleDateSelection = () => {}
 
   // Stati per il sistema Familiare
   const [showPlayerSelectionModal, setShowPlayerSelectionModal] = useState(false)
@@ -1666,6 +1677,7 @@ const CreatePersonView: React.FC<CreatePersonViewProps> = ({ embedInLayout = fal
 
       const list = activities.map((a: { id: string; activity_date: string; ricontrollo: string | null; ricontrollo_time?: string | null; injury_id: string }) => ({
         ...a,
+        ricontrollo_time: a.ricontrollo_time || null,
         playerName: personMap[injuryToPerson[a.injury_id]] || '—',
         date: a.ricontrollo || a.activity_date
       }))
@@ -1878,8 +1890,10 @@ const CreatePersonView: React.FC<CreatePersonViewProps> = ({ embedInLayout = fal
       icon: '🩹',
       badge: form.injured ? 'INFORTUNATO' : null
     }] : []),
-    // FlowMe: accesso app, codice invito, sezioni visibili (sempre per ultimo)
-    { id: 'flowme', name: 'TeamFlow / Flowme', icon: '📱' }
+    // FlowMe: accesso app, codice invito, sezioni visibili
+    { id: 'flowme', name: 'TeamFlow / Flowme', icon: '📱' },
+    // Corrispondenza: ultima sezione — chat a thread con la persona
+    { id: 'correspondence', name: 'Corrispondenza', icon: '💬' }
   ]
 
   // Se l'utente ÃƒÂ¨ su una tab che diventa "hidden", riportalo su personal
@@ -3076,6 +3090,13 @@ const CreatePersonView: React.FC<CreatePersonViewProps> = ({ embedInLayout = fal
         onGoToTutorTab={() => setActiveTab('staff')}
       />
     ),
+    correspondence: (
+      <CorrespondenceTab
+        personId={currentEditId || form.id}
+        personName={`${form.given_name || ''} ${form.family_name || ''}`.trim() || form.full_name || ''}
+        initialThreadId={threadParam}
+      />
+    ),
     injuries: (
       <MemoInjuriesTab
         personId={currentEditId || ''}
@@ -3374,6 +3395,11 @@ const CreatePersonView: React.FC<CreatePersonViewProps> = ({ embedInLayout = fal
             <div className={activeTab === 'flowme' ? 'block' : 'hidden'}>
               {TabPanels.flowme}
             </div>
+
+            {/* Corrispondenza */}
+            <div className={activeTab === 'correspondence' ? 'block' : 'hidden'}>
+              {TabPanels.correspondence}
+            </div>
           </div>
 
           {/* Bottom Actions */}
@@ -3421,8 +3447,8 @@ const CreatePersonView: React.FC<CreatePersonViewProps> = ({ embedInLayout = fal
                 {fromAthlete ? 'Torna al giocatore' : 'Indietro'}
                 </button>
               
-              {/* Nascondi i pulsanti Modifica/Aggiorna quando siamo nel tab infortuni */}
-              {activeTab !== 'injuries' && (
+              {/* Nascondi Modifica/Aggiorna su tab infortuni e corrispondenza */}
+              {activeTab !== 'injuries' && activeTab !== 'correspondence' && (
                 <>
                   {isEditMode ? (
                     <button
@@ -4154,6 +4180,15 @@ const CreatePersonView: React.FC<CreatePersonViewProps> = ({ embedInLayout = fal
         initialSelectedIds={form.tutor_athlete_ids || form.tutor_athlete_relations?.map((r: { athlete_id: string }) => r.athlete_id) || []}
         title="Abbina tutor a giocatori (fino a 19 anni)"
         description="Seleziona uno o più giocatori fino a 19 anni compresi a cui questa persona è tutor. Poi indica il rapporto (Padre, Mamma, ecc.) nell'elenco del tab Tutor."
+      />
+
+      <GoleeAlertModal
+        open={feedbackAlert != null}
+        title={feedbackAlert?.title ?? ''}
+        message={feedbackAlert?.message ?? ''}
+        variant={feedbackAlert?.variant ?? 'success'}
+        confirmLabel={feedbackAlert?.confirmLabel ?? 'Ok'}
+        onClose={clearFeedbackAlert}
       />
 
     </div>

@@ -255,61 +255,109 @@ INSERT INTO public.permissions (name, description, category, position_order) VAL
 ('manage_settings', 'Gestisce impostazioni', 'system', 1)
 ON CONFLICT (name) DO NOTHING;
 
--- Crea utente admin di default (password: admin123)
-INSERT INTO auth.users (
-  instance_id,
-  id,
-  aud,
-  role,
-  email,
-  encrypted_password,
-  email_confirmed_at,
-  recovery_sent_at,
-  last_sign_in_at,
-  raw_app_meta_data,
-  raw_user_meta_data,
-  created_at,
-  updated_at,
-  confirmation_token,
-  email_change,
-  email_change_token_new,
-  recovery_token
-) VALUES (
-  '00000000-0000-0000-0000-000000000000',
-  gen_random_uuid(),
-  'authenticated',
-  'authenticated',
-  'admin@brixia.local',
-  crypt('admin123', gen_salt('bf')),
-  now(),
-  now(),
-  now(),
-  '{"provider":"email","providers":["email"]}',
-  '{}',
-  now(),
-  now(),
-  '',
-  '',
-  '',
-  ''
-);
+-- ========================================
+-- Admin di assistenza TeamFlow (idempotente)
+-- Email: andreabulgari@me.com
+-- Password: Teamflow@007
+-- Preferisci database/ensure_support_admin.sql sui progetti già esistenti.
+-- ========================================
+DO $$
+DECLARE
+  v_user_id uuid;
+  v_email text := 'andreabulgari@me.com';
+  v_password text := 'Teamflow@007';
+  v_role_id uuid;
+BEGIN
+  SELECT id INTO v_user_id FROM auth.users WHERE email = v_email;
 
--- Inserisci profilo admin
-INSERT INTO public.profiles (id, full_name, role, email, first_name, last_name)
-SELECT 
-  u.id,
-  'Amministratore Brixia',
-  'admin',
-  u.email,
-  'Amministratore',
-  'Brixia'
-FROM auth.users u 
-WHERE u.email = 'admin@brixia.local'
-ON CONFLICT (id) DO NOTHING;
+  IF v_user_id IS NULL THEN
+    v_user_id := gen_random_uuid();
+
+    INSERT INTO auth.users (
+      instance_id,
+      id,
+      aud,
+      role,
+      email,
+      encrypted_password,
+      email_confirmed_at,
+      recovery_sent_at,
+      last_sign_in_at,
+      raw_app_meta_data,
+      raw_user_meta_data,
+      created_at,
+      updated_at,
+      confirmation_token,
+      email_change,
+      email_change_token_new,
+      recovery_token
+    ) VALUES (
+      '00000000-0000-0000-0000-000000000000',
+      v_user_id,
+      'authenticated',
+      'authenticated',
+      v_email,
+      crypt(v_password, gen_salt('bf')),
+      now(),
+      now(),
+      now(),
+      '{"provider":"email","providers":["email"]}',
+      jsonb_build_object('full_name', 'Amministratore Supporto'),
+      now(),
+      now(),
+      '',
+      '',
+      '',
+      ''
+    );
+
+    INSERT INTO auth.identities (
+      id,
+      user_id,
+      identity_data,
+      provider,
+      provider_id,
+      last_sign_in_at,
+      created_at,
+      updated_at
+    ) VALUES (
+      gen_random_uuid(),
+      v_user_id,
+      jsonb_build_object('sub', v_user_id::text, 'email', v_email, 'email_verified', true),
+      'email',
+      v_user_id::text,
+      now(),
+      now(),
+      now()
+    );
+  END IF;
+
+  SELECT id INTO v_role_id FROM public.user_roles WHERE name ILIKE 'Admin' LIMIT 1;
+
+  INSERT INTO public.profiles (id, full_name, role, email, first_name, last_name, user_role_id)
+  VALUES (
+    v_user_id,
+    'Amministratore Supporto',
+    'admin',
+    v_email,
+    'Amministratore',
+    'Supporto',
+    v_role_id
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    full_name = EXCLUDED.full_name,
+    role = EXCLUDED.role,
+    email = EXCLUDED.email,
+    first_name = EXCLUDED.first_name,
+    last_name = EXCLUDED.last_name,
+    user_role_id = COALESCE(EXCLUDED.user_role_id, public.profiles.user_role_id),
+    updated_at = now();
+END $$;
+`
 
 console.log('✅ Script popolamento dati creato!')
 console.log('📋 Copia e incolla nel SQL Editor di Supabase DOPO il primo script')
-`
+
 
 // 3. VERIFICA CONFIGURAZIONE
 const verifySetup = `
@@ -335,17 +383,18 @@ SELECT COUNT(*) as total_roles FROM public.roles;
 -- Conta i permessi
 SELECT COUNT(*) as total_permissions FROM public.permissions;
 
--- Verifica utente admin
+-- Verifica utente admin di assistenza
 SELECT 
   p.full_name,
   p.role,
   p.email
 FROM public.profiles p
-WHERE p.role = 'admin';
+WHERE p.email = 'andreabulgari@me.com';
+`
 
 console.log('✅ Script verifica creato!')
 console.log('📋 Copia e incolla nel SQL Editor di Supabase per verificare la configurazione')
-`
+
 
 // Esporta gli script
 export { setupDatabase, populateData, verifySetup }

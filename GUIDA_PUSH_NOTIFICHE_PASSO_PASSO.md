@@ -7,7 +7,7 @@ Se un passaggio non ti è chiaro, puoi chiedere a qualcuno che usa il computer (
 
 ## Cosa è già stato fatto per te (nel progetto)
 
-- **Tabella `push_tokens`**: lo script SQL è pronto (`create_push_tokens_table.sql`).
+- **Tabella `push_tokens`**: già presente in Supabase (lo script storico non è più nel repo).
 - **Edge Function** che invia la push: il codice è già nel progetto in `supabase/functions/send-fcm-push/index.ts`.
 
 Tu (o qualcuno per te) deve solo: **Firebase**, **Supabase Dashboard** e **app mobile** come sotto.
@@ -48,14 +48,11 @@ Solo se in Firebase vedi ancora la **Server key**:
 
 Tutti i passi sotto si fanno dalla **Dashboard di Supabase**: **https://supabase.com/dashboard** → scegli il **progetto** della tua app.
 
-### 2.1 Creare la tabella per i token push
+### 2.1 Verificare la tabella per i token push
 
-1. Nel menu a sinistra clicca **SQL Editor**.
-2. Clicca **New query**.
-3. Apri nel tuo progetto il file **`create_push_tokens_table.sql`** (nella cartella principale del progetto).
-4. Copia **tutto** il contenuto del file e incollalo nella finestra della query in Supabase.
-5. Clicca **Run** (o Esegui).
-6. In basso deve comparire un messaggio di successo (verde). Se c’è un errore, copia il messaggio e chiedi a un tecnico.
+1. Nel menu a sinistra clicca **Table Editor**.
+2. Cerca la tabella **`push_tokens`**.
+3. Se c’è già, passa al punto 2.2. Se non c’è, chiedi a un tecnico di ricrearla (lo script storico non è più nel repo).
 
 ### 2.2 Inserire la chiave FCM (segretto)
 

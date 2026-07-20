@@ -24,12 +24,20 @@ interface InjuryEditModalProps {
 }
 
 const InjuryEditModal: React.FC<InjuryEditModalProps> = ({ isOpen, onClose, injury, onSave, personId }) => {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    injury_type: string;
+    severity: 'Lieve' | 'Moderato' | 'Grave';
+    body_part: string;
+    cause: string;
+    current_status: 'In corso' | 'Guarito' | 'Ricaduta';
+    expected_weeks_off: string;
+    injury_date: string;
+  }>({
     injury_type: '',
-    severity: 'Lieve' as const,
+    severity: 'Lieve',
     body_part: '',
     cause: '',
-    current_status: 'In corso' as const,
+    current_status: 'In corso',
     expected_weeks_off: '',
     injury_date: new Date().toISOString().split('T')[0] // Data di oggi come default
   })
@@ -39,13 +47,15 @@ const InjuryEditModal: React.FC<InjuryEditModalProps> = ({ isOpen, onClose, inju
   useEffect(() => {
     if (!isOpen) return
     if (injury && injury.id) {
-      const raw = injury as Record<string, unknown>
+      const raw = injury as unknown as Record<string, unknown>
+      const severity = raw.severity as string
+      const currentStatus = raw.current_status as string
       setFormData({
         injury_type: String(raw.injury_type ?? ''),
-        severity: (raw.severity as 'Lieve' | 'Moderato' | 'Grave') || 'Lieve',
+        severity: (severity === 'Lieve' || severity === 'Moderato' || severity === 'Grave') ? severity : 'Lieve',
         body_part: String(raw.body_part ?? ''),
         cause: String(raw.cause ?? ''),
-        current_status: (raw.current_status as 'In corso' | 'Guarito' | 'Ricaduta') || 'In corso',
+        current_status: (currentStatus === 'In corso' || currentStatus === 'Guarito' || currentStatus === 'Ricaduta') ? currentStatus : 'In corso',
         expected_weeks_off: raw.expected_weeks_off != null ? String(raw.expected_weeks_off) : '',
         injury_date: raw.injury_date ? String(raw.injury_date).split('T')[0] : new Date().toISOString().split('T')[0]
       })

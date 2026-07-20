@@ -10,7 +10,9 @@ import {
   canEditInstallment as canEditInstallmentCore,
   calculateFeeTotals as calculateFeeTotalsCore,
   markInstallmentsPaid,
-  fromCents
+  fromCents,
+  updateAssignmentMetadata,
+  syncAssignmentFromLedger
 } from '@/lib/fees/paymentsCore'
 
 interface Fee {
@@ -26,6 +28,20 @@ interface Fee {
   applicable_categories?: string[]
 }
 
+interface FeeFromDB {
+  id: string
+  name: string
+  description: string
+  type: string
+  category: string
+  amount: number
+  payment_mode?: string
+  installment_count?: number
+  installment_frequency?: string
+  installment_start_date?: string
+  installments?: any
+}
+
 interface FeeAssignment {
   id: string
   fee_id: string
@@ -37,7 +53,7 @@ interface FeeAssignment {
   installment_number: number
   notes?: string
   payment_method?: string | null
-  fees: Fee
+  fees: Fee | FeeFromDB
 }
 
 interface NoteForFee {
@@ -249,7 +265,7 @@ const FeesTab: React.FC<FeesTabProps> = ({
 
       if (assignmentsError) throw assignmentsError
 
-      const assignedFeeIds = (assignmentsData || []).map((a: FeeAssignment) => a.fee_id)
+      const assignedFeeIds = (assignmentsData || []).map((a: any) => a.fee_id)
       const personCategoryCodes = (playerCategories || [])
         .map((id: string) => categories.find(c => c.id === id)?.code)
         .filter(Boolean)
@@ -263,10 +279,10 @@ const FeesTab: React.FC<FeesTabProps> = ({
       })
 
       setFees(availableFees)
-      setAssignments(assignmentsData || [])
+      setAssignments(assignmentsData as any || [])
 
       // Carica ricevute PDF per le rate pagate (come in FlowMe: icona per aprire ricevuta)
-      const paidIds = (assignmentsData || []).filter((a: FeeAssignment) => a.status === 'paid').map((a: FeeAssignment) => a.id)
+      const paidIds = (assignmentsData || []).filter((a: any) => a.status === 'paid').map((a: any) => a.id)
       if (paidIds.length > 0) {
         const { data: receipts } = await supabase
           .from('payment_receipts')
@@ -573,10 +589,11 @@ const FeesTab: React.FC<FeesTabProps> = ({
       )
 
       if (mainAssignment) {
-        await supabase.from('fee_assignments').update({
-          status: 'pending',
+        await updateAssignmentMetadata(mainAssignment.id, {
           notes: `${mainAssignment.notes || ''}\nConvertito a rate: ${feeData.installments.length} rate configurate`.trim()
-        }).eq('id', mainAssignment.id)
+        })
+        // Stato pagato/non pagato resta derivato dal ledger payments
+        await syncAssignmentFromLedger(mainAssignment.id)
       } else {
         alert('Errore: Assegnazione principale non trovata.')
         return

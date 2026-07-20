@@ -12,6 +12,8 @@ interface User {
   created_at: string
   last_sign_in_at?: string
   categories?: any[]
+  first_name?: string
+  last_name?: string
 }
 
 interface UsersManagementProps {
@@ -65,7 +67,7 @@ export default function UsersManagement({ embedInLayout = false }: UsersManageme
       // Combina i dati e risolvi il ruolo (da role o da user_roles)
       const usersWithAuth = (data || []).map((user: any) => {
         const roleName = user.role || user.user_roles?.name || null
-        const authUser = authData?.users?.find(auth => auth.id === user.id)
+        const authUser = authData?.users?.find((auth: any) => auth.id === user.id)
         return {
           ...user,
           role: roleName,

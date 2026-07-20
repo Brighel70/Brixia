@@ -2,6 +2,8 @@
  * Utility functions for fee management
  */
 
+import { readCategoryIds } from '@/lib/categoryMemberships'
+
 // Determine installment status
 export const getInstallmentStatus = (dueDate: string): 'pending' | 'overdue' => {
   const today = new Date()
@@ -257,15 +259,16 @@ export interface DbCategory {
 
 /** Codici categoria del giocatore (da UUID, codice o nome) */
 export const getPersonCategoryCodes = (
-  person: { player_categories?: unknown[] } | null | undefined,
+  person: { player_categories?: unknown } | null | undefined,
   categoryOptions?: CategoryOptionForMatch[],
   dbCategories?: DbCategory[]
 ): string[] => {
-  if (!person?.player_categories?.length) return []
+  const rawCategories = readCategoryIds(person?.player_categories)
+  if (rawCategories.length === 0) return []
 
   const codes = new Set<string>()
 
-  for (const raw of person.player_categories) {
+  for (const raw of rawCategories) {
     if (typeof raw === 'string') {
       const fromDb = dbCategories?.find(c => c.id === raw)
       if (fromDb?.code) {
@@ -313,7 +316,7 @@ export const getPersonCategoryCodes = (
 
 /** Il giocatore appartiene alla categoria selezionata nel filtro */
 export const personMatchesCategoryFilter = (
-  person: { player_categories?: unknown[] } | null | undefined,
+  person: { player_categories?: unknown } | null | undefined,
   categoryCode: string,
   options?: { categoryOptions?: CategoryOptionForMatch[]; dbCategories?: DbCategory[] }
 ): boolean => {
@@ -340,7 +343,7 @@ export const personMatchesCategoryFilter = (
 
 /** Etichetta categoria da mostrare per un giocatore */
 export const getPersonCategoryLabel = (
-  person: { player_categories?: unknown[] } | null | undefined,
+  person: { player_categories?: unknown } | null | undefined,
   categoryOptions?: CategoryOptionForMatch[],
   dbCategories?: DbCategory[]
 ): string => {

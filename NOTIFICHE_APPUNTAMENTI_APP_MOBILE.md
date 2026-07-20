@@ -73,12 +73,12 @@ Quando ricevi l’evento, puoi mostrare una notifica locale in app e aggiornare 
 Per far arrivare la notifica **anche con app chiusa o in background** serve:
 
 1. **Firebase Cloud Messaging (FCM)** (Android e, tramite FCM, anche iOS).
-2. **Tabella `push_tokens`** in Supabase: l’app mobile, al login, registra il token FCM dell’utente (vedi script `create_push_tokens_table.sql`).
+2. **Tabella `push_tokens`** in Supabase: l’app mobile, al login, registra il token FCM dell’utente (tabella già presente; nessuno script locale da rieseguire).
 3. **Backend che invia la push**: quando la web app inserisce una riga in `notifications`, qualcosa (Edge Function Supabase o altro backend) deve **anche** inviare una richiesta a FCM con quel token, così il dispositivo riceve la push anche con app chiusa.
 
 ### Passi operativi
 
-1. **Esegui** `create_push_tokens_table.sql` nel progetto Supabase (tabella per salvare i token FCM per utente).
+1. **Verifica** in Supabase che esista la tabella `push_tokens` (già creata in passato).
 2. **App mobile**  
    - Integra Firebase / FCM (o Expo Push Notifications che usa FCM).  
    - Al login (o all’avvio se già loggato), ottieni il token FCM e salvalo in `push_tokens`:
@@ -104,6 +104,6 @@ Quindi medici/fisioterapisti che usano l’app mobile devono avere un account (a
 
 ## Riepilogo file utili
 
-- **`create_notifications_table.sql`** – tabella `notifications` (già in uso).
-- **`create_push_tokens_table.sql`** – tabella `push_tokens` per i token FCM (necessaria per push con app chiusa/background).
+- Tabella **`notifications`** – già in uso in Supabase.
+- Tabella **`push_tokens`** – già in Supabase (script storico non più nel repo).
 - **`docs/PUSH_FCM_EDGE_FUNCTION.md`** – guida e codice di esempio per l’Edge Function che invia la push FCM quando viene inserita una riga in `notifications`.

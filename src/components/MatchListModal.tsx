@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Check, RotateCcw } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { getPositionDisplayName } from '@/utils/personUtils';
+import { readCategoryIds, expandCategoryFilterIds, loadPlayersForCategories } from '@/lib/categoryMemberships';
+import { formatDisplayPersonName } from '@/lib/formatPersonName';
 
 // Tabella dei ruoli del rugby
 const RUGBY_ROLES: { [key: number]: string } = {
@@ -216,17 +218,8 @@ const MatchListModal: React.FC<MatchListModalProps> = ({
         .select('id, code, name');
       const categories = categoriesData || [];
 
-      // Quando categoryId è Seniores, usa gli ID di Serie B e Serie C (i giocatori hanno B/C, non Seniores)
-      let categoryIdsToMatch: string[] = [categoryId];
-      const selectedCat = categories.find((c: any) => c.id === categoryId);
-      if (selectedCat && (selectedCat.code === 'SENIORES' || selectedCat.name === 'Seniores')) {
-        const serieB = categories.find((c: any) => c.code === 'SERIE_B' || c.name === 'Serie B');
-        const serieC = categories.find((c: any) => c.code === 'SERIE_C' || c.name === 'Serie C');
-        categoryIdsToMatch = [];
-        if (serieB) categoryIdsToMatch.push(serieB.id);
-        if (serieC) categoryIdsToMatch.push(serieC.id);
-        if (categoryIdsToMatch.length === 0) categoryIdsToMatch = [categoryId];
-      }
+      // Use centralized expandCategoryFilterIds
+      const categoryIdsToMatch = expandCategoryFilterIds(categoryId, categories);
 
       // Carica ruoli giocatore dalla tabella player_positions
       const { data: positionsData } = await supabase
@@ -263,68 +256,11 @@ const MatchListModal: React.FC<MatchListModalProps> = ({
         return '';
       };
 
-      // Carica giocatori: query progressiva per evitare 400 se alcune colonne mancano nel DB
-      let allPlayers: Array<{
-        id: string;
-        full_name: string;
-        player_categories?: unknown;
-        player_positions?: unknown;
-        injured?: boolean;
-        disqualified?: boolean;
-      }> | null = null;
-
-      const playerSelectAttempts = [
-        'id, full_name, player_categories, player_positions, injured, disqualified',
-        'id, full_name, player_categories, player_positions',
-        'id, full_name, player_categories',
-      ];
-
-      let playersError: { message?: string } | null = null;
-      for (const selectFields of playerSelectAttempts) {
-        const { data, error } = await supabase
-          .from('people')
-          .select(selectFields)
-          .eq('is_player', true)
-          .eq('status', 'active');
-
-        if (!error) {
-          allPlayers = (data || []) as typeof allPlayers;
-          playersError = null;
-          break;
-        }
-        playersError = error;
-      }
-
-      if (playersError) {
-        console.error('Error loading players:', playersError);
-        return;
-      }
-
-      // Helper per normalizzare player_categories (può essere array, JSON string o null)
-      const getPlayerCategoryIds = (pc: any): string[] => {
-        if (!pc) return [];
-        if (Array.isArray(pc)) return pc;
-        if (typeof pc === 'string') {
-          try { return JSON.parse(pc) || []; } catch { return []; }
-        }
-        return [];
-      };
-
-      // Filtra giocatori per categoria
-      let categoryPlayers = (allPlayers || []).filter((player: any) => {
-        const categories = getPlayerCategoryIds(player.player_categories);
-        return categories.some((catId: string) => categoryIdsToMatch.includes(catId));
-      });
-
-      // Fallback: se nessun giocatore tramite people.player_categories, prova tabella player_categories
-      if (categoryPlayers.length === 0) {
-        const { data: pcData } = await supabase
-          .from('player_categories')
-          .select('player_id')
-          .in('category_id', categoryIdsToMatch);
-        const playerIdsInCategory = new Set((pcData || []).map((r: any) => r.player_id));
-        categoryPlayers = (allPlayers || []).filter((p: any) => playerIdsInCategory.has(p.id));
-      }
+      // Use centralized loadPlayersForCategories
+      const categoryPlayers = await loadPlayersForCategories(
+        categoryIdsToMatch,
+        { select: 'id, full_name, player_categories, player_positions' }
+      );
 
       // Filtra giocatori squalificati (se colonna esiste) e carica dati infortuni
       const filteredPlayers = await Promise.all(
@@ -679,7 +615,7 @@ const MatchListModal: React.FC<MatchListModalProps> = ({
                               {isSelected && <Check className="w-4 h-4 text-white" />}
                             </div>
                             <div className="min-w-0">
-                              <div className="font-semibold text-gray-900">{player.full_name}</div>
+                              <div className="font-semibold text-gray-900">{formatDisplayPersonName(player.full_name)}</div>
                               {player.isMarkedInjured && (
                                 <div className="mt-1 flex items-center space-x-2">
                                   <span className="flex w-fit items-center rounded-full border border-red-200 bg-white px-2 py-1 text-xs font-medium">
@@ -744,7 +680,7 @@ const MatchListModal: React.FC<MatchListModalProps> = ({
               <div className="p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">Giocatore Infortunato</h3>
                 <p className="text-gray-600 mb-4">
-                  {showInjuryWarning.full_name} è attualmente infortunato. Vuoi comunque includerlo nella lista?
+                  {formatDisplayPersonName(showInjuryWarning.full_name)} è attualmente infortunato. Vuoi comunque includerlo nella lista?
                 </p>
                 <div className="flex justify-center gap-3">
                   <button

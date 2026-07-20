@@ -14,6 +14,7 @@ type Profile = {
   birth_year?: number;
   fir_code?: string;
   person_id?: string; // Aggiunto per compatibilità con mobile app
+  staff_categories?: any[];
 }
 
 const teamflowProfileRoles: Profile['role'][] = [
@@ -168,9 +169,34 @@ export const useAuth = create<AuthState>((set, get) => ({
         p => p.invite_code_teamflow != null && String(p.invite_code_teamflow).trim().toLowerCase() === codeTrim.toLowerCase()
       ) ?? null
 
+      // Nessuna persona con quel codice: prova login email + password (es. admin di assistenza)
       if (!person) {
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          email: emailTrim,
+          password: codeTrim
+        })
+        if (authError || !authData.user) {
+          set({ loading: false })
+          const detail = authError?.message ? ` (${authError.message})` : ''
+          throw new Error(
+            'Email o codice/password non corretti.' + detail +
+            ' Per l\'admin di assistenza usa andreabulgari@me.com e la password dedicata. Altrimenti usa email persona + Codice TeamFlow.'
+          )
+        }
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', authData.user.id)
+          .single()
+        if (profileError || !profileData) {
+          set({ loading: false })
+          throw new Error('Profilo non trovato. Contatta l\'amministratore.')
+        }
+        saveToStorage('auth-userId', authData.user.id)
+        saveToStorage('auth-profile', profileData)
+        set({ userId: authData.user.id, profile: profileData })
         set({ loading: false })
-        throw new Error('Email o codice TeamFlow non corretti. Usa l\'email della scheda persona e il Codice TeamFlow (sezione "Codice accesso TeamFlow" nel tab TeamFlow/Flowme), non il Codice Flowme.')
+        return
       }
 
       const profileRole = await resolveTeamflowProfileRole(person.teamflow_app_role)
@@ -333,10 +359,13 @@ export const useAuth = create<AuthState>((set, get) => ({
   },
   
   async signOut() {
-    // Rimuovi dal localStorage
     localStorage.removeItem('auth-userId')
     localStorage.removeItem('auth-profile')
-    
+    try {
+      await supabase.auth.signOut()
+    } catch (e) {
+      console.warn('signOut Auth:', e)
+    }
     set({ userId: null, profile: null })
   },
   
@@ -345,12 +374,37 @@ export const useAuth = create<AuthState>((set, get) => ({
   },
 
   async initializeAuth() {
-    // Carica da localStorage
-    const savedUserId = loadFromStorage('auth-userId')
-    const savedProfile = loadFromStorage('auth-profile')
-    
-    if (savedUserId && savedProfile) {
-      set({ userId: savedUserId, profile: savedProfile })
+    try {
+      const { data: sessionData } = await supabase.auth.getSession()
+      const session = sessionData.session
+
+      if (session?.user) {
+        let profileData = loadFromStorage('auth-profile') as Profile | null
+        if (!profileData || profileData.id !== session.user.id) {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .maybeSingle()
+          if (!error && data) {
+            profileData = data as Profile
+            saveToStorage('auth-userId', session.user.id)
+            saveToStorage('auth-profile', profileData)
+          }
+        }
+        if (profileData) {
+          set({ userId: session.user.id, profile: profileData })
+          return
+        }
+      }
+
+      // Nessuna sessione Auth valida: non usare solo localStorage (rompe RLS)
+      localStorage.removeItem('auth-userId')
+      localStorage.removeItem('auth-profile')
+      set({ userId: null, profile: null })
+    } catch (e) {
+      console.error('initializeAuth:', e)
+      set({ userId: null, profile: null })
     }
   }
 }))

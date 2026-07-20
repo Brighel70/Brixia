@@ -49,10 +49,11 @@ export default function PlayersTab({ familyId, isEditing }: PlayersTabProps) {
       // Get category names for each player
       const playersWithCategories = await Promise.all(
         (data || []).map(async (relation) => {
-          const player = relation.people
+          // Supabase returns joined data as an array
+          const player = Array.isArray(relation.people) ? relation.people[0] : relation.people
           let categories = []
           
-          if (player.player_categories && Array.isArray(player.player_categories)) {
+          if (player?.player_categories && Array.isArray(player.player_categories)) {
             const { data: categoryData } = await supabase
               .from('categories')
               .select('name')
@@ -61,9 +62,9 @@ export default function PlayersTab({ familyId, isEditing }: PlayersTabProps) {
           }
 
           return {
-            id: player.id,
-            given_name: player.given_name,
-            family_name: player.family_name,
+            id: player?.id || '',
+            given_name: player?.given_name || '',
+            family_name: player?.family_name || '',
             categories,
             relationship_type: relation.relationship_type
           }
@@ -198,7 +199,6 @@ export default function PlayersTab({ familyId, isEditing }: PlayersTabProps) {
         isOpen={showPlayerModal}
         onClose={() => setShowPlayerModal(false)}
         onConfirm={handleAddPlayers}
-        familyId={familyId}
       />
     </div>
   )

@@ -344,7 +344,8 @@ export default function CreateUser({ embedInLayout = false }: CreateUserProps) {
         categories: [],
         password: '',
         confirmPassword: '',
-        player_name: ''
+        player_name: '',
+        customPermissions: []
       })
 
       // Redirect dopo 2 secondi

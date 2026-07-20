@@ -233,10 +233,10 @@ export default function VisitListOutcomeModal({
         if (injErr || !newInjury) throw injErr || new Error('Creazione infortunio fallita')
         let ricontrolloDate = visitDate
         let ricontrolloTime: string | null = visitTime || null
-        if (pendingRicontrollo?.type === 'solo_data') {
+        if (pendingRicontrollo && typeof pendingRicontrollo === 'object' && pendingRicontrollo.type === 'solo_data') {
           ricontrolloDate = pendingRicontrollo.date
           ricontrolloTime = null
-        } else if (pendingRicontrollo?.type === 'data_ora') {
+        } else if (pendingRicontrollo && typeof pendingRicontrollo === 'object' && pendingRicontrollo.type === 'data_ora') {
           ricontrolloDate = pendingRicontrollo.date
           ricontrolloTime = pendingRicontrollo.time || null
         } else if (pendingRicontrollo === 'no') {

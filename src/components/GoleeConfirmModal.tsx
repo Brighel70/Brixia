@@ -1,8 +1,8 @@
 import { createPortal } from 'react-dom'
-import { AlertTriangle, Trash2, X } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Trash2, X } from 'lucide-react'
 import { GOLEE } from '@/config/goleeTheme'
 
-export type GoleeConfirmVariant = 'warning' | 'danger'
+export type GoleeConfirmVariant = 'warning' | 'danger' | 'success'
 
 export type GoleeConfirmModalProps = {
   open: boolean
@@ -10,6 +10,8 @@ export type GoleeConfirmModalProps = {
   message: string
   confirmLabel?: string
   cancelLabel?: string
+  /** Testo sul bottone mentre conferma (default: Attendere…) */
+  confirmingLabel?: string
   variant?: GoleeConfirmVariant
   confirming?: boolean
   onConfirm: () => void
@@ -35,6 +37,15 @@ const VARIANT = {
     confirmBg: '#8B1E3F',
     confirmHover: '#761a36',
   },
+  success: {
+    icon: CheckCircle2,
+    iconBg: GOLEE.accentSoft,
+    iconColor: GOLEE.accent,
+    glow: '0 0 0 8px #D1FAE5',
+    barEnd: GOLEE.accent,
+    confirmBg: GOLEE.accent,
+    confirmHover: GOLEE.accentHover,
+  },
 } as const
 
 export default function GoleeConfirmModal({
@@ -43,6 +54,7 @@ export default function GoleeConfirmModal({
   message,
   confirmLabel = 'Conferma',
   cancelLabel = 'Annulla',
+  confirmingLabel = 'Attendere…',
   variant = 'warning',
   confirming = false,
   onConfirm,
@@ -106,7 +118,7 @@ export default function GoleeConfirmModal({
           </h3>
           <p
             id="golee-confirm-message"
-            className="mx-auto mb-7 max-w-[34ch] text-[15px] leading-relaxed"
+            className="mx-auto mb-7 max-w-[36ch] text-[15px] leading-relaxed"
             style={{ color: GOLEE.textMuted }}
           >
             {message}
@@ -135,7 +147,7 @@ export default function GoleeConfirmModal({
                 e.currentTarget.style.backgroundColor = style.confirmBg
               }}
             >
-              {confirming ? 'Eliminazione...' : confirmLabel}
+              {confirming ? confirmingLabel : confirmLabel}
             </button>
           </div>
         </div>

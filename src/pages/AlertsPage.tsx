@@ -17,6 +17,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { getBrandConfig } from '@/config/brand'
 import Header from '@/components/Header'
 import { formatCurrency } from '@/utils/feeUtils'
+import { formatDisplayPersonName } from '@/lib/formatPersonName'
 
 /** Palette ispirata al gestionale Goleee */
 const GOLEE = {
@@ -116,7 +117,13 @@ export default function AlertsPage({ embedInLayout = false }: AlertsPageProps) {
         return
       }
 
-      setExpiringDocuments(documents || [])
+      // Transform Supabase join results
+      const transformedDocuments = (documents || []).map(doc => ({
+        ...doc,
+        people: Array.isArray(doc.people) ? doc.people[0] : doc.people
+      }))
+
+      setExpiringDocuments(transformedDocuments)
     } catch (error) {
       console.error('Errore nel caricamento documenti in scadenza:', error)
     }
@@ -144,7 +151,14 @@ export default function AlertsPage({ embedInLayout = false }: AlertsPageProps) {
         return
       }
 
-      const overdue = (assignments || []).filter((a: { status: string; due_date?: string }) =>
+      // Transform Supabase join results
+      const transformedAssignments = (assignments || []).map(a => ({
+        ...a,
+        people: Array.isArray(a.people) ? a.people[0] : a.people,
+        fees: Array.isArray(a.fees) ? a.fees[0] : a.fees
+      }))
+
+      const overdue = transformedAssignments.filter((a: { status: string; due_date?: string }) =>
         a.status === 'overdue' || (a.due_date && a.due_date < today)
       )
       setOverdueFees(overdue)
@@ -181,7 +195,13 @@ export default function AlertsPage({ embedInLayout = false }: AlertsPageProps) {
         return
       }
 
-      setExpiringNotes(notes || [])
+      // Transform Supabase join results
+      const transformedNotes = (notes || []).map(note => ({
+        ...note,
+        people: Array.isArray(note.people) ? note.people[0] : note.people
+      }))
+
+      setExpiringNotes(transformedNotes)
     } catch (error) {
       console.error('Errore nel caricamento note in scadenza:', error)
     }
@@ -362,7 +382,7 @@ export default function AlertsPage({ embedInLayout = false }: AlertsPageProps) {
 
   const getFeeRowData = (fee: OverdueFee) => ({
     quotaLabel: `${fee.fees?.name || 'Quota'}${fee.installment_number ? ` – Rata ${fee.installment_number}` : ''}`,
-    personName: fee.people?.full_name || '—',
+    personName: formatDisplayPersonName(fee.people?.full_name) || '—',
     dueDate: formatDate(fee.due_date),
     amount: formatCurrency(fee.amount / 100),
   })
@@ -627,7 +647,7 @@ export default function AlertsPage({ embedInLayout = false }: AlertsPageProps) {
         </div>
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: GOLEE.textMuted }}>Tesserato</p>
-          <p className="text-sm" style={{ color: GOLEE.text }}>{fee.people?.full_name || '—'}</p>
+          <p className="text-sm" style={{ color: GOLEE.text }}>{formatDisplayPersonName(fee.people?.full_name) || '—'}</p>
         </div>
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5 text-center" style={{ color: GOLEE.textMuted }}>Scadenza</p>
@@ -903,7 +923,7 @@ export default function AlertsPage({ embedInLayout = false }: AlertsPageProps) {
                     return (
                       <AlertRow
                         key={doc.id}
-                        title={`${getDocumentTypeLabel(doc.category)} — ${doc.people?.full_name || '—'}`}
+                        title={`${getDocumentTypeLabel(doc.category)} — ${formatDisplayPersonName(doc.people?.full_name) || '—'}`}
                         subtitle={`Scadenza: ${formatDate(doc.expiry_date)}`}
                         badge={style.label}
                         badgeStyle={style}
@@ -952,7 +972,7 @@ export default function AlertsPage({ embedInLayout = false }: AlertsPageProps) {
                   {filteredNotes.map((note) => (
                     <AlertRow
                       key={note.id}
-                      title={`Nota — ${note.people?.full_name || '—'}`}
+                      title={`Nota — ${formatDisplayPersonName(note.people?.full_name) || '—'}`}
                       subtitle={`"${note.content}" · Scade: ${formatDate(note.reminder_date)}`}
                       badge="Oggi"
                       badgeStyle={{ bg: GOLEE.warningSoft, text: GOLEE.warning, border: '#FDE68A' }}

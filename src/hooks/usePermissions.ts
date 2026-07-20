@@ -89,9 +89,10 @@ export const usePermissions = () => {
       }
       
       // Permessi di base del ruolo
-      const rolePermissions = permData
+      const rolePermissions = (permData
         ?.map(rp => rp.permissions)
-        .filter(Boolean) as Permission[]
+        .filter(Boolean)
+        .flat() || []) as Permission[]
       
       // Carica i permessi personalizzati dell'utente
       const { data: customPerms, error: customError } = await supabase

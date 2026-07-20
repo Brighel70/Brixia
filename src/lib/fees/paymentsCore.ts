@@ -192,6 +192,65 @@ export interface AssignmentPaymentResult {
 }
 
 /**
+ * Get total paid amount for an assignment from the payments ledger.
+ */
+export async function getAssignmentPaidTotal(assignmentId: string): Promise<number> {
+  const { data: payments, error } = await supabase
+    .from('payments')
+    .select('amount')
+    .eq('assignment_id', assignmentId)
+
+  if (error) throw error
+  return (payments || []).reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
+}
+
+/**
+ * Sync assignment status from payment ledger. This is the ONLY function that
+ * updates fee_assignments financial state (status/paid_at/paid_date/payment_method).
+ * All payment operations MUST call this after modifying the payments table.
+ */
+export async function syncAssignmentFromLedger(assignmentId: string): Promise<AssignmentPaymentResult> {
+  const [{ data: assignment, error: assignmentError }, { data: payments, error: paymentsError }] = await Promise.all([
+    supabase.from('fee_assignments').select('id, amount, due_date').eq('id', assignmentId).single(),
+    supabase.from('payments').select('amount, payment_date, payment_method').eq('assignment_id', assignmentId).order('payment_date', { ascending: false })
+  ])
+
+  if (assignmentError) throw assignmentError
+  if (paymentsError) throw paymentsError
+
+  const paidAmount = (payments || []).reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
+  const isFullyPaid = paidAmount >= Number(assignment.amount)
+
+  let newStatus: 'paid' | 'pending' | 'overdue' = 'pending'
+  if (isFullyPaid) {
+    newStatus = 'paid'
+  } else {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const dueDate = new Date(assignment.due_date)
+    dueDate.setHours(0, 0, 0, 0)
+    newStatus = dueDate < today ? 'overdue' : 'pending'
+  }
+
+  const latestPayment = payments && payments.length > 0 ? payments[0] : null
+  const updateData = {
+    status: newStatus,
+    paid_at: isFullyPaid && latestPayment ? new Date(latestPayment.payment_date).toISOString() : null,
+    paid_date: isFullyPaid && latestPayment ? latestPayment.payment_date : null,
+    payment_method: isFullyPaid && latestPayment ? latestPayment.payment_method : null
+  }
+
+  const { error: statusError } = await supabase
+    .from('fee_assignments')
+    .update(updateData)
+    .eq('id', assignmentId)
+
+  if (statusError) throw statusError
+
+  return { paidAmount, isFullyPaid }
+}
+
+/**
  * Records one payment and derives the assignment status from its real payment
  * history. This is the only write path for a financial collection.
  */
@@ -231,21 +290,8 @@ export async function recordAssignmentPayment({
   })
   if (paymentError) throw paymentError
 
-  const paidAmount = paidBefore + amount
-  const isFullyPaid = paidAmount >= Number(assignment.amount)
-  const paidAt = isFullyPaid ? new Date(paymentDate).toISOString() : null
-  const { error: statusError } = await supabase
-    .from('fee_assignments')
-    .update({
-      status: isFullyPaid ? 'paid' : 'pending',
-      paid_at: paidAt,
-      paid_date: isFullyPaid ? paymentDate : null,
-      payment_method: paymentMethod
-    })
-    .eq('id', assignmentId)
-  if (statusError) throw statusError
-
-  return { paidAmount, isFullyPaid }
+  // Sync assignment status from ledger instead of updating directly
+  return await syncAssignmentFromLedger(assignmentId)
 }
 
 /**
@@ -286,11 +332,50 @@ export async function markInstallmentsPaid(updates: MarkInstallmentUpdate[]): Pr
 }
 
 /**
- * Update a single installment in fee_assignments.
+ * Void a single payment and recalculate assignment status.
+ * This is the ONLY way to reverse/cancel a payment.
  */
-export async function updateInstallment(
+export async function voidPayment(paymentId: string): Promise<AssignmentPaymentResult> {
+  const { data: payment, error: fetchError } = await supabase
+    .from('payments')
+    .select('assignment_id')
+    .eq('id', paymentId)
+    .single()
+
+  if (fetchError) throw fetchError
+  if (!payment) throw new Error('Pagamento non trovato')
+
+  const { error: deleteError } = await supabase
+    .from('payments')
+    .delete()
+    .eq('id', paymentId)
+
+  if (deleteError) throw deleteError
+
+  return await syncAssignmentFromLedger(payment.assignment_id)
+}
+
+/**
+ * Void all payments for an assignment and reset it to unpaid.
+ */
+export async function voidAllPaymentsForAssignment(assignmentId: string): Promise<void> {
+  const { error: deleteError } = await supabase
+    .from('payments')
+    .delete()
+    .eq('assignment_id', assignmentId)
+
+  if (deleteError) throw deleteError
+
+  await syncAssignmentFromLedger(assignmentId)
+}
+
+/**
+ * Update assignment metadata (non-financial fields only).
+ * NEVER updates status/paid_at/paid_date/payment_method - those are derived from payments table.
+ */
+export async function updateAssignmentMetadata(
   assignmentId: string,
-  data: { status?: string; paid_at?: string | null; payment_method?: string | null }
+  data: { due_date?: string; notes?: string; amount?: number }
 ): Promise<void> {
   const { error } = await supabase.from('fee_assignments').update(data).eq('id', assignmentId)
   if (error) throw error

@@ -48,6 +48,7 @@ import GoleeAlertModal, { type GoleeAlertVariant } from '@/components/GoleeAlert
 import GoleeConfirmModal from '@/components/GoleeConfirmModal'
 import GoleeRenameFileModal from '@/components/GoleeRenameFileModal'
 import { getMatchListDisplayRole, getPlayerProfileRoleLabel } from '@/utils/personUtils'
+import { formatDisplayPersonName } from '@/lib/formatPersonName'
 import { useAuth } from '@/store/auth'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useEventTypes } from '@/hooks/useEventTypes'
@@ -588,10 +589,12 @@ function DraggableTeamCard({
   source: string
   onRemove?: () => void
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id,
     data: { teamName, source }
   })
+  const draggableReturn = useDraggable({ id, data: { teamName, source } }) as any
+  const transition = draggableReturn.transition
   const style = {
     // Con DragOverlay non spostare l'originale: resta al posto e si nasconde
     transform: isDragging ? undefined : CSS.Transform.toString(transform),
@@ -1568,7 +1571,7 @@ export default function Events({ embedInLayout = false }: EventsProps) {
     }
     setNewEvent(draft.newEvent as typeof newEvent)
     setShowCreateForm(draft.showCreateForm)
-    setEditingEvent(draft.editingEvent as Event | null)
+    setEditingEvent(draft.editingEvent as unknown as Event | null)
     setNewTeamNameInput(draft.newTeamNameInput)
     setOpponentCount(draft.opponentCount)
     clearEventFormDraft()
@@ -5941,7 +5944,7 @@ export default function Events({ embedInLayout = false }: EventsProps) {
                                     {player.number}
                                   </div>
                                   <div className="min-w-0">
-                                    <div className="truncate font-semibold text-[#071226]">{player.name}</div>
+                                    <div className="truncate font-semibold text-[#071226]">{formatDisplayPersonName(player.name)}</div>
                                     <div className="text-sm text-[#667085]">{player.role}</div>
                                   </div>
                                 </div>

@@ -105,7 +105,7 @@ export default function GoleeAlertModal({
           </h3>
           <p
             id="golee-alert-message"
-            className="mx-auto mb-7 max-w-[34ch] text-[15px] leading-relaxed"
+            className="mx-auto mb-7 max-w-[34ch] whitespace-pre-line text-[15px] leading-relaxed"
             style={{ color: GOLEE.textMuted }}
           >
             {message}

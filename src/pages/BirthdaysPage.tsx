@@ -6,6 +6,7 @@ import { getBirthdayMessage } from '@/lib/birthdayMessage'
 import { getBrandConfig } from '@/config/brand'
 import Header from '@/components/Header'
 import WhatsAppOpenModal from '@/components/WhatsAppOpenModal'
+import { formatDisplayPersonName, formatDisplayPersonParts } from '@/lib/formatPersonName'
 
 /** Palette ispirata al gestionale Goleee: superfici chiare, verde smeraldo, tipografia pulita */
 const GOLEE = {
@@ -313,15 +314,17 @@ export default function BirthdaysPage({ embedInLayout = false }: BirthdaysPagePr
     })
   }
 
-  const getDisplayName = (p: BirthdayPerson) =>
-    (p.full_name || '').trim() || [p.given_name, p.family_name].filter(Boolean).join(' ').trim() || ''
+  const getDisplayName = (p: BirthdayPerson) => {
+    if ((p.full_name || '').trim()) return formatDisplayPersonName(p.full_name)
+    return formatDisplayPersonParts(p.given_name, p.family_name)
+  }
 
   const getFirstNameForMessage = (p: BirthdayPerson) => {
     const gn = (p.given_name || '').trim()
-    if (gn) return gn
+    if (gn) return formatDisplayPersonName(gn)
     const full = (p.full_name || '').trim()
-    if (full) return full.split(/\s+/)[0] || full
-    return [p.given_name, p.family_name].filter(Boolean)[0]?.trim() || ''
+    if (full) return formatDisplayPersonName(full.split(/\s+/)[0] || full)
+    return formatDisplayPersonName([p.given_name, p.family_name].filter(Boolean)[0]?.trim() || '')
   }
 
   const getPhoneForWhatsApp = (p: BirthdayPerson) => {

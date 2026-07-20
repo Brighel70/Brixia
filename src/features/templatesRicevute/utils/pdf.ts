@@ -37,8 +37,8 @@ export async function generateRicevutaPDF(
     })
     const imgData = canvas.toDataURL('image/png', 1.0)
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-    const pdfW = pdf.getPageWidth(0)
-    const pdfH = pdf.getPageHeight(0)
+    const pdfW = (pdf as any).internal.pageSize.getWidth()
+    const pdfH = (pdf as any).internal.pageSize.getHeight()
     const margin = 10
     const w = pdfW - 2 * margin
     const h = (canvas.height * w) / canvas.width

@@ -169,7 +169,8 @@ export default function SimpleChart({
               
               // Validazione extra per prevenire NaN
               const safePercentage = isNaN(percentage) ? 0 : percentage
-              const safeStrokeDasharray = isNaN(strokeDasharray.split(' ')[0]) ? '0' : strokeDasharray.split(' ')[0]
+              const dashValue = (safePercentage / 100) * circumference
+              const safeStrokeDasharray = isNaN(dashValue) ? 0 : dashValue
               const safeStrokeDashoffset = isNaN(strokeDashoffset) ? 0 : strokeDashoffset
               
               return (

@@ -370,7 +370,7 @@ export async function generateCompletePdf(data: CompletePdfData): Promise<void> 
       })
     } else {
       const injuryFullCards = injuries.map((inj: { id: string; injury_date: string; injury_type: string; severity: string; body_part: string; current_status: string; cause?: string; duration_days?: number; expected_weeks_off?: number; in_chiusura?: boolean; is_closed?: boolean }) => {
-        const sev = inj.severity === 'Grave' ? 'danger' : inj.severity === 'Moderato' ? 'warning' : 'default'
+        const sev: 'danger' | 'warning' | 'default' = inj.severity === 'Grave' ? 'danger' : inj.severity === 'Moderato' ? 'warning' : 'default'
         const title = `${inj.injury_type}${inj.body_part ? ` - ${inj.body_part}` : ''}`.trim() || 'Infortunio'
         const dateStr = formatDateIt(inj.injury_date)
         const acts = injuryActivities.filter((a: { injury_id: string }) => a.injury_id === inj.id)
@@ -387,11 +387,11 @@ export async function generateCompletePdf(data: CompletePdfData): Promise<void> 
               .filter((a: { activity_type: string; activity_description?: string }) =>
                 a.activity_type === 'medical_visit' && (a.activity_description || '').toUpperCase().includes('VISITA DI CHIUSURA')
               )
-              .sort((a: { activity_date?: string }, b: { activity_date?: string }) =>
+              .sort((a: any, b: any) =>
                 new Date(b.activity_date || 0).getTime() - new Date(a.activity_date || 0).getTime()
               )[0]
-            if (closingVisit?.activity_date) {
-              const closedDate = new Date(closingVisit.activity_date)
+            if ((closingVisit as any)?.activity_date) {
+              const closedDate = new Date((closingVisit as any).activity_date)
               giorni = Math.floor((closedDate.getTime() - injuryDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
             }
           }

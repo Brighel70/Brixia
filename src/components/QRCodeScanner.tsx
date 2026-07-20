@@ -27,14 +27,20 @@ export default function QRCodeScanner({ onScanSuccess, onClose }: QRCodeScannerP
       }
 
       // Verifica che la sessione sia attiva
-      const { data: session, error: sessionError } = await supabase
+      const { data: sessionData, error: sessionError } = await supabase
         .from('sessions')
         .select('id, qr_active, categories(name)')
         .eq('id', data.sessionId)
         .single()
 
-      if (sessionError || !session) {
+      if (sessionError || !sessionData) {
         throw new Error('Sessione non trovata')
+      }
+
+      // Transform categories from array to object
+      const session = {
+        ...sessionData,
+        categories: Array.isArray(sessionData.categories) ? sessionData.categories[0] : sessionData.categories
       }
 
       if (!session.qr_active) {

@@ -298,7 +298,8 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({
         file_path: filePath,
         file_size: data.file.size,
         file_type: data.file.type,
-        visibility: 'staff'
+        // Visibile anche a genitori/tutor in FlowMe (non solo staff)
+        visibility: 'owner_guardians',
       }
       if (data.expiryDate) {
         documentData.expiry_date = data.expiryDate
@@ -851,7 +852,7 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({
 
                 <div className="flex space-x-2">
                   <button
-                    onClick={handleUpload}
+                    onClick={() => handleUpload()}
                     disabled={uploading || !uploadFormData.title || ((uploadFormData.category === 'id_card' || uploadFormData.category === 'certificate') && !uploadFormData.expiryDate)}
                     className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
                   >

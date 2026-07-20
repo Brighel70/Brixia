@@ -6,7 +6,7 @@ Per far arrivare le notifiche sul telefono **anche con app chiusa o in backgroun
 
 - Progetto **Firebase** con Cloud Messaging abilitato.
 - **Server key** (o account di servizio) FCM – in Firebase Console → Project Settings → Cloud Messaging.
-- Tabella **`push_tokens`** in Supabase (esegui `create_push_tokens_table.sql`).
+- Tabella **`push_tokens`** in Supabase (già creata; lo script storico non è più nel repo).
 - **App mobile** che registra il token FCM in `push_tokens` al login/avvio.
 
 ## 2. Database Webhook su Supabase

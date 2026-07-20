@@ -2212,27 +2212,18 @@ const InjuriesTab: React.FC<InjuriesTabProps> = ({ personId, canEdit = false, on
                               )}
 
                               {/* Costo/Entrata - a capo se presenti, da bordo a bordo */}
-                              {activity.amount && (
-                                activity.activity_type === 'test' ||
-                                activity.activity_type === 'insurance_refund' || 
-                                activity.activity_type === 'equipment_purchase' || 
-                                activity.activity_type === 'expenses'
-                              ) && (
+                              {activity.amount && (['test', 'equipment_purchase', 'expenses'] as const).includes(activity.activity_type as any) && (
                                 <div className="pt-2 mt-2 border-t border-white/60 -mx-2">
                                   <div className="flex items-center gap-2 py-2.5 px-3 bg-white/60 rounded-lg w-full">
                                     <span className="text-gray-500">
                                       {activity.activity_type === 'test' ? '🔬' :
-                                       activity.activity_type === 'insurance_refund' ? '💰' : 
                                        activity.activity_type === 'equipment_purchase' ? '🛒' : '💸'}
                                     </span>
                                     <span className="font-medium text-gray-700">
                                       {activity.activity_type === 'test' ? 'Costo Esame:' :
-                                       activity.activity_type === 'insurance_refund' ? 'Rimborso:' : 
                                        activity.activity_type === 'equipment_purchase' ? 'Costo Attrezzatura:' : 'Spese:'}
                                     </span>
-                                    <span className={`text-lg font-bold ${
-                                      activity.activity_type === 'insurance_refund' ? 'text-green-600' : 'text-red-600'
-                                    }`}>
+                                    <span className="text-lg font-bold text-red-600">
                                       {activity.amount} {activity.currency || 'EUR'}
                                     </span>
                                   </div>
@@ -2410,27 +2401,18 @@ const InjuriesTab: React.FC<InjuriesTabProps> = ({ personId, canEdit = false, on
                                     )}
 
                                     {/* Costo/Entrata - a capo se presenti, da bordo a bordo */}
-                                    {activity.amount && (
-                                      activity.activity_type === 'test' ||
-                                      activity.activity_type === 'insurance_refund' || 
-                                      activity.activity_type === 'equipment_purchase' || 
-                                      activity.activity_type === 'expenses'
-                                    ) && (
+                                    {activity.amount && (['test', 'equipment_purchase', 'expenses'] as const).includes(activity.activity_type as any) && (
                                       <div className="pt-2 mt-2 border-t border-white/60 -mx-2">
                                         <div className="flex items-center gap-2 py-2.5 px-3 bg-white/60 rounded-lg w-full">
                                           <span className="text-gray-500">
                                             {activity.activity_type === 'test' ? '🔬' :
-                                             activity.activity_type === 'insurance_refund' ? '💰' : 
                                              activity.activity_type === 'equipment_purchase' ? '🛒' : '💸'}
                                           </span>
                                           <span className="font-medium text-gray-700">
                                             {activity.activity_type === 'test' ? 'Costo Esame:' :
-                                             activity.activity_type === 'insurance_refund' ? 'Rimborso:' : 
                                              activity.activity_type === 'equipment_purchase' ? 'Costo Attrezzatura:' : 'Spese:'}
                                           </span>
-                                          <span className={`text-lg font-bold ${
-                                            activity.activity_type === 'insurance_refund' ? 'text-green-600' : 'text-red-600'
-                                          }`}>
+                                          <span className="text-lg font-bold text-red-600">
                                             {activity.amount} {activity.currency || 'EUR'}
                                           </span>
                                         </div>

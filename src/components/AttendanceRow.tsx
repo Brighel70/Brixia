@@ -2,6 +2,7 @@ import { clsx } from 'clsx'
 import StatusPill from './StatusPill'
 import { useData, type InjuredPlace } from '@/store/data'
 import { useState } from 'react'
+import { formatDisplayPersonName } from '@/lib/formatPersonName'
 
 const statuses = [
   { key: 'PRESENTE', short: 'P' },
@@ -38,7 +39,7 @@ export default function AttendanceRow({
         ) : (
           current?.status === 'PRESENTE' ? 'text-emerald-700' : current?.status === 'ASSENTE' || current?.status === 'MALATO' || current?.status === 'PERMESSO' ? 'text-rose-700' : current?.status === 'INFORTUNATO' && current?.injured_place === 'CASA' ? 'text-rose-700' : current?.status === 'INFORTUNATO' && current?.injured_place === 'PALESTRA' ? 'text-amber-700' : 'text-slate-900'
         ))}>
-          {player.family_name} {player.given_name}
+          {formatDisplayPersonName(player.family_name)} {formatDisplayPersonName(player.given_name)}
         </div>
         {current?.status === 'INFORTUNATO' && (
           <div className={clsx('text-xs font-medium opacity-75', dark ? 'text-slate-400' : 'text-slate-500')}>{current.injured_place === 'PALESTRA' ? 'Palestra' : 'Casa'}</div>

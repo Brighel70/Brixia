@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useMemo, useState, useEffect } from 'react'
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import { usePageTitle } from '@/context/PageTitleContext'
 import { useCreatePersonNav } from '@/context/CreatePersonNavContext'
@@ -24,10 +24,13 @@ import {
   FileText,
   Table2,
   LayoutGrid,
-  Plus
+  Plus,
+  Calculator
 } from 'lucide-react'
 import { getBrandConfig } from '@/config/brand'
 import { useAuth } from '@/store/auth'
+import { usePermissions } from '@/hooks/usePermissions'
+import { PERMISSIONS } from '@/config/permissions'
 
 const SIDEBAR_ITEMS = [
   { label: 'Dashboard', path: '/home', icon: LayoutDashboard },
@@ -35,6 +38,12 @@ const SIDEBAR_ITEMS = [
   { label: 'Squadre', path: '/activities', icon: Dumbbell },
   { label: 'Eventi', path: '/events', icon: Calendar },
   { label: 'Quote', path: '/fees', icon: CreditCard },
+  {
+    label: 'Contabilità',
+    path: '/accounting',
+    icon: Calculator,
+    permission: PERMISSIONS.ACCOUNTING.VIEW
+  },
   { label: 'Infermeria', path: '/infortuni', icon: Activity },
   { label: 'Report', path: '/alerts', icon: BarChart2 },
   { label: 'Memo', path: '/memo', icon: StickyNote },
@@ -50,6 +59,7 @@ const TITLE_BY_PATH: Record<string, string> = {
   '/create-person': 'Nuova Persona',
   '/category-activities': 'Attività Categoria',
   '/fees': 'Quote',
+  '/accounting': 'Contabilità',
   '/infortuni': 'Infermeria',
   '/alerts': 'Alert & Notifiche',
   '/resoconto-settimanale': 'Resoconto Settimanale',
@@ -100,6 +110,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const location = useLocation()
   const [searchParams] = useSearchParams()
   const { signOut, profile } = useAuth()
+  const { hasPermission, isAdmin, loading: permissionsLoading } = usePermissions()
+  const visibleSidebarItems = useMemo(
+    () =>
+      SIDEBAR_ITEMS.filter((item) => {
+        if (!('permission' in item) || !item.permission) return true
+        if (permissionsLoading) return false
+        return isAdmin() || hasPermission(item.permission)
+      }),
+    [hasPermission, isAdmin, permissionsLoading]
+  )
   const firstName = profile?.first_name || (profile?.full_name?.trim().split(/\s+/)[0] || '')
   const oggi = new Date()
   const oggiCapitalized = oggi.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' }).replace(/^./, (c) => c.toUpperCase())
@@ -202,7 +222,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                     />
                   </div>
                   <div className="mt-8 space-y-2 text-base">
-                    {SIDEBAR_ITEMS.map((item) => {
+                    {visibleSidebarItems.map((item) => {
                       const Icon = item.icon
                       const isActive = location.pathname === item.path || (item.path === '/activities' && location.pathname.startsWith('/category-activities'))
                       return (
@@ -232,7 +252,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 </>
               ) : (
                 <div className="space-y-2 flex flex-col items-center">
-                  {SIDEBAR_ITEMS.map((item) => {
+                  {visibleSidebarItems.map((item) => {
                     const Icon = item.icon
                     const isActive = location.pathname === item.path || (item.path === '/activities' && location.pathname.startsWith('/category-activities'))
                     return (

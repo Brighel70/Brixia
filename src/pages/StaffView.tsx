@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import Header from '@/components/Header'
 import { supabase } from '@/lib/supabaseClient'
 import { useAuth } from '@/store/auth'
+import { formatDisplayPersonName } from '@/lib/formatPersonName'
 
 export default function StaffView() {
   const { profile } = useAuth()
@@ -203,18 +204,20 @@ export default function StaffView() {
   const paginate = (pageNumber: number) => setCurrentPage(pageNumber)
 
   // Formatta nomi categorie con controllo di sicurezza
-  const getCategoryNames = (categories: any[]) => {
-    if (!categories || categories.length === 0) return '-'
+  const getCategoryNames = (categories: any) => {
+    if (!categories || (Array.isArray(categories) && categories.length === 0)) return '-'
+    
+    if (!Array.isArray(categories)) return '-'
     
     // Se è un array di stringhe (nomi delle categorie)
-    if (Array.isArray(categories)) {
+    if (typeof categories[0] === 'string') {
       return categories
         .filter(Boolean)
         .join(', ')
     }
     
     // Se è un array di oggetti (compatibilità con vecchia struttura)
-    return categories
+    return (categories as any[])
       .map((cat: any) => cat?.code || cat?.name || '')
       .filter(Boolean)
       .join(', ')
@@ -389,7 +392,7 @@ export default function StaffView() {
                     <tr key={staffMember.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-gray-900">
-                          {staffMember.full_name}
+                          {formatDisplayPersonName(staffMember.full_name)}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
