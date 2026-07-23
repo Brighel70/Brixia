@@ -31,9 +31,13 @@ export const PermissionGuard: React.FC<PermissionGuardProps> = ({
     loading 
   } = usePermissions()
 
-  // Se sta caricando, mostra i children (evita flash di contenuto)
+  // Durante il caricamento non rendere la pagina protetta: evita un flash di dati.
   if (loading) {
-    return <>{children}</>
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-600">
+        Verifica autorizzazioni...
+      </div>
+    )
   }
 
   // BYPASS COMPLETO PER ADMIN - Gli admin possono accedere a tutto
@@ -204,7 +208,6 @@ export const FamigliaOnly: React.FC<{ children: React.ReactNode; fallback?: Reac
     {children}
   </PermissionGuard>
 )
-
 
 
 

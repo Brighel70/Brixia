@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { toast } from 'sonner'
+import GoleeConfirmModal from '@/components/GoleeConfirmModal'
 
 interface DocumentsTabProps {
   form: any
@@ -74,6 +75,8 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({
   const [customTitleForUpload, setCustomTitleForUpload] = useState('')
   const [pendingFile, setPendingFile] = useState<File | null>(null)
   const [uploadIntent, setUploadIntent] = useState<{ title: string; category: string; expiryDate?: string } | null>(null)
+  const [docToDelete, setDocToDelete] = useState<Document | null>(null)
+  const [deletingDoc, setDeletingDoc] = useState(false)
 
   // Carica documenti all'apertura
   useEffect(() => {
@@ -144,6 +147,7 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({
     setSelectedUploadType(null)
     setExpiryForUpload('')
     setCustomTitleForUpload('')
+    setUploadIntent(null)
     setShowTypeModal(true)
   }
 
@@ -205,15 +209,17 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({
       setPendingFile(null)
       handleUploadWithCurrentForm(snapshot)
     } else {
-      // Apri il selettore file dopo che il modal è stato chiuso (così l'utente vede il modal sparire)
-      setTimeout(() => {
+      // Chiudi il modal, poi apri Esplora risorse (input fuori dal drop zone).
+      requestAnimationFrame(() => {
         fileInputRef.current?.click()
-      }, 0)
+      })
     }
   }
 
   const handleFileSelect = (file: File) => {
     if (!validateFile(file)) return
+    // Dopo la scelta del file il modal tipo non deve restare aperto
+    setShowTypeModal(false)
     if (uploadIntent) {
       const snapshot = {
         title: uploadIntent.title,
@@ -359,13 +365,19 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({
     }
   }
 
-  const handleDelete = async (doc: Document) => {
-    if (!confirm('Sei sicuro di voler eliminare questo documento?')) return
+  const requestDeleteDocument = (doc: Document) => {
+    setDocToDelete(doc)
+  }
+
+  const confirmDeleteDocument = async () => {
+    const doc = docToDelete
+    if (!doc) return
 
     try {
+      setDeletingDoc(true)
       // AGGIORNA IMMEDIATAMENTE l'interfaccia per feedback istantaneo
       setDocuments(prev => prev.filter(d => d.id !== doc.id))
-      
+
       // Elimina file da storage (usa bucket e path corretti per documenti da FlowMe)
       const { bucket, path } = getStorageBucketAndPath(doc.file_path)
       const { error: storageError } = await supabase.storage
@@ -383,13 +395,15 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({
       if (dbError) throw dbError
 
       toast.success('Documento eliminato')
-
+      setDocToDelete(null)
     } catch (error: any) {
       console.error('Errore eliminazione:', error)
       toast.error('Errore nell\'eliminazione del documento')
-      
+
       // In caso di errore, ripristina il documento nella lista
       setDocuments(prev => [...prev, doc])
+    } finally {
+      setDeletingDoc(false)
     }
   }
 
@@ -489,6 +503,28 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({
 
   return (
     <div className="space-y-6">
+      <GoleeConfirmModal
+        open={!!docToDelete}
+        variant="danger"
+        title="Eliminare documento?"
+        message={
+          docToDelete
+            ? `Vuoi eliminare il documento "${docToDelete.title}"?\n\nQuesta azione non si può annullare.`
+            : 'Vuoi eliminare questo documento?\n\nQuesta azione non si può annullare.'
+        }
+        confirmLabel="Elimina"
+        cancelLabel="Annulla"
+        confirmingLabel="Eliminazione…"
+        confirming={deletingDoc}
+        onCancel={() => {
+          if (deletingDoc) return
+          setDocToDelete(null)
+        }}
+        onConfirm={() => {
+          void confirmDeleteDocument()
+        }}
+      />
+
       {/* Modal scelta tipo documento - non si chiude cliccando fuori */}
       {showTypeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -508,7 +544,7 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({
                     name="uploadType"
                     checked={selectedUploadType === value}
                     onChange={() => setSelectedUploadType(value)}
-                    className="h-4 w-4 text-brixia-primary focus:ring-brixia-primary border-gray-300"
+                    className="h-4 w-4 text-brand-primary focus:ring-brand-primary border-gray-300"
                   />
                   <span className="text-gray-900 font-medium">{label}</span>
                 </label>
@@ -521,7 +557,7 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({
                   type="date"
                   value={expiryForUpload}
                   onChange={(e) => setExpiryForUpload(e.target.value)}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-brixia-primary focus:border-brixia-primary bg-white text-gray-900"
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-brand-primary focus:border-brand-primary bg-white text-gray-900"
                 />
               </div>
             )}
@@ -533,7 +569,7 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({
                   value={customTitleForUpload}
                   onChange={(e) => setCustomTitleForUpload(e.target.value)}
                   placeholder="Scrivi il titolo"
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-brixia-primary focus:border-brixia-primary bg-white text-gray-900 placeholder:text-gray-500"
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-brand-primary focus:border-brand-primary bg-white text-gray-900 placeholder:text-gray-500"
                 />
               </div>
             )}
@@ -548,7 +584,7 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({
               <button
                 type="button"
                 onClick={handleTypeModalContinue}
-                className="flex-1 py-2.5 rounded-xl bg-brixia-primary text-white font-medium hover:bg-brixia-primary/90 transition-colors"
+                className="flex-1 py-2.5 rounded-xl bg-brand-primary text-white font-medium hover:bg-brand-primary/90 transition-colors"
               >
                 Continua
               </button>
@@ -650,7 +686,9 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({
 
                     <div className="flex items-center space-x-2 ml-4">
                       <button
+                        type="button"
                         onClick={(e) => {
+                          e.preventDefault()
                           e.stopPropagation()
                           handleDownload(doc)
                         }}
@@ -663,9 +701,11 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({
                         </svg>
                       </button>
                       <button
+                        type="button"
                         onClick={(e) => {
+                          e.preventDefault()
                           e.stopPropagation()
-                          handleDelete(doc)
+                          requestDeleteDocument(doc)
                         }}
                         className="p-2 text-red-600 hover:bg-red-50 rounded"
                         title="Elimina"
@@ -748,7 +788,16 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({
               </div>
             )}
 
-            {/* Area Upload */}
+            {/* Area Upload — input file fuori dal drop zone: altrimenti il click
+                programmatico dopo "Continua" risale a openTypeModal e riapre il modal. */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png"
+              onChange={handleFileInputChange}
+              onClick={(e) => e.stopPropagation()}
+              className="hidden"
+            />
             {!showUploadForm ? (
               <div
                 onDragOver={handleDragOver}
@@ -770,13 +819,6 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({
                 <p className="text-xs text-gray-500 mt-1">
                   PDF, JPG, PNG fino a 10MB
                 </p>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  onChange={handleFileInputChange}
-                  className="hidden"
-                />
               </div>
             ) : (
               // Form Upload

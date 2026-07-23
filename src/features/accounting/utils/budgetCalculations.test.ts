@@ -75,7 +75,7 @@ describe('budgetCalculations', () => {
     expect(isReceivableActiveForBudget({ status: 'cancelled', archived_at: null })).toBe(false)
   })
 
-  it('storno entrata: riduce income della categoria originale; escluso reversed', () => {
+  it('storno con originale gia stornato non riduce una seconda volta la categoria', () => {
     const rows: MovementCategoryActualRow[] = [
       {
         id: 'm1',
@@ -108,11 +108,11 @@ describe('budgetCalculations', () => {
     // Ma storno di m2: original was 2000 income reversed, subtracting from incomeCents which only has m1's 8000
     // Wait: original m2 is reversed and excluded from income sum. Reversal subtracts from category of m2.
     // So income starts at 8000 (m1 only), then reversal of m2 subtracts 2000 from income → 6000.
-    expect(byCategory.get('cat-quote')?.incomeCents).toBe(6000)
+    expect(byCategory.get('cat-quote')?.incomeCents).toBe(8000)
     expect(unattributedReversalCents).toBe(0)
   })
 
-  it('storno uscita: riduce expense della categoria originale', () => {
+  it('storno di uscita con originale gia stornato non riduce una seconda volta la categoria', () => {
     const rows: MovementCategoryActualRow[] = [
       {
         id: 'e1',
@@ -141,7 +141,7 @@ describe('budgetCalculations', () => {
     ]
 
     const { byCategory } = computeActualCentsByCategory(rows)
-    expect(byCategory.get('cat-out')?.expenseCents).toBe(3500)
+    expect(byCategory.get('cat-out')?.expenseCents).toBe(5000)
   })
 
   it('storno senza originale: non attribuito, nessun indovinare', () => {

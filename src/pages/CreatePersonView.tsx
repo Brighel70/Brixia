@@ -21,8 +21,9 @@ import FeesTab from '@/components/CreatePerson/FeesTab'
 import CorrespondenceTab from '@/components/CorrespondenceTab'
 import { usePersonForm } from '@/hooks/usePersonForm'
 import GoleeAlertModal from '@/components/GoleeAlertModal'
+import DuplicateEmailModal, { type DuplicateEmailPerson } from '@/components/DuplicateEmailModal'
 import { checkAllExpiredDisqualifications } from '@/utils/disqualificationChecker'
-import { checkOverlap, formatOverlapHardError, type OverlapActivity } from '@brixia/shared'
+import { checkOverlap, formatOverlapHardError, type OverlapActivity } from '@teamflow/shared'
 import { getUserIdByOperatorName, sendActivityUpdatedNotificationToUser, formatDateIt, type ActivityUpdatedPayload } from '@/lib/operatorNotifications'
 import { toDateOnly } from '@/lib/dateUtils'
 import { getBrandConfig } from '@/config/brand'
@@ -199,6 +200,11 @@ const CreatePersonView: React.FC<CreatePersonViewProps> = ({ embedInLayout = fal
 
   // Errore validazione Tessera CSEN (blocco uscita da tab Giocatore)
   const [csenTabError, setCsenTabError] = useState<string | null>(null)
+  const [duplicateEmailCheck, setDuplicateEmailCheck] = useState<{
+    email: string
+    people: DuplicateEmailPerson[]
+  } | null>(null)
+  const lastCheckedEmailRef = useRef('')
 
   // Stato per il modal degli infortuni
   const [showInjuryModal, setShowInjuryModal] = useState(false)
@@ -1175,6 +1181,30 @@ const CreatePersonView: React.FC<CreatePersonViewProps> = ({ embedInLayout = fal
       saveInjuredStatus(currentEditId, value)
     }
   }
+
+  const handleEmailBlur = useCallback(async (value: string) => {
+    const email = value.trim().toLowerCase()
+    if (!email || email === lastCheckedEmailRef.current) return
+    lastCheckedEmailRef.current = email
+    const emailPattern = email.replace(/[\\%_]/g, '\\$&')
+
+    let query = supabase
+      .from('people')
+      .select('id, given_name, family_name, full_name, email, is_player, is_staff')
+      .ilike('email', emailPattern)
+
+    if (currentEditId) query = query.neq('id', currentEditId)
+
+    const { data, error } = await query
+    if (error) {
+      console.warn('Controllo email duplicata non disponibile:', error)
+      return
+    }
+
+    if (data?.length) {
+      setDuplicateEmailCheck({ email, people: data as DuplicateEmailPerson[] })
+    }
+  }, [currentEditId])
 
   // Note: logica in NotesTab; qui solo state per tab Quote e bottom bar
   const [notesForFees, setNotesForFees] = useState<any[]>([])
@@ -3064,6 +3094,7 @@ const CreatePersonView: React.FC<CreatePersonViewProps> = ({ embedInLayout = fal
         personId={currentEditId}
         availableRoles={availableRoles}
         onBirthDateBlur={handleBirthDateBlur}
+        onEmailBlur={handleEmailBlur}
         linkRelationErrorIds={linkRelationErrorIds}
         onClearLinkRelationError={clearLinkRelationError}
       />
@@ -3932,13 +3963,13 @@ const CreatePersonView: React.FC<CreatePersonViewProps> = ({ embedInLayout = fal
               <li><span className="font-medium">Giocatore:</span> {notificationChoiceModal.playerName}</li>
             </ul>
             <div className="flex flex-col gap-2">
-              <button type="button" onClick={() => handleSendNotification('operator')} disabled={sendingNotification} className="w-full px-4 py-2.5 text-sm font-medium text-white bg-brixia-secondary rounded-lg hover:opacity-90 disabled:opacity-50">
+              <button type="button" onClick={() => handleSendNotification('operator')} disabled={sendingNotification} className="w-full px-4 py-2.5 text-sm font-medium text-white bg-brand-secondary rounded-lg hover:opacity-90 disabled:opacity-50">
                 {sendingNotification ? 'Invio...' : 'Solo all\'operatore'}
               </button>
-              <button type="button" onClick={() => handleSendNotification('player')} disabled={sendingNotification} className="w-full px-4 py-2.5 text-sm font-medium text-white bg-brixia-secondary rounded-lg hover:opacity-90 disabled:opacity-50">
+              <button type="button" onClick={() => handleSendNotification('player')} disabled={sendingNotification} className="w-full px-4 py-2.5 text-sm font-medium text-white bg-brand-secondary rounded-lg hover:opacity-90 disabled:opacity-50">
                 {sendingNotification ? 'Invio...' : 'Solo al giocatore'}
               </button>
-              <button type="button" onClick={() => handleSendNotification('both')} disabled={sendingNotification} className="w-full px-4 py-2.5 text-sm font-medium text-white bg-brixia-primary rounded-lg hover:opacity-90 disabled:opacity-50">
+              <button type="button" onClick={() => handleSendNotification('both')} disabled={sendingNotification} className="w-full px-4 py-2.5 text-sm font-medium text-white bg-brand-primary rounded-lg hover:opacity-90 disabled:opacity-50">
                 {sendingNotification ? 'Invio...' : 'A entrambi'}
               </button>
               <button type="button" onClick={() => setNotificationChoiceModal(null)} disabled={sendingNotification} className="w-full px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50">
@@ -4189,6 +4220,18 @@ const CreatePersonView: React.FC<CreatePersonViewProps> = ({ embedInLayout = fal
         variant={feedbackAlert?.variant ?? 'success'}
         confirmLabel={feedbackAlert?.confirmLabel ?? 'Ok'}
         onClose={clearFeedbackAlert}
+      />
+
+      <DuplicateEmailModal
+        open={duplicateEmailCheck != null}
+        email={duplicateEmailCheck?.email ?? ''}
+        people={duplicateEmailCheck?.people ?? []}
+        onClose={() => setDuplicateEmailCheck(null)}
+        onKeepEmail={() => setDuplicateEmailCheck(null)}
+        onChangeEmail={() => {
+          setDuplicateEmailCheck(null)
+          requestAnimationFrame(() => document.getElementById('person-email')?.focus())
+        }}
       />
 
     </div>

@@ -1,5 +1,5 @@
 /**
- * Session scheduler – delega a @brixia/shared con client Supabase locale.
+ * Session scheduler – delega a @teamflow/shared con client Supabase locale.
  */
 
 import { supabase } from './supabaseClient'
@@ -15,7 +15,7 @@ import {
   type CategorySessionConfig,
   type SessionToCreate,
   type ExistingSession
-} from '@brixia/shared'
+} from '@teamflow/shared'
 
 export type { TrainingLocationConfig, CategorySessionConfig, SessionToCreate, ExistingSession }
 

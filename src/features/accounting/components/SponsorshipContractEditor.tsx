@@ -532,7 +532,7 @@ export function SponsorshipContractEditor({
               type="button"
               className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
                 planMode === 'single'
-                  ? 'bg-brixia-primary text-white'
+                  ? 'bg-brand-primary text-white'
                   : 'border border-slate-300 bg-white text-slate-700'
               }`}
               onClick={() => applyPaymentMode('single')}
@@ -543,7 +543,7 @@ export function SponsorshipContractEditor({
               type="button"
               className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
                 planMode === 'installments'
-                  ? 'bg-brixia-primary text-white'
+                  ? 'bg-brand-primary text-white'
                   : 'border border-slate-300 bg-white text-slate-700'
               }`}
               onClick={() => applyPaymentMode('installments')}
@@ -756,7 +756,7 @@ export function SponsorshipContractEditor({
               type="button"
               disabled={saving}
               onClick={() => void handleSave()}
-              className="rounded-xl bg-brixia-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              className="rounded-xl bg-brand-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
             >
               {saving ? 'Salvataggio…' : 'Salva'}
             </button>

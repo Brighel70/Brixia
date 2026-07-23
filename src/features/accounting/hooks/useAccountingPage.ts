@@ -1,9 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  assignPendingAccount,
+  cancelManualMovement,
+  createManualTransfer,
   createManualMovement,
   fetchAccounts,
   fetchCategoriesIncludingInactiveWithMeta,
   fetchFiscalYears,
+  fetchAllMovementsForExport,
   fetchMovementDetail,
   fetchMovementSummaryRows,
   fetchMovements,
@@ -14,8 +18,26 @@ import {
   pickDefaultFiscalYear,
   processPendingSync,
   reconcileFeesPreview,
-  updateManualMovement
+  reverseManualMovement,
+  postManualMovement,
+  updateManualMovement,
+  updateManualTransfer
 } from '../api/accounting.api'
+import {
+  closeFiscalYear,
+  fetchFiscalYearClosingChecklist,
+  openFiscalYear,
+  reopenFiscalYear,
+  startClosingFiscalYear
+} from '../api/fiscalYear.api'
+import {
+  createOperationalDeadline,
+  fetchAccountingAuditLog,
+  fetchOperationalDeadlines,
+  setOperationalDeadlineStatus,
+  verifyManualMovement
+} from '../api/fiscalProfile.api'
+import { supabase } from '@/lib/supabaseClient'
 import {
   approveBudget,
   archiveBudgetAndOpenNewDraft,
@@ -23,7 +45,6 @@ import {
   createBudgetLine,
   deleteBudgetLine,
   fetchActiveBudget,
-  fetchApprovedBudget,
   fetchBudgetLines,
   fetchFeesBudgetAggregate,
   fetchLatestBudgetVersion,
@@ -32,6 +53,20 @@ import {
   updateBudgetNotes
 } from '../api/budget.api'
 import { fetchConsuntivoMovements } from '../api/consuntivo.api'
+import {
+  addReconciliationLine,
+  cancelReconciliationSession,
+  completeReconciliationSession,
+  createReconciliationSession,
+  excludeReconciliationLine,
+  fetchBankStatementLines,
+  fetchReconciliationCandidateMovements,
+  fetchReconciliationSessions,
+  fetchReconciliationSummary,
+  importReconciliationCsv,
+  matchReconciliationLine,
+  unmatchReconciliationLine
+} from '../api/reconciliation.api'
 import {
   calculateVatPeriod,
   cancelCommercialDocument,
@@ -68,9 +103,11 @@ import {
   buildCommercialInvoiceBody,
   buildDocContext,
   buildSponsorshipContractBody,
-  generateTextPdfBlob
+  generateTextPdfBlob,
+  reservePdfPreviewWindow
 } from '../utils/documentTemplates'
 import { computeAccountingSummary } from '../utils/summaryCalculations'
+import { previewMovementsPdf } from '../utils/accountingReportsPdf'
 import {
   buildBudgetComparison,
   computeActualCentsByCategory,
@@ -89,6 +126,9 @@ import type {
   AccountingReceivable,
   AccountingSummary,
   AccountingTabId,
+  AccountingBankStatementLine,
+  AccountingReconciliationSession,
+  AccountingReconciliationSummary,
   BudgetComparisonRow,
   BudgetOverviewTotals,
   ConsuntivoFilterState,
@@ -97,15 +137,26 @@ import type {
   MovementsFilterState,
   ReceivablesFilterState,
   ReconcileFeesPreview,
+  ReconciliationCandidateMovement,
   AccountingCounterpartyRef,
   AccountingCounterparty,
   AccountingFiscalParamRow,
+  AccountingOperationalDeadline,
+  AccountingAuditLogRow,
   CommercialDocument,
   CommercialVatOverview,
+  DeadlineStatus,
+  DeadlineType,
+  FiscalYearClosingChecklist,
   SponsorshipContract,
   VatPeriod
 } from '../types'
 import { movementToFormValues, movementFormToPayload, type MovementFormValues } from '../utils/movementValidation'
+import {
+  transferMovementToFormValues,
+  type TransferFormValues
+} from '../components/TransferFormModal'
+import type { MovementLifecycleRequest } from '../utils/movementLifecycle'
 import type { BudgetLineFormValues } from '../components/BudgetLineFormModal'
 import type { CommercialDocumentFormValues } from '../components/CommercialDocumentFormModal'
 import type { SponsorshipContractFormValues } from '../components/SponsorshipContractFormModal'
@@ -225,12 +276,20 @@ export function useAccountingPage() {
   const [editingMovementId, setEditingMovementId] = useState<string | null>(null)
   const [movementFormInitial, setMovementFormInitial] = useState<Partial<MovementFormValues>>()
   const [movementSaving, setMovementSaving] = useState(false)
+  const [movementsPdfGenerating, setMovementsPdfGenerating] = useState(false)
+
+  const [transferFormOpen, setTransferFormOpen] = useState(false)
+  const [transferFormMode, setTransferFormMode] = useState<'create' | 'edit'>('create')
+  const [editingTransferId, setEditingTransferId] = useState<string | null>(null)
+  const [transferFormInitial, setTransferFormInitial] = useState<Partial<TransferFormValues>>()
+  const [transferSaving, setTransferSaving] = useState(false)
 
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailMovementId, setDetailMovementId] = useState<string | null>(null)
   const [detailMovement, setDetailMovement] = useState<AccountingMovementDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
+  const [lifecycleSaving, setLifecycleSaving] = useState(false)
 
   const [budget, setBudget] = useState<AccountingBudget | null>(null)
   const [budgetLines, setBudgetLines] = useState<AccountingBudgetLine[]>([])
@@ -244,10 +303,30 @@ export function useAccountingPage() {
     useState<ConsuntivoFilterState>(DEFAULT_CONSUNTIVO_FILTERS)
   const [consuntivoMovements, setConsuntivoMovements] = useState<ConsuntivoMovementRow[]>([])
   const [consuntivoBudgetLines, setConsuntivoBudgetLines] = useState<AccountingBudgetLine[]>([])
-  const [consuntivoHasApprovedBudget, setConsuntivoHasApprovedBudget] = useState(false)
+  const [consuntivoHasActiveBudget, setConsuntivoHasActiveBudget] = useState(false)
   const [consuntivoFees, setConsuntivoFees] = useState<FeesBudgetAggregate | null>(null)
   const [consuntivoLoading, setConsuntivoLoading] = useState(false)
   const [consuntivoError, setConsuntivoError] = useState<string | null>(null)
+
+  const [reconciliationSessions, setReconciliationSessions] = useState<
+    AccountingReconciliationSession[]
+  >([])
+  const [selectedReconciliationSessionId, setSelectedReconciliationSessionId] = useState<
+    string | null
+  >(null)
+  const [reconciliationLines, setReconciliationLines] = useState<AccountingBankStatementLine[]>(
+    []
+  )
+  const [reconciliationSummary, setReconciliationSummary] =
+    useState<AccountingReconciliationSummary | null>(null)
+  const [reconciliationCandidates, setReconciliationCandidates] = useState<
+    ReconciliationCandidateMovement[]
+  >([])
+  const [reconciliationLoading, setReconciliationLoading] = useState(false)
+  const [reconciliationSaving, setReconciliationSaving] = useState(false)
+  const [reconciliationError, setReconciliationError] = useState<string | null>(null)
+  const selectedReconciliationSessionIdRef = useRef<string | null>(null)
+  selectedReconciliationSessionIdRef.current = selectedReconciliationSessionId
 
   const [vatDocuments, setVatDocuments] = useState<CommercialDocument[]>([])
   const [vatPeriods, setVatPeriods] = useState<VatPeriod[]>([])
@@ -263,6 +342,20 @@ export function useAccountingPage() {
   const [counterpartiesLoading, setCounterpartiesLoading] = useState(false)
   const [counterpartiesError, setCounterpartiesError] = useState<string | null>(null)
   const [counterpartiesSaving, setCounterpartiesSaving] = useState(false)
+
+  const [closingChecklist, setClosingChecklist] = useState<FiscalYearClosingChecklist | null>(null)
+  const [closingChecklistLoading, setClosingChecklistLoading] = useState(false)
+
+  const [deadlines, setDeadlines] = useState<AccountingOperationalDeadline[]>([])
+  const [deadlinesLoading, setDeadlinesLoading] = useState(false)
+
+  const [auditRows, setAuditRows] = useState<AccountingAuditLogRow[]>([])
+  const [auditLoading, setAuditLoading] = useState(false)
+  const [auditError, setAuditError] = useState<string | null>(null)
+
+  const [movementApprovalMode, setMovementApprovalMode] = useState<
+    'simple' | 'verify_then_post'
+  >('simple')
 
   const selectedFiscalYear = useMemo(
     () => fiscalYears.find((y) => y.id === selectedFiscalYearId) ?? null,
@@ -304,6 +397,32 @@ export function useAccountingPage() {
       setMovementsLoading(false)
     }
   }, [selectedFiscalYearId, movementFilters, movementsPage])
+
+  const generateMovementsPdfAction = useCallback(async () => {
+    if (!selectedFiscalYearId || !selectedFiscalYear) {
+      throw new Error('Seleziona un esercizio contabile prima di generare il PDF.')
+    }
+    const previewWindow = reservePdfPreviewWindow()
+    setMovementsPdfGenerating(true)
+    try {
+      const rows = await fetchAllMovementsForExport({
+        fiscalYearId: selectedFiscalYearId,
+        ...movementFilters
+      })
+      await previewMovementsPdf({
+        fiscalYear: selectedFiscalYear,
+        filters: movementFilters,
+        movements: rows,
+        summary,
+        previewWindow
+      })
+    } catch (err) {
+      if (previewWindow && !previewWindow.closed) previewWindow.close()
+      throw err
+    } finally {
+      setMovementsPdfGenerating(false)
+    }
+  }, [selectedFiscalYear, selectedFiscalYearId, movementFilters, summary])
 
   const loadReceivables = useCallback(async () => {
     if (!selectedFiscalYearId) return
@@ -384,31 +503,301 @@ export function useAccountingPage() {
     setConsuntivoLoading(true)
     setConsuntivoError(null)
     try {
-      const [movementRows, approved, fees] = await Promise.all([
+      const [movementRows, activeBudget, fees] = await Promise.all([
         fetchConsuntivoMovements(selectedFiscalYearId),
-        fetchApprovedBudget(selectedFiscalYearId),
+        fetchActiveBudget(selectedFiscalYearId),
         fetchFeesBudgetAggregate(selectedFiscalYearId, categories)
       ])
 
       let lines: AccountingBudgetLine[] = []
-      if (approved) {
-        lines = await fetchBudgetLines(approved.id)
+      if (activeBudget) {
+        lines = await fetchBudgetLines(activeBudget.id)
       }
 
       setConsuntivoMovements(movementRows)
-      setConsuntivoHasApprovedBudget(!!approved)
+      setConsuntivoHasActiveBudget(!!activeBudget)
       setConsuntivoBudgetLines(lines)
       setConsuntivoFees(fees)
     } catch (err) {
       setConsuntivoError(mapSupabaseError(err))
       setConsuntivoMovements([])
-      setConsuntivoHasApprovedBudget(false)
+      setConsuntivoHasActiveBudget(false)
       setConsuntivoBudgetLines([])
       setConsuntivoFees(null)
     } finally {
       setConsuntivoLoading(false)
     }
   }, [selectedFiscalYearId, categories])
+
+  const loadReconciliationSessionDetail = useCallback(async (session: AccountingReconciliationSession) => {
+    const [lines, summary] = await Promise.all([
+      fetchBankStatementLines(session.id),
+      fetchReconciliationSummary(session.id)
+    ])
+    const matchedIds = lines
+      .map((l) => l.matched_movement_id)
+      .filter((id): id is string => !!id)
+    const candidates = await fetchReconciliationCandidateMovements({
+      fiscalYearId: session.fiscal_year_id,
+      accountId: session.account_id,
+      periodStart: session.period_start,
+      periodEnd: session.period_end,
+      excludeMovementIds: matchedIds
+    })
+    setReconciliationLines(lines)
+    setReconciliationSummary(summary)
+    setReconciliationCandidates(candidates)
+  }, [])
+
+  const loadReconciliation = useCallback(async () => {
+    if (!selectedFiscalYearId) return
+    setReconciliationLoading(true)
+    setReconciliationError(null)
+    try {
+      const sessions = await fetchReconciliationSessions(selectedFiscalYearId)
+      setReconciliationSessions(sessions)
+
+      const currentId = selectedReconciliationSessionIdRef.current
+      const stillSelected = currentId
+        ? sessions.find((s) => s.id === currentId) ?? null
+        : null
+
+      if (!stillSelected) {
+        setSelectedReconciliationSessionId(null)
+        setReconciliationLines([])
+        setReconciliationSummary(null)
+        setReconciliationCandidates([])
+      } else {
+        await loadReconciliationSessionDetail(stillSelected)
+      }
+    } catch (err) {
+      setReconciliationError(mapSupabaseError(err))
+      setReconciliationSessions([])
+      setReconciliationLines([])
+      setReconciliationSummary(null)
+      setReconciliationCandidates([])
+    } finally {
+      setReconciliationLoading(false)
+    }
+  }, [selectedFiscalYearId, loadReconciliationSessionDetail])
+
+  const selectReconciliationSession = useCallback(
+    async (sessionId: string | null) => {
+      setSelectedReconciliationSessionId(sessionId)
+      if (!sessionId) {
+        setReconciliationLines([])
+        setReconciliationSummary(null)
+        setReconciliationCandidates([])
+        return
+      }
+      const session = reconciliationSessions.find((s) => s.id === sessionId)
+      if (!session) return
+      setReconciliationLoading(true)
+      setReconciliationError(null)
+      try {
+        await loadReconciliationSessionDetail(session)
+      } catch (err) {
+        setReconciliationError(mapSupabaseError(err))
+        setReconciliationLines([])
+        setReconciliationSummary(null)
+        setReconciliationCandidates([])
+      } finally {
+        setReconciliationLoading(false)
+      }
+    },
+    [reconciliationSessions, loadReconciliationSessionDetail]
+  )
+
+  const refreshSelectedReconciliationDetail = useCallback(async () => {
+    if (!selectedReconciliationSessionId) return
+    const session =
+      reconciliationSessions.find((s) => s.id === selectedReconciliationSessionId) ??
+      (await fetchReconciliationSessions(selectedFiscalYearId!)).find(
+        (s) => s.id === selectedReconciliationSessionId
+      )
+    if (!session) return
+    await loadReconciliationSessionDetail(session)
+  }, [
+    selectedReconciliationSessionId,
+    reconciliationSessions,
+    selectedFiscalYearId,
+    loadReconciliationSessionDetail
+  ])
+
+  const createReconciliationSessionAction = useCallback(
+    async (input: {
+      accountId: string
+      periodStart: string
+      periodEnd: string
+      openingBalanceCents: number
+      closingBalanceStatementCents: number
+      notes: string | null
+    }) => {
+      if (!selectedFiscalYearId) throw new Error('Seleziona un esercizio')
+      setReconciliationSaving(true)
+      setReconciliationError(null)
+      try {
+        const id = await createReconciliationSession({
+          fiscalYearId: selectedFiscalYearId,
+          accountId: input.accountId,
+          periodStart: input.periodStart,
+          periodEnd: input.periodEnd,
+          openingBalanceCents: input.openingBalanceCents,
+          closingBalanceStatementCents: input.closingBalanceStatementCents,
+          notes: input.notes
+        })
+        const sessions = await fetchReconciliationSessions(selectedFiscalYearId)
+        setReconciliationSessions(sessions)
+        setSelectedReconciliationSessionId(id)
+        const created = sessions.find((s) => s.id === id)
+        if (created) await loadReconciliationSessionDetail(created)
+      } catch (err) {
+        setReconciliationError(mapSupabaseError(err))
+        throw err
+      } finally {
+        setReconciliationSaving(false)
+      }
+    },
+    [selectedFiscalYearId, loadReconciliationSessionDetail]
+  )
+
+  const addReconciliationLineAction = useCallback(
+    async (input: {
+      lineDate: string
+      amountCents: number
+      description: string
+      reference: string | null
+      externalId: string | null
+    }) => {
+      if (!selectedReconciliationSessionId) throw new Error('Nessuna sessione selezionata')
+      setReconciliationSaving(true)
+      setReconciliationError(null)
+      try {
+        await addReconciliationLine({
+          sessionId: selectedReconciliationSessionId,
+          lineDate: input.lineDate,
+          amountCents: input.amountCents,
+          description: input.description,
+          reference: input.reference,
+          externalId: input.externalId
+        })
+        await loadReconciliation()
+      } catch (err) {
+        setReconciliationError(mapSupabaseError(err))
+        throw err
+      } finally {
+        setReconciliationSaving(false)
+      }
+    },
+    [selectedReconciliationSessionId, loadReconciliation]
+  )
+
+  const importReconciliationCsvAction = useCallback(
+    async (csv: string) => {
+      if (!selectedReconciliationSessionId) throw new Error('Nessuna sessione selezionata')
+      setReconciliationSaving(true)
+      setReconciliationError(null)
+      try {
+        const result = await importReconciliationCsv(selectedReconciliationSessionId, csv)
+        await loadReconciliation()
+        return result
+      } catch (err) {
+        setReconciliationError(mapSupabaseError(err))
+        throw err
+      } finally {
+        setReconciliationSaving(false)
+      }
+    },
+    [selectedReconciliationSessionId, loadReconciliation]
+  )
+
+  const matchReconciliationLineAction = useCallback(
+    async (lineId: string, movementId: string) => {
+      setReconciliationSaving(true)
+      setReconciliationError(null)
+      try {
+        await matchReconciliationLine(lineId, movementId)
+        await refreshSelectedReconciliationDetail()
+        if (selectedFiscalYearId) {
+          const sessions = await fetchReconciliationSessions(selectedFiscalYearId)
+          setReconciliationSessions(sessions)
+        }
+      } catch (err) {
+        setReconciliationError(mapSupabaseError(err))
+        throw err
+      } finally {
+        setReconciliationSaving(false)
+      }
+    },
+    [refreshSelectedReconciliationDetail, selectedFiscalYearId]
+  )
+
+  const unmatchReconciliationLineAction = useCallback(
+    async (lineId: string) => {
+      setReconciliationSaving(true)
+      setReconciliationError(null)
+      try {
+        await unmatchReconciliationLine(lineId)
+        await refreshSelectedReconciliationDetail()
+      } catch (err) {
+        setReconciliationError(mapSupabaseError(err))
+        throw err
+      } finally {
+        setReconciliationSaving(false)
+      }
+    },
+    [refreshSelectedReconciliationDetail]
+  )
+
+  const excludeReconciliationLineAction = useCallback(
+    async (lineId: string, reason: string) => {
+      setReconciliationSaving(true)
+      setReconciliationError(null)
+      try {
+        await excludeReconciliationLine(lineId, reason)
+        await refreshSelectedReconciliationDetail()
+      } catch (err) {
+        setReconciliationError(mapSupabaseError(err))
+        throw err
+      } finally {
+        setReconciliationSaving(false)
+      }
+    },
+    [refreshSelectedReconciliationDetail]
+  )
+
+  const completeReconciliationSessionAction = useCallback(async () => {
+    if (!selectedReconciliationSessionId) throw new Error('Nessuna sessione selezionata')
+    setReconciliationSaving(true)
+    setReconciliationError(null)
+    try {
+      await completeReconciliationSession(selectedReconciliationSessionId)
+      await loadReconciliation()
+    } catch (err) {
+      setReconciliationError(mapSupabaseError(err))
+      throw err
+    } finally {
+      setReconciliationSaving(false)
+    }
+  }, [selectedReconciliationSessionId, loadReconciliation])
+
+  const cancelReconciliationSessionAction = useCallback(
+    async (reason: string | null) => {
+      if (!selectedReconciliationSessionId) throw new Error('Nessuna sessione selezionata')
+      setReconciliationSaving(true)
+      setReconciliationError(null)
+      try {
+        await cancelReconciliationSession(selectedReconciliationSessionId, reason)
+        await loadReconciliation()
+      } catch (err) {
+        setReconciliationError(mapSupabaseError(err))
+        throw err
+      } finally {
+        setReconciliationSaving(false)
+      }
+    },
+    [selectedReconciliationSessionId, loadReconciliation]
+  )
 
   const loadVatSponsor = useCallback(async () => {
     if (!selectedFiscalYearId) return
@@ -482,6 +871,140 @@ export function useAccountingPage() {
       setCounterpartiesLoading(false)
     }
   }, [])
+
+  const loadClosingChecklist = useCallback(async () => {
+    if (!selectedFiscalYearId) {
+      setClosingChecklist(null)
+      return
+    }
+    setClosingChecklistLoading(true)
+    try {
+      const checklist = await fetchFiscalYearClosingChecklist(selectedFiscalYearId)
+      setClosingChecklist(checklist)
+    } catch (err) {
+      console.warn('Checklist chiusura esercizio non disponibile', err)
+      setClosingChecklist(null)
+    } finally {
+      setClosingChecklistLoading(false)
+    }
+  }, [selectedFiscalYearId])
+
+  const loadDeadlines = useCallback(async () => {
+    if (!selectedFiscalYearId) {
+      setDeadlines([])
+      return
+    }
+    setDeadlinesLoading(true)
+    try {
+      const rows = await fetchOperationalDeadlines(selectedFiscalYearId)
+      setDeadlines(rows)
+    } catch (err) {
+      console.warn('Scadenze operative non disponibili', err)
+      setDeadlines([])
+    } finally {
+      setDeadlinesLoading(false)
+    }
+  }, [selectedFiscalYearId])
+
+  const loadAudit = useCallback(async () => {
+    setAuditLoading(true)
+    setAuditError(null)
+    try {
+      const rows = await fetchAccountingAuditLog({ limit: 100 })
+      setAuditRows(rows as AccountingAuditLogRow[])
+    } catch (err) {
+      setAuditError(mapSupabaseError(err))
+      setAuditRows([])
+    } finally {
+      setAuditLoading(false)
+    }
+  }, [])
+
+  const loadMovementApprovalMode = useCallback(async () => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const db = supabase as any
+      const { data, error } = await db
+        .from('accounting_settings')
+        .select('movement_approval_mode')
+        .eq('singleton_guard', true)
+        .maybeSingle()
+      if (error) throw error
+      const mode = data?.movement_approval_mode
+      if (mode === 'simple' || mode === 'verify_then_post') {
+        setMovementApprovalMode(mode)
+      }
+    } catch {
+      // optional: keep default simple
+    }
+  }, [])
+
+  const refreshFiscalYears = useCallback(async () => {
+    const years = await fetchFiscalYears()
+    setFiscalYears(years)
+    return years
+  }, [])
+
+  const openFiscalYearAction = useCallback(async () => {
+    if (!selectedFiscalYearId) throw new Error('Seleziona un esercizio')
+    await openFiscalYear(selectedFiscalYearId)
+    await refreshFiscalYears()
+    await loadClosingChecklist()
+    await loadCoreData(selectedFiscalYearId)
+  }, [selectedFiscalYearId, refreshFiscalYears, loadClosingChecklist, loadCoreData])
+
+  const startClosingAction = useCallback(async () => {
+    if (!selectedFiscalYearId) throw new Error('Seleziona un esercizio')
+    const checklist = await startClosingFiscalYear(selectedFiscalYearId)
+    setClosingChecklist(checklist)
+    await refreshFiscalYears()
+  }, [selectedFiscalYearId, refreshFiscalYears])
+
+  const closeFiscalYearAction = useCallback(async () => {
+    if (!selectedFiscalYearId) throw new Error('Seleziona un esercizio')
+    await closeFiscalYear(selectedFiscalYearId)
+    await refreshFiscalYears()
+    await loadClosingChecklist()
+  }, [selectedFiscalYearId, refreshFiscalYears, loadClosingChecklist])
+
+  const reopenFiscalYearAction = useCallback(
+    async (reason: string) => {
+      if (!selectedFiscalYearId) throw new Error('Seleziona un esercizio')
+      await reopenFiscalYear(selectedFiscalYearId, reason)
+      await refreshFiscalYears()
+      await loadClosingChecklist()
+      await loadCoreData(selectedFiscalYearId)
+    },
+    [selectedFiscalYearId, refreshFiscalYears, loadClosingChecklist, loadCoreData]
+  )
+
+  const createDeadlineAction = useCallback(
+    async (input: {
+      title: string
+      dueOn: string
+      deadlineType: DeadlineType
+      notes: string | null
+    }) => {
+      if (!selectedFiscalYearId) throw new Error('Seleziona un esercizio')
+      await createOperationalDeadline({
+        title: input.title,
+        dueOn: input.dueOn,
+        deadlineType: input.deadlineType,
+        fiscalYearId: selectedFiscalYearId,
+        notes: input.notes
+      })
+      await loadDeadlines()
+    },
+    [selectedFiscalYearId, loadDeadlines]
+  )
+
+  const setDeadlineStatusAction = useCallback(
+    async (id: string, status: DeadlineStatus) => {
+      await setOperationalDeadlineStatus(id, status)
+      await loadDeadlines()
+    },
+    [loadDeadlines]
+  )
 
   const init = useCallback(async () => {
     setLoading(true)
@@ -560,6 +1083,11 @@ export function useAccountingPage() {
   }, [selectedFiscalYearId, activeTab, loadConsuntivo])
 
   useEffect(() => {
+    if (!selectedFiscalYearId || activeTab !== 'reconciliation') return
+    void loadReconciliation()
+  }, [selectedFiscalYearId, activeTab, loadReconciliation])
+
+  useEffect(() => {
     if (!selectedFiscalYearId || activeTab !== 'vat_sponsor') return
     void loadVatSponsor()
   }, [selectedFiscalYearId, activeTab, loadVatSponsor])
@@ -568,6 +1096,28 @@ export function useAccountingPage() {
     if (activeTab !== 'counterparties') return
     void loadCounterparties()
   }, [activeTab, loadCounterparties])
+
+  useEffect(() => {
+    if (!selectedFiscalYearId) {
+      setClosingChecklist(null)
+      return
+    }
+    void loadClosingChecklist()
+  }, [selectedFiscalYearId, loadClosingChecklist])
+
+  useEffect(() => {
+    if (!selectedFiscalYearId || activeTab !== 'deadlines') return
+    void loadDeadlines()
+  }, [selectedFiscalYearId, activeTab, loadDeadlines])
+
+  useEffect(() => {
+    if (activeTab !== 'audit') return
+    void loadAudit()
+  }, [activeTab, loadAudit])
+
+  useEffect(() => {
+    void loadMovementApprovalMode()
+  }, [loadMovementApprovalMode])
 
   const refresh = useCallback(async () => {
     if (!selectedFiscalYearId) return
@@ -579,8 +1129,12 @@ export function useAccountingPage() {
       if (activeTab === 'receivables') await loadReceivables()
       if (activeTab === 'budget') await loadBudget()
       if (activeTab === 'consuntivo') await loadConsuntivo()
+      if (activeTab === 'reconciliation') await loadReconciliation()
       if (activeTab === 'vat_sponsor') await loadVatSponsor()
       if (activeTab === 'counterparties') await loadCounterparties()
+      if (activeTab === 'deadlines') await loadDeadlines()
+      if (activeTab === 'audit') await loadAudit()
+      await loadClosingChecklist()
       if (activeTab === 'sync') {
         const preview = await reconcileFeesPreview()
         setSyncPreview(preview)
@@ -599,8 +1153,12 @@ export function useAccountingPage() {
     loadReceivables,
     loadBudget,
     loadConsuntivo,
+    loadReconciliation,
     loadVatSponsor,
-    loadCounterparties
+    loadCounterparties,
+    loadDeadlines,
+    loadAudit,
+    loadClosingChecklist
   ])
 
   const changeFiscalYear = useCallback(
@@ -698,6 +1256,37 @@ export function useAccountingPage() {
     setMovementFormInitial(undefined)
   }, [movementSaving])
 
+  const openCreateTransfer = useCallback(() => {
+    setTransferFormMode('create')
+    setEditingTransferId(null)
+    setTransferFormInitial(undefined)
+    setTransferFormOpen(true)
+  }, [])
+
+  const openEditTransfer = useCallback(async (movementId: string) => {
+    setDetailOpen(false)
+    setTransferFormMode('edit')
+    setEditingTransferId(movementId)
+    setTransferSaving(false)
+    try {
+      const detail = await fetchMovementDetail(movementId)
+      if (detail.direction !== 'transfer' || detail.origin !== 'manual') {
+        throw new Error('Il movimento selezionato non e un giroconto manuale.')
+      }
+      setTransferFormInitial(transferMovementToFormValues(detail))
+      setTransferFormOpen(true)
+    } catch (err) {
+      setMovementsError(mapSupabaseError(err))
+    }
+  }, [])
+
+  const closeTransferForm = useCallback(() => {
+    if (transferSaving) return
+    setTransferFormOpen(false)
+    setEditingTransferId(null)
+    setTransferFormInitial(undefined)
+  }, [transferSaving])
+
   const saveMovementForm = useCallback(
     async (values: MovementFormValues, amountCents: number) => {
       if (!selectedFiscalYearId) return
@@ -748,6 +1337,40 @@ export function useAccountingPage() {
     ]
   )
 
+  const saveTransferForm = useCallback(
+    async (values: TransferFormValues, amountCents: number) => {
+      if (!selectedFiscalYearId) return
+      setTransferSaving(true)
+      try {
+        const payload = {
+          movementDate: values.movementDate,
+          settlementDate: values.settlementDate || null,
+          amountCents,
+          sourceAccountId: values.sourceAccountId,
+          destinationAccountId: values.destinationAccountId,
+          description: values.description,
+          notes: values.notes || null
+        }
+
+        if (transferFormMode === 'create') {
+          await createManualTransfer({ fiscalYearId: selectedFiscalYearId, ...payload })
+        } else if (editingTransferId) {
+          await updateManualTransfer(editingTransferId, payload)
+        }
+
+        setTransferFormOpen(false)
+        setEditingTransferId(null)
+        setTransferFormInitial(undefined)
+        await reloadAfterMovementChange()
+      } catch (err) {
+        throw new Error(mapSupabaseError(err))
+      } finally {
+        setTransferSaving(false)
+      }
+    },
+    [selectedFiscalYearId, transferFormMode, editingTransferId, reloadAfterMovementChange]
+  )
+
   const openMovementDetail = useCallback(async (movement: AccountingMovement) => {
     setDetailOpen(true)
     setDetailMovementId(movement.id)
@@ -770,6 +1393,48 @@ export function useAccountingPage() {
     setDetailMovement(null)
     setDetailError(null)
   }, [])
+
+  const runMovementLifecycleAction = useCallback(
+    async (request: MovementLifecycleRequest) => {
+      setLifecycleSaving(true)
+      try {
+        if (request.action === 'post') {
+          await postManualMovement(request.movementId, request.overrideReason ?? null)
+        } else if (request.action === 'verify') {
+          await verifyManualMovement(request.movementId, request.reason ?? null)
+        } else if (request.action === 'cancel') {
+          await cancelManualMovement(request.movementId, request.reason ?? null)
+        } else if (request.action === 'reverse') {
+          await reverseManualMovement(
+            request.movementId,
+            request.movementDate ?? '',
+            request.reason ?? ''
+          )
+        } else if (request.action === 'assign_account') {
+          await assignPendingAccount(request.movementId, request.accountId ?? '')
+        }
+
+        closeMovementDetail()
+        await reloadAfterMovementChange()
+      } catch (err) {
+        throw new Error(mapSupabaseError(err))
+      } finally {
+        setLifecycleSaving(false)
+      }
+    },
+    [closeMovementDetail, reloadAfterMovementChange]
+  )
+
+  const verifyManualMovementAction = useCallback(
+    async (movementId: string, note?: string | null) => {
+      await runMovementLifecycleAction({
+        action: 'verify',
+        movementId,
+        reason: note ?? undefined
+      })
+    },
+    [runMovementLifecycleAction]
+  )
 
   const resetMovementFilters = useCallback(() => {
     setMovementFilters(DEFAULT_MOVEMENT_FILTERS)
@@ -1517,16 +2182,28 @@ export function useAccountingPage() {
     movementFormMode,
     movementFormInitial,
     movementSaving,
+    movementsPdfGenerating,
     openCreateMovement,
     openEditMovement,
     closeMovementForm,
     saveMovementForm,
+    generateMovementsPdfAction,
+    transferFormOpen,
+    transferFormMode,
+    transferFormInitial,
+    transferSaving,
+    openCreateTransfer,
+    openEditTransfer,
+    closeTransferForm,
+    saveTransferForm,
     detailOpen,
     detailMovement,
     detailLoading,
     detailError,
     openMovementDetail,
     closeMovementDetail,
+    lifecycleSaving,
+    runMovementLifecycleAction,
     budget,
     budgetLines,
     budgetComparison,
@@ -1546,10 +2223,28 @@ export function useAccountingPage() {
     resetConsuntivoFilters,
     consuntivoMovements,
     consuntivoBudgetLines,
-    consuntivoHasApprovedBudget,
+    consuntivoHasActiveBudget,
     consuntivoFees,
     consuntivoLoading,
     consuntivoError,
+    reconciliationSessions,
+    selectedReconciliationSessionId,
+    reconciliationLines,
+    reconciliationSummary,
+    reconciliationCandidates,
+    reconciliationLoading,
+    reconciliationSaving,
+    reconciliationError,
+    loadReconciliation,
+    selectReconciliationSession,
+    createReconciliationSessionAction,
+    addReconciliationLineAction,
+    importReconciliationCsvAction,
+    matchReconciliationLineAction,
+    unmatchReconciliationLineAction,
+    excludeReconciliationLineAction,
+    completeReconciliationSessionAction,
+    cancelReconciliationSessionAction,
     vatDocuments,
     vatPeriods,
     vatCounterparties,
@@ -1581,6 +2276,24 @@ export function useAccountingPage() {
     createCounterpartyAction,
     updateCounterpartyAction,
     archiveCounterpartyAction,
-    reactivateCounterpartyAction
+    reactivateCounterpartyAction,
+    closingChecklist,
+    closingChecklistLoading,
+    loadClosingChecklist,
+    openFiscalYearAction,
+    startClosingAction,
+    closeFiscalYearAction,
+    reopenFiscalYearAction,
+    deadlines,
+    deadlinesLoading,
+    loadDeadlines,
+    createDeadlineAction,
+    setDeadlineStatusAction,
+    auditRows,
+    auditLoading,
+    auditError,
+    loadAudit,
+    movementApprovalMode,
+    verifyManualMovementAction
   }
 }

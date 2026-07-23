@@ -1,280 +1,206 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Header from '@/components/Header'
 import { supabase } from '@/lib/supabaseClient'
-import { PERMISSIONS, ROLES, ROLE_PERMISSIONS, getRolePermissions } from '@/config/permissions'
 
-interface RolePermissionData {
-  role: string
-  permissions: string[]
+interface PermissionRecord {
+  id: string
+  name: string
+  description: string | null
+  category: string
+  position_order: number
+}
+
+interface RoleRecord {
+  id: string
+  name: string
+  position_order: number
+}
+
+interface RolePermissions {
+  role: RoleRecord
+  permissionIds: string[]
 }
 
 export default function RolePermissionsManagement() {
   const navigate = useNavigate()
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
-  const [rolePermissions, setRolePermissions] = useState<RolePermissionData[]>([])
-  const [selectedRole, setSelectedRole] = useState<string>('')
+  const [permissions, setPermissions] = useState<PermissionRecord[]>([])
+  const [rolePermissions, setRolePermissions] = useState<RolePermissions[]>([])
+  const [selectedRoleId, setSelectedRoleId] = useState('')
+
+  const loadRolePermissions = async () => {
+    setLoading(true)
+    setError('')
+
+    const [rolesResult, permissionsResult, mappingsResult] = await Promise.all([
+      supabase.from('user_roles').select('id, name, position_order').order('position_order'),
+      supabase.from('permissions').select('id, name, description, category, position_order').order('category').order('position_order'),
+      supabase.from('role_permissions').select('role_id, permission_id'),
+    ])
+
+    const firstError = rolesResult.error || permissionsResult.error || mappingsResult.error
+    if (firstError) {
+      setError(`Impossibile caricare i permessi: ${firstError.message}`)
+      setLoading(false)
+      return
+    }
+
+    const roleRows = (rolesResult.data || []) as RoleRecord[]
+    const permissionIdsByRole = new Map<string, string[]>()
+    for (const mapping of mappingsResult.data || []) {
+      const current = permissionIdsByRole.get(mapping.role_id) || []
+      current.push(mapping.permission_id)
+      permissionIdsByRole.set(mapping.role_id, current)
+    }
+
+    setPermissions((permissionsResult.data || []) as PermissionRecord[])
+    setRolePermissions(roleRows.map((role) => ({
+      role,
+      permissionIds: permissionIdsByRole.get(role.id) || [],
+    })))
+    setSelectedRoleId((current) => current || roleRows[0]?.id || '')
+    setLoading(false)
+  }
 
   useEffect(() => {
-    loadRolePermissions()
+    void loadRolePermissions()
   }, [])
 
-  const loadRolePermissions = () => {
-    const permissions: RolePermissionData[] = []
-    
-    Object.entries(ROLE_PERMISSIONS).forEach(([role, rolePerms]) => {
-      permissions.push({
-        role,
-        permissions: rolePerms
-      })
-    })
-    
-    setRolePermissions(permissions)
-    if (permissions.length > 0) {
-      setSelectedRole(permissions[0].role)
+  const selectedRole = rolePermissions.find((item) => item.role.id === selectedRoleId) || null
+  const permissionsByCategory = useMemo(() => {
+    const result = new Map<string, PermissionRecord[]>()
+    for (const permission of permissions) {
+      const group = result.get(permission.category) || []
+      group.push(permission)
+      result.set(permission.category, group)
     }
-  }
+    return Array.from(result.entries())
+  }, [permissions])
 
-  const handlePermissionToggle = (permission: string) => {
+  const togglePermission = (permissionId: string) => {
     if (!selectedRole) return
-
-    setRolePermissions(prev => prev.map(rp => {
-      if (rp.role === selectedRole) {
-        return {
-          ...rp,
-          permissions: rp.permissions.includes(permission)
-            ? rp.permissions.filter(p => p !== permission)
-            : [...rp.permissions, permission]
-        }
+    setRolePermissions((current) => current.map((item) => {
+      if (item.role.id !== selectedRole.role.id) return item
+      const included = item.permissionIds.includes(permissionId)
+      return {
+        ...item,
+        permissionIds: included
+          ? item.permissionIds.filter((id) => id !== permissionId)
+          : [...item.permissionIds, permissionId],
       }
-      return rp
     }))
   }
 
-  const handleSaveChanges = async () => {
+  const saveSelectedRole = async () => {
     if (!selectedRole) return
+    setSaving(true)
+    setError('')
+    setSuccess('')
 
-    try {
-      setLoading(true)
-      setError('')
-      
-      // Qui potresti salvare nel database se hai una tabella per i permessi dei ruoli
-      // Per ora salvo solo in memoria
-      
-      setSuccess(`Permessi aggiornati per il ruolo ${selectedRole}`)
-      
-      // Reset del messaggio dopo 3 secondi
-      setTimeout(() => setSuccess(''), 3000)
-      
-    } catch (error: any) {
-      setError(error.message || 'Errore nel salvataggio dei permessi')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleResetToDefault = () => {
-    if (!selectedRole) return
-
-    const defaultPermissions = getRolePermissions(selectedRole)
-    
-    setRolePermissions(prev => prev.map(rp => {
-      if (rp.role === selectedRole) {
-        return {
-          ...rp,
-          permissions: defaultPermissions
-        }
-      }
-      return rp
-    }))
-    
-    setSuccess(`Permessi ripristinati ai valori di default per ${selectedRole}`)
-    setTimeout(() => setSuccess(''), 3000)
-  }
-
-  const getSelectedRolePermissions = () => {
-    return rolePermissions.find(rp => rp.role === selectedRole)?.permissions || []
-  }
-
-  const getAllPermissions = () => {
-    const permissionsByCategory: { [key: string]: { [key: string]: string } } = {}
-    
-    Object.entries(PERMISSIONS).forEach(([categoryName, categoryPermissions]) => {
-      permissionsByCategory[categoryName] = categoryPermissions
+    const { error: saveError } = await supabase.rpc('admin_replace_role_permissions', {
+      p_role_id: selectedRole.role.id,
+      p_permission_ids: selectedRole.permissionIds,
     })
-    
-    return permissionsByCategory
-  }
 
-  const isPermissionActive = (permission: string) => {
-    return getSelectedRolePermissions().includes(permission)
-  }
+    if (saveError) {
+      setError(`Impossibile aggiornare i permessi: ${saveError.message}`)
+      setSaving(false)
+      return
+    }
 
-  const getRoleStats = () => {
-    const totalRoles = Object.keys(ROLES).length
-    const totalPermissions = Object.values(PERMISSIONS).flatMap(cat => Object.values(cat)).length
-    
-    return { totalRoles, totalPermissions }
+    setSuccess(`Permessi salvati per ${selectedRole.role.name}.`)
+    setSaving(false)
   }
-
-  const stats = getRoleStats()
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
-      <Header 
-        title="Gestione Permessi Ruoli" 
-        showBack={true}
-        showSettings={false}
-      />
-      
+    <div className="min-h-screen bg-gray-50">
+      <Header title="Ruoli e permessi" showBack showSettings={false} />
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Statistiche */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white rounded-xl p-6 shadow-sm">
-            <div className="flex items-center">
-              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                <span className="text-2xl">👥</span>
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Ruoli Totali</p>
-                <p className="text-2xl font-semibold text-gray-900">{stats.totalRoles}</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white rounded-xl p-6 shadow-sm">
-            <div className="flex items-center">
-              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                <span className="text-2xl">🔐</span>
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Permessi Totali</p>
-                <p className="text-2xl font-semibold text-gray-900">{stats.totalPermissions}</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white rounded-xl p-6 shadow-sm">
-            <div className="flex items-center">
-              <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
-                <span className="text-2xl">⚙️</span>
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Permessi Attivi</p>
-                <p className="text-2xl font-semibold text-gray-900">
-                  {selectedRole ? getSelectedRolePermissions().length : 0}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-red-700">{error}</p>
-          </div>
-        )}
-
-        {success && (
-          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-            <p className="text-green-700">{success}</p>
-          </div>
-        )}
-
-        <div className="bg-white rounded-xl shadow-sm p-8">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Gestione Permessi Ruoli</h1>
-            <p className="text-gray-600">
-              Configura i permessi per ogni ruolo del sistema. Modifica e personalizza l'accesso per ogni tipo di utente.
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold text-gray-900">Ruoli e permessi</h1>
+            <p className="mt-1 text-sm text-gray-600">
+              Le modifiche qui vengono salvate nel database e valgono per TeamFlow e per le regole di accesso collegate.
             </p>
           </div>
+          <button type="button" onClick={() => navigate('/users-management')} className="text-sm font-medium text-blue-700 hover:text-blue-900">
+            Gestione utenti
+          </button>
+        </div>
 
-          {/* Selezione Ruolo */}
-          <div className="mb-8">
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              Seleziona Ruolo da Configurare
-            </label>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              {rolePermissions.map((roleData) => (
-                <button
-                  key={roleData.role}
-                  onClick={() => setSelectedRole(roleData.role)}
-                  className={`p-3 rounded-lg border-2 transition-all ${
-                    selectedRole === roleData.role
-                      ? 'border-blue-500 bg-blue-50 text-blue-700'
-                      : 'border-gray-200 hover:border-gray-300 text-gray-700'
-                  }`}
-                >
-                  <div className="font-medium">{roleData.role}</div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    {roleData.permissions.length} permessi
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
+        {error && <div className="mb-5 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>}
+        {success && <div className="mb-5 rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">{success}</div>}
 
-          {/* Configurazione Permessi */}
-          {selectedRole && (
-            <div className="space-y-6">
-              <div className="flex justify-between items-center">
-                <h2 className="text-xl font-semibold text-gray-900">
-                  Permessi per: <span className="text-blue-600">{selectedRole}</span>
-                </h2>
-                <div className="flex gap-3">
+        {loading ? (
+          <div className="rounded-lg border border-gray-200 bg-white p-8 text-center text-gray-600">Caricamento ruoli...</div>
+        ) : (
+          <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
+            <aside className="rounded-lg border border-gray-200 bg-white p-3">
+              <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Ruoli</p>
+              <div className="space-y-1">
+                {rolePermissions.map((item) => (
                   <button
-                    onClick={handleResetToDefault}
-                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                    key={item.role.id}
+                    type="button"
+                    onClick={() => setSelectedRoleId(item.role.id)}
+                    className={`w-full rounded-md px-3 py-2 text-left transition ${selectedRoleId === item.role.id ? 'bg-blue-50 text-blue-900' : 'text-gray-700 hover:bg-gray-50'}`}
                   >
-                    🔄 Ripristina Predefiniti
+                    <span className="block text-sm font-medium">{item.role.name}</span>
+                    <span className="text-xs text-gray-500">{item.permissionIds.length} permessi</span>
                   </button>
-                  <button
-                    onClick={handleSaveChanges}
-                    disabled={loading}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-                  >
-                    {loading ? 'Salvataggio...' : '💾 Salva Modifiche'}
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-6">
-                {Object.entries(getAllPermissions()).map(([categoryName, categoryPermissions]) => (
-                  <div key={categoryName} className="border border-gray-200 rounded-lg p-6">
-                    <h3 className="font-semibold text-gray-900 mb-4 text-lg capitalize">
-                      {categoryName.replace('_', ' ').replace(/PLAYERS/g, 'Giocatori').replace(/EVENTS/g, 'Eventi').replace(/SESSIONS/g, 'Sessioni').replace(/ATTENDANCE/g, 'Presenze').replace(/STAFF/g, 'Staff').replace(/CATEGORIES/g, 'Categorie').replace(/SETTINGS/g, 'Impostazioni').replace(/USERS/g, 'Utenti').replace(/COUNCIL/g, 'Consiglio').replace(/BRAND/g, 'Brand')}
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {Object.entries(categoryPermissions).map(([permKey, permission]) => (
-                        <label key={permission} className="flex items-center space-x-3">
-                          <input
-                            type="checkbox"
-                            checked={isPermissionActive(permission)}
-                            onChange={() => handlePermissionToggle(permission)}
-                            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                          />
-                              <span className="text-sm font-medium text-gray-700">
-                                {permKey.replace('_', ' ').replace(/VIEW/g, 'Visualizza').replace(/CREATE/g, 'Crea').replace(/EDIT/g, 'Modifica').replace(/DELETE/g, 'Elimina').replace(/EXPORT/g, 'Esporta').replace(/START/g, 'Avvia').replace(/STOP/g, 'Ferma').replace(/MARK/g, 'Segna').replace(/ROLES/g, 'Ruoli').replace(/MANAGE/g, 'Gestisci')}
-                              </span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
                 ))}
               </div>
-            </div>
-          )}
+            </aside>
 
-          {!selectedRole && (
-            <div className="text-center py-12">
-              <div className="text-6xl mb-4">🎭</div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Seleziona un Ruolo</h3>
-              <p className="text-gray-600">Scegli un ruolo dalla lista sopra per configurare i suoi permessi.</p>
-            </div>
-          )}
-        </div>
+            <section className="rounded-lg border border-gray-200 bg-white">
+              {selectedRole ? (
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-200 px-6 py-4">
+                    <div>
+                      <h2 className="text-lg font-semibold text-gray-900">{selectedRole.role.name}</h2>
+                      <p className="text-sm text-gray-600">Seleziona ciò che questo ruolo può fare.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void saveSelectedRole()}
+                      disabled={saving}
+                      className="rounded-md bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {saving ? 'Salvataggio...' : 'Salva permessi'}
+                    </button>
+                  </div>
+                  <div className="space-y-6 p-6">
+                    {permissionsByCategory.map(([category, categoryPermissions]) => (
+                      <div key={category}>
+                        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-600">{category}</h3>
+                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                          {categoryPermissions.map((permission) => (
+                            <label key={permission.id} className="flex cursor-pointer gap-3 rounded-md border border-gray-200 p-3 hover:bg-gray-50">
+                              <input
+                                type="checkbox"
+                                checked={selectedRole.permissionIds.includes(permission.id)}
+                                onChange={() => togglePermission(permission.id)}
+                                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-700"
+                              />
+                              <span>
+                                <span className="block text-sm font-medium text-gray-900">{permission.name}</span>
+                                {permission.description && <span className="mt-0.5 block text-xs text-gray-600">{permission.description}</span>}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : <div className="p-8 text-center text-gray-600">Nessun ruolo disponibile.</div>}
+            </section>
+          </div>
+        )}
       </main>
     </div>
   )

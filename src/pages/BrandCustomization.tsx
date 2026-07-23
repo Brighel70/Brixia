@@ -128,7 +128,7 @@ function FileUpload({ label, currentFile, onFileChange, accept = "image/*", desc
 
   const previewSizeClass = previewLarge ? 'w-64 h-24 min-h-[6rem]' : 'w-32 h-20'
   const previewBgClass = previewHeaderBg
-    ? 'bg-gradient-to-r from-brixia-primary to-brixia-secondary'
+    ? 'bg-gradient-to-r from-brand-primary to-brand-secondary'
     : 'bg-white'
 
   return (
@@ -160,7 +160,7 @@ function FileUpload({ label, currentFile, onFileChange, accept = "image/*", desc
           type="file"
           onChange={handleFileChange}
           accept={accept}
-          className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-brixia-primary file:text-white hover:file:bg-brixia-primary/90"
+          className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-brand-primary file:text-white hover:file:bg-brand-primary/90"
         />
         {description && (
           <p className="text-xs text-gray-500">{description}</p>
@@ -424,8 +424,8 @@ export default function BrandCustomization({ embedInLayout = false }: BrandCusto
         {/* Logo e Immagini */}
         <div className="mb-8 bg-white rounded-2xl p-6 shadow-soft overflow-x-auto">
           <div className="flex items-center gap-3 mb-6">
-            <Image className="text-brixia-primary text-2xl" />
-            <h2 className="text-xl font-bold text-brixia-primary">Logo e Immagini</h2>
+            <Image className="text-brand-primary text-2xl" />
+            <h2 className="text-xl font-bold text-brand-primary">Logo e Immagini</h2>
           </div>
 
           {/* 6 campi in griglia: 2 righe × 3 colonne, distribuzione orizzontale uniforme */}
@@ -514,8 +514,8 @@ export default function BrandCustomization({ embedInLayout = false }: BrandCusto
             {/* Colori */}
             <div className="bg-white rounded-2xl p-6 shadow-soft">
               <div className="flex items-center gap-3 mb-6">
-                <Palette className="text-brixia-primary text-2xl" />
-                <h2 className="text-xl font-bold text-brixia-primary">Colori del Brand</h2>
+                <Palette className="text-brand-primary text-2xl" />
+                <h2 className="text-xl font-bold text-brand-primary">Colori del Brand</h2>
               </div>
               
               <div className="space-y-4">
@@ -587,8 +587,8 @@ export default function BrandCustomization({ embedInLayout = false }: BrandCusto
             {/* Personalizzazioni UI */}
             <div className="bg-white rounded-2xl p-6 shadow-soft">
               <div className="flex items-center gap-3 mb-6">
-                <Settings className="text-brixia-primary text-2xl" />
-                <h2 className="text-xl font-bold text-brixia-primary">Personalizzazioni UI</h2>
+                <Settings className="text-brand-primary text-2xl" />
+                <h2 className="text-xl font-bold text-brand-primary">Personalizzazioni UI</h2>
               </div>
               
               <div className="space-y-4">
@@ -604,7 +604,7 @@ export default function BrandCustomization({ embedInLayout = false }: BrandCusto
                         ...config, 
                         customization: {...config.customization, showHeroImage: e.target.checked}
                       })}
-                      className="w-4 h-4 text-brixia-primary focus:ring-brixia-secondary border-gray-300 rounded"
+                      className="w-4 h-4 text-brand-primary focus:ring-brand-secondary border-gray-300 rounded"
                     />
                     <span className="text-sm text-gray-600">
                       Mostra l'immagine di sfondo nella homepage
@@ -645,7 +645,7 @@ export default function BrandCustomization({ embedInLayout = false }: BrandCusto
                       ...config, 
                       customization: {...config.customization, theme: e.target.value as 'light' | 'dark' | 'auto'}
                     })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brixia-secondary focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-secondary focus:border-transparent"
                   >
                     <option value="light">Chiaro</option>
                     <option value="dark">Scuro</option>
@@ -659,8 +659,8 @@ export default function BrandCustomization({ embedInLayout = false }: BrandCusto
             {/* CSS Personalizzato */}
             <div className="bg-white rounded-2xl p-6 shadow-soft">
               <div className="flex items-center gap-3 mb-6">
-                <Settings className="text-brixia-primary text-2xl" />
-                <h2 className="text-xl font-bold text-brixia-primary">CSS Personalizzato</h2>
+                <Settings className="text-brand-primary text-2xl" />
+                <h2 className="text-xl font-bold text-brand-primary">CSS Personalizzato</h2>
               </div>
               
               <div>
@@ -674,7 +674,7 @@ export default function BrandCustomization({ embedInLayout = false }: BrandCusto
                     customization: {...config.customization, customCSS: e.target.value}
                   })}
                   rows={6}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brixia-secondary focus:border-transparent font-mono text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-secondary focus:border-transparent font-mono text-sm"
                   placeholder="/* Inserisci qui il tuo CSS personalizzato */"
                 />
                 <p className="text-xs text-gray-500 mt-1">
@@ -690,8 +690,8 @@ export default function BrandCustomization({ embedInLayout = false }: BrandCusto
           {/* Informazioni di Contatto */}
           <div className="bg-white rounded-2xl p-6 shadow-soft">
             <div className="flex items-center gap-3 mb-6">
-              <Settings className="text-brixia-primary text-2xl" />
-              <h2 className="text-xl font-bold text-brixia-primary">Informazioni di Contatto</h2>
+              <Settings className="text-brand-primary text-2xl" />
+              <h2 className="text-xl font-bold text-brand-primary">Informazioni di Contatto</h2>
             </div>
             
             <div className="space-y-4">
@@ -701,7 +701,7 @@ export default function BrandCustomization({ embedInLayout = false }: BrandCusto
                   type="email"
                   value={config.contact.email}
                   onChange={(e) => setConfig({ ...config, contact: { ...config.contact, email: e.target.value.toLowerCase() } })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brixia-secondary focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-secondary focus:border-transparent"
                 />
               </div>
               <div>
@@ -710,7 +710,7 @@ export default function BrandCustomization({ embedInLayout = false }: BrandCusto
                   type="tel"
                   value={config.contact.phone}
                   onChange={(e) => setConfig({ ...config, contact: { ...config.contact, phone: e.target.value } })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brixia-secondary focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-secondary focus:border-transparent"
                 />
               </div>
               <div>
@@ -719,7 +719,7 @@ export default function BrandCustomization({ embedInLayout = false }: BrandCusto
                   type="text"
                   value={config.contact.address}
                   onChange={(e) => setConfig({ ...config, contact: { ...config.contact, address: e.target.value } })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brixia-secondary focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-secondary focus:border-transparent"
                 />
               </div>
               <div>
@@ -728,7 +728,7 @@ export default function BrandCustomization({ embedInLayout = false }: BrandCusto
                   type="url"
                   value={config.contact.website}
                   onChange={(e) => setConfig({ ...config, contact: { ...config.contact, website: e.target.value } })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brixia-secondary focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-secondary focus:border-transparent"
                 />
               </div>
               <div>
@@ -738,7 +738,7 @@ export default function BrandCustomization({ embedInLayout = false }: BrandCusto
                   value={config.contact.flowmeAppUrl || ''}
                   onChange={(e) => setConfig({ ...config, contact: { ...config.contact, flowmeAppUrl: e.target.value } })}
                   placeholder="https://flowme-lemon.vercel.app/login"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brixia-secondary focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-secondary focus:border-transparent"
                 />
                 <p className="text-xs text-gray-500 mt-1">Link cliccabile inviato nei messaggi WhatsApp di benvenuto</p>
               </div>
@@ -748,8 +748,8 @@ export default function BrandCustomization({ embedInLayout = false }: BrandCusto
           {/* Identità del Club */}
           <div className="bg-white rounded-2xl p-6 shadow-soft">
             <div className="flex items-center gap-3 mb-6">
-              <Type className="text-brixia-primary text-2xl" />
-              <h2 className="text-xl font-bold text-brixia-primary">Identità del Club</h2>
+              <Type className="text-brand-primary text-2xl" />
+              <h2 className="text-xl font-bold text-brand-primary">Identità del Club</h2>
             </div>
             
             <div className="space-y-4">
@@ -759,8 +759,8 @@ export default function BrandCustomization({ embedInLayout = false }: BrandCusto
                   type="text"
                   value={config.clubName}
                   onChange={(e) => setConfig({ ...config, clubName: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brixia-secondary focus:border-transparent"
-                  placeholder="Es: Brixia Rugby"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-secondary focus:border-transparent"
+                  placeholder="Es: nome società"
                 />
               </div>
               <div>
@@ -769,8 +769,8 @@ export default function BrandCustomization({ embedInLayout = false }: BrandCusto
                   type="text"
                   value={config.clubShortName}
                   onChange={(e) => setConfig({ ...config, clubShortName: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brixia-secondary focus:border-transparent"
-                  placeholder="Es: Brixia"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-secondary focus:border-transparent"
+                  placeholder="Es: nome breve"
                 />
               </div>
               <div>
@@ -779,7 +779,7 @@ export default function BrandCustomization({ embedInLayout = false }: BrandCusto
                   value={config.clubDescription}
                   onChange={(e) => setConfig({ ...config, clubDescription: e.target.value })}
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brixia-secondary focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-secondary focus:border-transparent"
                   placeholder="Descrizione del club..."
                 />
               </div>
@@ -789,7 +789,7 @@ export default function BrandCustomization({ embedInLayout = false }: BrandCusto
                   type="text"
                   value={config.season}
                   onChange={(e) => setConfig({ ...config, season: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brixia-secondary focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-secondary focus:border-transparent"
                   placeholder="Es: 2025/26"
                 />
               </div>
@@ -800,7 +800,7 @@ export default function BrandCustomization({ embedInLayout = false }: BrandCusto
         {/* Anteprima in tempo reale */}
         {previewMode && (
           <div ref={previewRef} className="mt-12 bg-white rounded-2xl p-6 shadow-soft">
-            <h2 className="text-xl font-bold text-brixia-primary mb-6">Anteprima in Tempo Reale</h2>
+            <h2 className="text-xl font-bold text-brand-primary mb-6">Anteprima in Tempo Reale</h2>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* Card di esempio */}

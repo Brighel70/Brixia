@@ -256,7 +256,7 @@ export default function Activities({ embedInLayout = false }: ActivitiesProps) {
       }
     }
     
-    return light ? 'bg-white border-slate-200' : 'bg-[var(--brixia-primary)] border-[var(--brixia-secondary)]'
+    return light ? 'bg-white border-slate-200' : 'bg-[var(--brand-primary)] border-[var(--brand-secondary)]'
   }
 
   const loadSessions = async () => {

@@ -1,5 +1,5 @@
 /**
- * @brixia/shared - Codice condiviso tra TeamFlow (webapp) e FlowMe (PWA)
+ * @teamflow/shared - Codice condiviso tra TeamFlow (webapp) e FlowMe (PWA)
  */
 export {
   checkOverlap,
@@ -28,6 +28,7 @@ export {
   ALL_FLOWME_SECTIONS,
   RLS_READINESS,
   getRoleAccessRule,
+  normalizeTeamflowRoleName,
   type AccessApp,
   type TeamflowRoleName,
   type FlowmeSectionId,

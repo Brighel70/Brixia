@@ -6,15 +6,15 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Colori brand (leggano le variabili CSS aggiornate da Personalizzazione Brand)
-        brixia: {
-          primary: 'var(--brixia-primary)',
-          secondary: 'var(--brixia-secondary)',
-          accent: 'var(--brixia-accent)',
-          success: 'var(--brixia-success)',
-          warning: 'var(--brixia-warning)',
-          danger: 'var(--brixia-danger)',
-          info: 'var(--brixia-info)',
+        // Colori brand società (CSS vars aggiornate da Personalizzazione Brand)
+        brand: {
+          primary: 'var(--brand-primary)',
+          secondary: 'var(--brand-secondary)',
+          accent: 'var(--brand-accent)',
+          success: 'var(--brand-success)',
+          warning: 'var(--brand-warning)',
+          danger: 'var(--brand-danger)',
+          info: 'var(--brand-info)',
         },
         // Colori legacy mantenuti per compatibilità
         navy: '#0B1B3B',
@@ -31,11 +31,11 @@ export default {
       },
       boxShadow: {
         soft: '0 10px 30px rgba(0,0,0,0.20)',
-        'brixia': '0 4px 20px rgba(11, 31, 77, 0.15)'
+        brand: '0 4px 20px rgba(11, 31, 77, 0.15)'
       },
       backgroundImage: {
-        'brixia-gradient': 'linear-gradient(135deg, #0b1f4d 0%, #4aa3ff 100%)',
-        'brixia-light': 'linear-gradient(135deg, #f7f7f5 0%, #ffffff 100%)'
+        'brand-gradient': 'linear-gradient(135deg, #0b1f4d 0%, #4aa3ff 100%)',
+        'brand-light': 'linear-gradient(135deg, #f7f7f5 0%, #ffffff 100%)'
       }
     }
   }

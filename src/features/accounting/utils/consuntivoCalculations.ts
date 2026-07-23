@@ -6,6 +6,7 @@ import type {
   ConsuntivoAccountRow,
   ConsuntivoBudgetCompareRow,
   ConsuntivoCategoryRow,
+  ConsuntivoCategoryGroupRow,
   ConsuntivoCompleteness,
   ConsuntivoFilterState,
   ConsuntivoKpis,
@@ -129,6 +130,9 @@ export function computeFilteredCategoryActuals(
         unattributedReversalCents += row.amount_cents
         continue
       }
+      if (original.status === 'reversed') {
+        continue
+      }
       const entry = touch(original.category_id)
       if (original.direction === 'income') {
         entry.incomeCents = Math.max(0, entry.incomeCents - row.amount_cents)
@@ -212,6 +216,9 @@ export function computeAccountNets(
         unattributedReversalCents += row.amount_cents
         continue
       }
+      if (orig.status === 'reversed') {
+        continue
+      }
       const e = touch(orig.account_id)
       if (orig.direction === 'income') {
         e.netPostedCents -= row.amount_cents
@@ -257,7 +264,7 @@ function countMovementsPerCategory(
       (row.status === 'posted' || row.status === 'pending_account')
     ) {
       const orig = row.reverses_movement_id ? byId.get(row.reverses_movement_id) : undefined
-      if (orig && (orig.direction === 'income' || orig.direction === 'expense')) {
+      if (orig && orig.status !== 'reversed' && (orig.direction === 'income' || orig.direction === 'expense')) {
         bump(orig.category_id)
       }
     }
@@ -337,7 +344,7 @@ export function computeConsuntivoReport(params: {
   categories: AccountingCategoryRef[]
   accounts: AccountingAccountRef[]
   budgetLines: AccountingBudgetLine[]
-  hasApprovedBudget: boolean
+  hasActiveBudget: boolean
   fees: FeesBudgetAggregate | null
   quoteCategory: AccountingCategoryRef | null
 }): ConsuntivoReport {
@@ -373,6 +380,11 @@ export function computeConsuntivoReport(params: {
       categoryId: cat?.id ?? null,
       categoryCode: cat?.code ?? '—',
       categoryName: cat?.name ?? 'Senza categoria',
+      groupId: cat?.group?.id ?? null,
+      groupCode: cat?.group?.code ?? null,
+      groupName: cat?.group?.name ?? null,
+      isArchived: !!cat?.archived_at,
+      isInactive: cat?.is_active === false,
       nature: (cat?.default_nature ?? 'unknown') as ReceivableNature | 'unknown',
       incomeCents: amounts.incomeCents,
       expenseCents: amounts.expenseCents,
@@ -382,6 +394,36 @@ export function computeConsuntivoReport(params: {
     })
   }
   categories.sort((a, b) => a.categoryCode.localeCompare(b.categoryCode, 'it'))
+
+  const categoryGroupsByKey = new Map<string, ConsuntivoCategoryGroupRow>()
+  for (const category of categories) {
+    const key = category.groupId ?? '__legacy__'
+    let group = categoryGroupsByKey.get(key)
+    if (!group) {
+      group = {
+        groupId: category.groupId,
+        groupCode: category.groupCode ?? 'SENZA_MACRO',
+        groupName: category.groupName ?? 'Categorie legacy senza macro-categoria',
+        isLegacy: !category.groupId,
+        incomeCents: 0,
+        expenseCents: 0,
+        balanceCents: 0,
+        movementCount: 0,
+        categories: []
+      }
+      categoryGroupsByKey.set(key, group)
+    }
+    group.incomeCents += category.incomeCents
+    group.expenseCents += category.expenseCents
+    group.balanceCents += category.balanceCents
+    group.movementCount += category.movementCount
+    group.categories.push(category)
+  }
+  const categoryGroups = [...categoryGroupsByKey.values()]
+  categoryGroups.sort((a, b) => {
+    if (a.isLegacy !== b.isLegacy) return a.isLegacy ? 1 : -1
+    return a.groupName.localeCompare(b.groupName, 'it')
+  })
 
   const accountNets = computeAccountNets(params.movements, filteredIds)
   const accounts: ConsuntivoAccountRow[] = []
@@ -463,7 +505,7 @@ export function computeConsuntivoReport(params: {
     documentationPercent: completeness.documentationPercent
   }
 
-  const budgetCompare = params.hasApprovedBudget
+  const budgetCompare = params.hasActiveBudget
     ? buildConsuntivoBudgetCompare({
         budgetLines: params.budgetLines,
         fees: params.fees,
@@ -477,8 +519,9 @@ export function computeConsuntivoReport(params: {
   return {
     kpis,
     categories,
+    categoryGroups,
     budgetCompare,
-    hasApprovedBudget: params.hasApprovedBudget,
+    hasActiveBudget: params.hasActiveBudget,
     accounts,
     completeness
   }
@@ -512,27 +555,51 @@ export function consuntivoReportToCsv(report: ConsuntivoReport, fiscalYearCode: 
     }`
   )
   lines.push('')
-  lines.push('Rendiconto per categoria')
-  lines.push('Codice;Nome;Natura;Entrate;Uscite;Saldo;N.movimenti;Anomalie')
-  for (const r of report.categories) {
+  lines.push('Rendiconto per macro-categoria e categoria')
+  lines.push('Livello;Codice;Nome;Natura;Entrate;Uscite;Saldo;N.movimenti;Anomalie')
+  for (const group of report.categoryGroups) {
     lines.push(
       [
-        r.categoryCode,
-        r.categoryName,
-        r.nature,
-        r.incomeCents,
-        r.expenseCents,
-        r.balanceCents,
-        r.movementCount,
-        r.anomalies.join(' | ')
+        'Macro-categoria',
+        group.groupCode,
+        group.groupName,
+        group.isLegacy ? 'legacy' : '',
+        group.incomeCents,
+        group.expenseCents,
+        group.balanceCents,
+        group.movementCount,
+        group.isLegacy ? 'Storico senza macro-categoria' : ''
       ]
         .map(esc)
         .join(';')
     )
+    for (const r of group.categories) {
+      lines.push(
+        [
+          'Categoria',
+          r.categoryCode,
+          r.categoryName,
+          r.nature,
+          r.incomeCents,
+          r.expenseCents,
+          r.balanceCents,
+          r.movementCount,
+          [
+            ...r.anomalies,
+            r.isInactive ? 'Categoria non attiva' : null,
+            r.isArchived ? 'Categoria archiviata' : null
+          ]
+            .filter(Boolean)
+            .join(' | ')
+        ]
+          .map(esc)
+          .join(';')
+      )
+    }
   }
   lines.push('')
   lines.push('Confronto preventivo')
-  if (!report.hasApprovedBudget) {
+  if (!report.hasActiveBudget) {
     lines.push('Nessun preventivo approvato')
   } else {
     lines.push('Voce;Direzione;Previsto;Consuntivo;Scostamento;% realizzazione')

@@ -45,10 +45,11 @@ export function groupActivationState(
 
 export function applyMasterGroupToggle(
   categories: AccountingCategorySettingsRow[],
-  activate: boolean
+  activate: boolean,
+  allowProtectedToggle = false
 ): AccountingCategorySettingsRow[] {
   return categories.map((c) => {
-    if (isProtectedCategory(c)) {
+    if (isProtectedCategory(c) && !allowProtectedToggle) {
       return { ...c, is_active: true }
     }
     return { ...c, is_active: activate }
@@ -57,20 +58,25 @@ export function applyMasterGroupToggle(
 
 export function buildActivationPayload(
   groups: AccountingCategoryGroup[],
-  categories: AccountingCategorySettingsRow[]
+  categories: AccountingCategorySettingsRow[],
+  allowProtectedToggle = false
 ): CategoryActivationBatchPayload {
   return {
-    groups: groups.map((g) => ({
+    groups: groups
+      .filter((g) => !g.archived_at)
+      .map((g) => ({
       id: g.id,
       is_active: g.is_active
-    })),
-    categories: categories.map((c) => ({
+      })),
+    categories: categories
+      .filter((c) => !c.archived_at)
+      .map((c) => ({
       id: c.id,
-      is_active: isProtectedCategory(c) ? true : c.is_active,
+      is_active: isProtectedCategory(c) && !allowProtectedToggle ? true : c.is_active,
       available_in_movements: c.available_in_movements,
       available_in_budget: c.available_in_budget,
       available_in_reports: c.available_in_reports
-    }))
+      }))
   }
 }
 
@@ -79,7 +85,7 @@ export function filterSettingsRows(params: {
   categories: AccountingCategorySettingsRow[]
   direction: 'income' | 'expense'
   search: string
-  statusFilter: 'all' | 'active' | 'inactive'
+  statusFilter: 'all' | 'active' | 'inactive' | 'archived'
   originFilter: 'all' | 'system' | 'custom'
 }): {
   groups: AccountingCategoryGroup[]
@@ -88,6 +94,12 @@ export function filterSettingsRows(params: {
   const q = params.search.trim().toLowerCase()
   const groups = params.groups
     .filter((g) => g.direction === params.direction)
+    .filter((g) => {
+      if (params.statusFilter === 'archived') return !!g.archived_at
+      if (params.statusFilter === 'active') return !g.archived_at && g.is_active
+      if (params.statusFilter === 'inactive') return !g.archived_at && !g.is_active
+      return true
+    })
     .filter((g) => {
       if (!q) return true
       if (g.name.toLowerCase().includes(q) || g.code.toLowerCase().includes(q)) return true
@@ -101,8 +113,13 @@ export function filterSettingsRows(params: {
   const categoriesByGroup = new Map<string, AccountingCategorySettingsRow[]>()
   for (const g of groups) {
     let cats = params.categories.filter((c) => c.group_id === g.id)
-    if (params.statusFilter === 'active') cats = cats.filter((c) => c.is_active)
-    if (params.statusFilter === 'inactive') cats = cats.filter((c) => !c.is_active)
+    if (params.statusFilter === 'active') {
+      cats = cats.filter((c) => !c.archived_at && c.is_active)
+    }
+    if (params.statusFilter === 'inactive') {
+      cats = cats.filter((c) => !c.archived_at && !c.is_active)
+    }
+    if (params.statusFilter === 'archived') cats = cats.filter((c) => !!c.archived_at)
     if (params.originFilter === 'system') cats = cats.filter((c) => c.is_system)
     if (params.originFilter === 'custom') cats = cats.filter((c) => !c.is_system)
     if (q) {
@@ -124,10 +141,15 @@ export function filterSettingsRows(params: {
 export function isCategorySelectableForMovements(
   c: Pick<
     AccountingCategorySettingsRow,
-    'is_active' | 'available_in_movements' | 'archived_at'
+    'is_active' | 'available_in_movements' | 'archived_at' | 'code'
   >
 ): boolean {
-  return c.is_active && c.available_in_movements && !c.archived_at
+  return (
+    c.code.toUpperCase() !== 'QUOTE' &&
+    c.is_active &&
+    c.available_in_movements &&
+    !c.archived_at
+  )
 }
 
 export function isCategorySelectableForBudget(

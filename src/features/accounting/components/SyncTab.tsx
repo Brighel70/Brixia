@@ -69,7 +69,7 @@ export function SyncTab({
               type="button"
               onClick={() => void handleRetry()}
               disabled={retryLoading}
-              className="inline-flex items-center gap-2 rounded-lg bg-brixia-primary px-4 py-2 text-sm font-medium text-white hover:bg-brixia-primary/90 disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-lg bg-brand-primary px-4 py-2 text-sm font-medium text-white hover:bg-brand-primary/90 disabled:opacity-60"
             >
               <RefreshCw className={`h-4 w-4 ${retryLoading ? 'animate-spin' : ''}`} />
               Riprova sincronizzazione

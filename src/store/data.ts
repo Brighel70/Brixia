@@ -33,7 +33,7 @@ export const useData = create<DataState>((set, get) => ({
 
   async loadMyCategories() {
     const profile = useAuth.getState().profile
-    if (profile?.role === 'Admin') {
+    if (profile?.is_super_admin || profile?.role === 'Admin') {
       const { data, error } = await supabase
         .from('categories')
         .select('id, code, active')

@@ -8,8 +8,11 @@ export const ACCOUNTING_TABS: { id: AccountingTabId; label: string }[] = [
   { id: 'receivables', label: 'Crediti da quote' },
   { id: 'budget', label: 'Preventivo' },
   { id: 'consuntivo', label: 'Consuntivo' },
+  { id: 'reconciliation', label: 'Riconciliazione' },
   { id: 'vat_sponsor', label: 'IVA e sponsor' },
   { id: 'counterparties', label: 'Anagrafica' },
+  { id: 'deadlines', label: 'Scadenze' },
+  { id: 'audit', label: 'Audit' },
   { id: 'sync', label: 'Sincronizzazione' }
 ]
 

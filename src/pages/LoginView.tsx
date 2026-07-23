@@ -3,12 +3,13 @@ import { useState } from 'react'
 import { getBrandConfig } from '@/config/brand'
 import logoBrixiaLogin from '@/assets/logo-brixia-login.png'
 
-/** Logo della società: sempre l’immagine ufficiale da public/logo bianco e celeste.png */
-function BrixiaLogoInline({ className = 'w-48 h-48' }: { className?: string }) {
+/** Logo società da asset login (sostituibile via Brand). */
+function ClubLogoInline({ className = 'w-48 h-48' }: { className?: string }) {
+  const brandConfig = getBrandConfig()
   return (
     <img
       src={logoBrixiaLogin}
-      alt="Logo Brixia Rugby"
+      alt={brandConfig.assets.logoAlt || brandConfig.clubName || 'Logo società'}
       className={className}
     />
   )
@@ -58,10 +59,10 @@ export default function LoginView() {
   return (
     <div className="min-h-screen flex flex-col md:flex-row">
       {/* Left: brand + logo (desktop) */}
-      <div className="hidden md:flex md:w-[44%] min-h-screen bg-gradient-to-br from-brixia-primary via-brixia-primary to-brixia-secondary/90 flex-col justify-center items-center p-12 text-white">
+      <div className="hidden md:flex md:w-[44%] min-h-screen bg-gradient-to-br from-brand-primary via-brand-primary to-brand-secondary/90 flex-col justify-center items-center p-12 text-white">
         <div className="max-w-sm w-full text-center">
           <div className="w-48 h-48 mx-auto flex items-center justify-center shrink-0 drop-shadow-2xl">
-            <BrixiaLogoInline className="w-full h-full object-contain" />
+            <ClubLogoInline className="w-full h-full object-contain" />
           </div>
           <p className="mt-8 text-white/90 text-lg">
             La piattaforma per gestire la tua società: atleti, eventi, quote e attività in un unico strumento
@@ -76,7 +77,7 @@ export default function LoginView() {
       <div className="flex-1 min-h-screen flex flex-col justify-center md:justify-center bg-gray-50/95 md:bg-white p-6 md:p-12">
         {/* Logo solo su mobile */}
         <div className="md:hidden flex flex-col items-center mb-8">
-          <BrixiaLogoInline className="w-28 h-28 object-contain" />
+          <ClubLogoInline className="w-28 h-28 object-contain" />
         </div>
 
         <div className="max-w-md w-full mx-auto">
@@ -95,7 +96,7 @@ export default function LoginView() {
                 Email
               </label>
               <input
-                className="w-full px-4 py-3.5 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brixia-primary/30 focus:border-brixia-primary transition-all"
+                className="w-full px-4 py-3.5 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition-all"
                 placeholder="email@esempio.it"
                 value={email}
                 onChange={e => setEmail(e.target.value.toLowerCase())}
@@ -110,7 +111,7 @@ export default function LoginView() {
                 Codice TeamFlow
               </label>
               <input
-                className="w-full px-4 py-3.5 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brixia-primary/30 focus:border-brixia-primary transition-all font-mono text-base"
+                className="w-full px-4 py-3.5 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition-all font-mono text-base"
                 type="text"
                 placeholder="Incolla il codice dalla scheda persona"
                 value={code}
@@ -131,7 +132,7 @@ export default function LoginView() {
               onClick={handleLogin}
               className={`w-full py-3.5 rounded-xl font-semibold text-white text-base transition-all duration-200 ${
                 isFormValid
-                  ? 'bg-brixia-primary hover:bg-brixia-primary/90 shadow-lg hover:shadow-xl cursor-pointer'
+                  ? 'bg-brand-primary hover:bg-brand-primary/90 shadow-lg hover:shadow-xl cursor-pointer'
                   : 'bg-gray-300 cursor-not-allowed'
               }`}
             >
@@ -166,7 +167,7 @@ export default function LoginView() {
             </p>
             <button
               onClick={() => setShowError(false)}
-              className="w-full py-3 rounded-xl bg-brixia-primary text-white font-semibold hover:bg-brixia-primary/90"
+              className="w-full py-3 rounded-xl bg-brand-primary text-white font-semibold hover:bg-brand-primary/90"
             >
               OK
             </button>

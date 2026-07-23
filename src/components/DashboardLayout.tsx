@@ -201,7 +201,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   }
 
   return (
-    <div className="h-screen overflow-hidden bg-gradient-to-br from-brixia-primary via-brixia-secondary/30 to-black text-white flex">
+    <div className="h-screen overflow-hidden bg-gradient-to-br from-brand-primary via-brand-secondary/30 to-black text-white flex">
       {/* SIDEBAR */}
       <div
         className={`bg-white/5 backdrop-blur-2xl flex flex-col justify-between shrink-0 overflow-hidden transition-all duration-300 ${
@@ -231,7 +231,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                           whileHover={{ x: 4 }}
                           className={`flex items-center gap-3 pr-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200 ${
                             isActive
-                              ? 'bg-brixia-primary/60 border-l-4 border-brixia-secondary border-r-0 border-t-0 border-b-0 pl-3'
+                              ? 'bg-brand-primary/60 border-l-4 border-brand-secondary border-r-0 border-t-0 border-b-0 pl-3'
                               : 'hover:bg-white/10 border-l-4 border-transparent pl-1'
                           }`}
                           onClick={() => navigate(item.path)}
@@ -239,10 +239,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                         >
                           {Icon && (
                             <Icon
-                              className={`w-4 h-4 shrink-0 ${isActive ? 'text-brixia-secondary' : 'text-white/60'}`}
+                              className={`w-4 h-4 shrink-0 ${isActive ? 'text-brand-secondary' : 'text-white/60'}`}
                             />
                           )}
-                          <span className={isActive ? 'text-brixia-secondary font-medium' : 'text-white/80'}>
+                          <span className={isActive ? 'text-brand-secondary font-medium' : 'text-white/80'}>
                             {item.label}
                           </span>
                         </motion.div>
@@ -260,17 +260,17 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                         key={item.path}
                         whileHover={{ scale: 1.1 }}
                         className={`relative p-2.5 rounded-xl cursor-pointer transition-all duration-200 ${
-                          isActive ? 'bg-brixia-primary/60' : 'hover:bg-white/10'
+                          isActive ? 'bg-brand-primary/60' : 'hover:bg-white/10'
                         }`}
                         onClick={() => navigate(item.path)}
                         title={item.label}
                       >
                         {isActive && (
-                          <span className="absolute left-0 top-1 bottom-1 w-1 rounded-r bg-brixia-secondary" />
+                          <span className="absolute left-0 top-1 bottom-1 w-1 rounded-r bg-brand-secondary" />
                         )}
                         {Icon && (
                           <Icon
-                            className={`w-5 h-5 relative ${isActive ? 'text-brixia-secondary' : 'text-white/60'}`}
+                            className={`w-5 h-5 relative ${isActive ? 'text-brand-secondary' : 'text-white/60'}`}
                           />
                         )}
                       </motion.div>
@@ -282,7 +282,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             <div className={`flex-shrink-0 space-y-2 ${sidebarState === 'icons' ? 'flex flex-col items-center' : ''}`}>
               <button
                 onClick={() => navigate('/settings')}
-                className={`w-full flex items-center rounded-lg hover:bg-brixia-secondary/20 text-base text-brixia-secondary transition ${sidebarState === 'icons' ? 'justify-center p-2' : 'gap-2 px-3 py-2'}`}
+                className={`w-full flex items-center rounded-lg hover:bg-brand-secondary/20 text-base text-brand-secondary transition ${sidebarState === 'icons' ? 'justify-center p-2' : 'gap-2 px-3 py-2'}`}
                 title="Impostazioni"
               >
                 <Settings className="w-4 h-4 shrink-0" />
@@ -302,7 +302,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
       {/* MAIN */}
       <div className="flex-1 min-w-0 flex flex-col overflow-hidden min-h-0">
-        <header className="sticky top-0 z-50 shrink-0 h-16 bg-brixia-primary text-white pl-8 pr-0 flex items-stretch justify-between border-b border-white/10">
+        <header className="sticky top-0 z-50 shrink-0 h-16 bg-brand-primary text-white pl-8 pr-0 flex items-stretch justify-between border-b border-white/10">
           <div className="flex items-center gap-6 py-2">
             {(location.pathname === '/create-person' || location.pathname === '/category-activities' || location.pathname === '/council-management' || location.pathname === '/brand-customization' || location.pathname === '/users-management' || location.pathname === '/attendance' || fromEventsClubs || (location.pathname === '/events' && eventsFormOpen)) && (
               <button
@@ -393,14 +393,14 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               <div className="flex items-stretch gap-px">
                 <button
                   onClick={() => window.dispatchEvent(new CustomEvent('open-new-session'))}
-                  className="h-16 w-16 flex items-center justify-center rounded-none bg-brixia-secondary hover:bg-brixia-secondary/90 text-white transition-colors shrink-0"
+                  className="h-16 w-16 flex items-center justify-center rounded-none bg-brand-secondary hover:bg-brand-secondary/90 text-white transition-colors shrink-0"
                   title="Nuova Sessione"
                 >
                   <Dumbbell className="w-8 h-8" strokeWidth={2} />
                 </button>
                 <button
                   onClick={() => navigate('/events')}
-                  className="h-16 w-16 flex items-center justify-center rounded-none bg-brixia-secondary hover:bg-brixia-secondary/90 text-white transition-colors shrink-0"
+                  className="h-16 w-16 flex items-center justify-center rounded-none bg-brand-secondary hover:bg-brand-secondary/90 text-white transition-colors shrink-0"
                   title="Gestione Eventi"
                 >
                   <CalendarPlus className="w-8 h-8" strokeWidth={2} />
@@ -410,7 +410,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             {location.pathname === '/events' && (
               <button
                 onClick={() => window.dispatchEvent(new CustomEvent('open-create-event'))}
-                className="h-16 w-16 flex items-center justify-center rounded-none bg-brixia-secondary hover:bg-brixia-secondary/90 text-white transition-colors shrink-0"
+                className="h-16 w-16 flex items-center justify-center rounded-none bg-brand-secondary hover:bg-brand-secondary/90 text-white transition-colors shrink-0"
                 title="Nuovo Evento"
               >
                 <CalendarPlus className="w-8 h-8" strokeWidth={2} />
@@ -419,7 +419,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             {location.pathname === '/people' && (
               <button
                 onClick={() => navigate('/create-person')}
-                className="h-16 w-16 flex items-center justify-center rounded-none bg-brixia-secondary hover:bg-brixia-secondary/90 text-white transition-colors shrink-0"
+                className="h-16 w-16 flex items-center justify-center rounded-none bg-brand-secondary hover:bg-brand-secondary/90 text-white transition-colors shrink-0"
                 title="Nuova Persona"
               >
                 <UserPlus className="w-8 h-8" strokeWidth={2} />
@@ -428,7 +428,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             {isEditingPerson && (
               <button
                 onClick={() => window.dispatchEvent(new CustomEvent('open-person-pdf-modal'))}
-                className="h-16 w-16 flex items-center justify-center rounded-none bg-brixia-secondary hover:bg-brixia-secondary/90 text-white transition-colors shrink-0"
+                className="h-16 w-16 flex items-center justify-center rounded-none bg-brand-secondary hover:bg-brand-secondary/90 text-white transition-colors shrink-0"
                 title="Genera scheda PDF"
               >
                 <FileText className="w-8 h-8" strokeWidth={2} />
@@ -437,7 +437,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             {location.pathname === '/infortuni' && (
               <button
                 onClick={() => window.dispatchEvent(new CustomEvent('open-create-activity'))}
-                className="h-16 w-16 flex items-center justify-center rounded-none bg-brixia-secondary hover:bg-brixia-secondary/90 text-white transition-colors shrink-0"
+                className="h-16 w-16 flex items-center justify-center rounded-none bg-brand-secondary hover:bg-brand-secondary/90 text-white transition-colors shrink-0"
                 title="Nuova attività"
               >
                 <CalendarPlus className="w-8 h-8" strokeWidth={2} />
@@ -446,7 +446,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             {location.pathname === '/resoconto-settimanale' && (
               <button
                 onClick={() => window.dispatchEvent(new CustomEvent('export-resoconto-pdf'))}
-                className="h-16 w-16 flex items-center justify-center rounded-none bg-brixia-secondary hover:bg-brixia-secondary/90 text-white transition-colors shrink-0"
+                className="h-16 w-16 flex items-center justify-center rounded-none bg-brand-secondary hover:bg-brand-secondary/90 text-white transition-colors shrink-0"
                 title="Esporta PDF"
               >
                 <FileDown className="w-8 h-8" strokeWidth={2} />
@@ -455,7 +455,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             {location.pathname === '/council-management' && (
               <button
                 onClick={() => window.dispatchEvent(new CustomEvent('open-add-council-member'))}
-                className="h-16 w-16 flex items-center justify-center rounded-none bg-brixia-secondary hover:bg-brixia-secondary/90 text-white transition-colors shrink-0"
+                className="h-16 w-16 flex items-center justify-center rounded-none bg-brand-secondary hover:bg-brand-secondary/90 text-white transition-colors shrink-0"
                 title="Aggiungi dirigente"
               >
                 <UserPlus className="w-8 h-8" strokeWidth={2} />
@@ -464,7 +464,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             {location.pathname === '/users-management' && (
               <button
                 onClick={() => navigate('/create-person')}
-                className="h-16 w-16 flex items-center justify-center rounded-none bg-brixia-secondary hover:bg-brixia-secondary/90 text-white transition-colors shrink-0"
+                className="h-16 w-16 flex items-center justify-center rounded-none bg-brand-secondary hover:bg-brand-secondary/90 text-white transition-colors shrink-0"
                 title="Crea nuovo utente"
               >
                 <UserPlus className="w-8 h-8" strokeWidth={2} />
@@ -474,14 +474,14 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               <>
                 <button
                   onClick={() => window.dispatchEvent(new CustomEvent(FEES_SET_VIEW_TABLE))}
-                  className={`h-16 w-16 flex items-center justify-center shrink-0 transition-colors text-white ${feesViewMode === 'table' ? 'bg-brixia-secondary hover:bg-brixia-secondary/90' : 'bg-white/10 hover:bg-white/20'}`}
+                  className={`h-16 w-16 flex items-center justify-center shrink-0 transition-colors text-white ${feesViewMode === 'table' ? 'bg-brand-secondary hover:bg-brand-secondary/90' : 'bg-white/10 hover:bg-white/20'}`}
                   title="Tabella"
                 >
                   <Table2 className="w-8 h-8" strokeWidth={2} />
                 </button>
                 <button
                   onClick={() => window.dispatchEvent(new CustomEvent(FEES_SET_VIEW_CARDS))}
-                  className={`h-16 w-16 flex items-center justify-center shrink-0 transition-colors text-white ${feesViewMode === 'cards' ? 'bg-brixia-secondary hover:bg-brixia-secondary/90' : 'bg-white/10 hover:bg-white/20'}`}
+                  className={`h-16 w-16 flex items-center justify-center shrink-0 transition-colors text-white ${feesViewMode === 'cards' ? 'bg-brand-secondary hover:bg-brand-secondary/90' : 'bg-white/10 hover:bg-white/20'}`}
                   title="Card"
                 >
                   <LayoutGrid className="w-8 h-8" strokeWidth={2} />
@@ -489,7 +489,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 {!feesReadOnly && (
                   <button
                     onClick={() => window.dispatchEvent(new CustomEvent(FEES_OPEN_CREATE_MODAL))}
-                    className="h-16 w-16 flex items-center justify-center rounded-none bg-brixia-secondary hover:bg-brixia-secondary/90 text-white transition-colors shrink-0"
+                    className="h-16 w-16 flex items-center justify-center rounded-none bg-brand-secondary hover:bg-brand-secondary/90 text-white transition-colors shrink-0"
                     title="Nuova Quota"
                   >
                     <Plus className="w-8 h-8" strokeWidth={2} />

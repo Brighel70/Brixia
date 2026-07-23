@@ -132,7 +132,7 @@ export function CounterpartiesTab({
               type="button"
               disabled={saving}
               onClick={openCreate}
-              className="inline-flex items-center gap-2 rounded-xl bg-brixia-primary px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-xl bg-brand-primary px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
             >
               <Plus className="h-4 w-4" />
               Nuova controparte

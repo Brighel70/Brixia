@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
+  deriveBudgetGroupOptions,
+  deriveMovementGroupOptions,
+  filterBudgetCategoriesByGroup,
   filterCategoriesForType,
+  filterMovementCategoriesByGroup,
   isFiscalYearOpenForEditing,
   movementFormToPayload,
   movementToFormValues,
   parseAmountEurosToCents,
+  resolveBudgetGroupId,
   validateMovementForm
 } from './movementValidation'
 import type { AccountingAccountRef, AccountingCategoryRef, AccountingFiscalYear } from '../types'
@@ -23,7 +28,8 @@ const accounts: AccountingAccountRef[] = [
   { id: 'acc-2', code: 'BANCA', name: 'Banca' }
 ]
 const categories: AccountingCategoryRef[] = [
-  { id: 'cat-1', code: 'QUOTE', name: 'Quote', direction: 'income' }
+  { id: 'cat-1', code: 'QUOTE', name: 'Quote', direction: 'income' },
+  { id: 'cat-2', code: 'LIBERALITA', name: 'Liberalità', direction: 'income' }
 ]
 
 const baseValues = {
@@ -32,7 +38,7 @@ const baseValues = {
   settlementDate: '',
   amountEuros: '10,00',
   accountId: 'acc-1',
-  categoryId: 'cat-1',
+  categoryId: 'cat-2',
   description: 'Test',
   paymentMethod: 'contanti',
   documentType: 'none' as const,
@@ -43,6 +49,29 @@ const baseValues = {
 }
 
 describe('movementValidation', () => {
+  it('esclude QUOTE dai movimenti manuali nuovi ma conserva una categoria storica disattiva', () => {
+    expect(filterCategoriesForType(categories, 'income').map((category) => category.code)).not.toContain(
+      'QUOTE'
+    )
+    expect(
+      validateMovementForm({ ...baseValues, categoryId: 'cat-1' }, openFy, accounts, categories)
+    ).toMatch(/riservata agli incassi automatici/)
+
+    const archived = {
+      ...categories[1],
+      id: 'cat-old',
+      is_active: false,
+      archived_at: '2026-01-01'
+    }
+    expect(filterCategoriesForType([archived], 'income', { retainIds: ['cat-old'] })).toHaveLength(1)
+  })
+
+  it('rifiuta una categoria con direzione incompatibile', () => {
+    const expense = { id: 'cat-exp', code: 'COSTI', name: 'Costi', direction: 'expense' as const }
+    expect(
+      validateMovementForm({ ...baseValues, categoryId: expense.id }, openFy, accounts, [expense])
+    ).toMatch(/non è compatibile/)
+  })
   it('converte euro in centesimi senza floating point', () => {
     expect(parseAmountEurosToCents('12,34')).toBe(1234)
     expect(parseAmountEurosToCents('1.234,56')).toBe(123456)
@@ -192,5 +221,74 @@ describe('movementValidation', () => {
     expect(
       filterCategoriesForType(cats, 'income', { retainIds: ['4'] }).map((c) => c.id)
     ).toEqual(['1', '3', '4'])
+  })
+
+  it('deriva macro-categorie e sottocategorie per preventivo', () => {
+    const cats: AccountingCategoryRef[] = [
+      {
+        id: 'c1',
+        code: 'MATERIALE',
+        name: 'Materiale sportivo',
+        direction: 'expense',
+        group_id: 'g1',
+        group: { id: 'g1', code: 'COSTI_SPORTIVI', name: 'Costi sportivi', direction: 'expense' }
+      },
+      {
+        id: 'c2',
+        code: 'UTENZE',
+        name: 'Utenze',
+        direction: 'expense',
+        group_id: 'g2',
+        group: { id: 'g2', code: 'STRUTTURA', name: 'Struttura e utenze', direction: 'expense' }
+      },
+      {
+        id: 'c3',
+        code: 'QUOTE',
+        name: 'Quote',
+        direction: 'income',
+        group_id: 'g3',
+        group: { id: 'g3', code: 'QUOTE_SPORT', name: 'Quote', direction: 'income' }
+      },
+      {
+        id: 'c4',
+        code: 'LEGACY',
+        name: 'Voce legacy',
+        direction: 'expense'
+      },
+      {
+        id: 'c5',
+        code: 'MACRO_INATTIVA',
+        name: 'Categoria dentro macro inattiva',
+        direction: 'expense',
+        group_id: 'g4',
+        group: {
+          id: 'g4',
+          code: 'MACRO_INATTIVA',
+          name: 'Macro inattiva',
+          direction: 'expense',
+          is_active: false,
+          archived_at: null
+        }
+      }
+    ]
+
+    expect(deriveBudgetGroupOptions(cats, 'expense').map((g) => g.id)).toEqual([
+      'g1',
+      'g2',
+      '__ungrouped__'
+    ])
+    expect(deriveBudgetGroupOptions(cats, 'expense').find((g) => g.id === 'g1')?.activeCategoryCount)
+      .toBe(1)
+    expect(filterBudgetCategoriesByGroup(cats, 'expense', 'g2').map((c) => c.id)).toEqual(['c2'])
+    expect(filterBudgetCategoriesByGroup(cats, 'expense', 'g4')).toEqual([])
+    expect(resolveBudgetGroupId('c2', cats)).toBe('g2')
+    expect(resolveBudgetGroupId('c4', cats)).toBe('__ungrouped__')
+    expect(deriveBudgetGroupOptions(cats, 'income').map((g) => g.id)).toEqual([])
+    expect(deriveMovementGroupOptions(cats, 'expense').map((g) => g.id)).toEqual([
+      'g1',
+      'g2',
+      '__ungrouped__'
+    ])
+    expect(filterMovementCategoriesByGroup(cats, 'expense', 'g1').map((c) => c.id)).toEqual(['c1'])
   })
 })

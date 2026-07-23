@@ -1,10 +1,11 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabaseClient'
+import { normalizeTeamflowRoleName, type TeamflowRoleName } from '@teamflow/shared'
 
 type Profile = { 
   id: string; 
   full_name: string | null; 
-  role: 'Admin'|'Dirigente'|'Segreteria'|'Direttore Sportivo'|'Direttore Tecnico'|'Allenatore'|'Team Manager'|'Accompagnatore'|'Player'|'Preparatore'|'Medico'|'Fisio'|'Famiglia'; 
+  role: TeamflowRoleName | 'Player' | 'Preparatore' | 'Fisio';
   password: string; 
   email: string;
   user_role_id?: string;
@@ -15,27 +16,10 @@ type Profile = {
   fir_code?: string;
   person_id?: string; // Aggiunto per compatibilità con mobile app
   staff_categories?: any[];
+  is_super_admin?: boolean;
 }
 
-const teamflowProfileRoles: Profile['role'][] = [
-  'Admin',
-  'Dirigente',
-  'Segreteria',
-  'Direttore Sportivo',
-  'Direttore Tecnico',
-  'Allenatore',
-  'Team Manager',
-  'Accompagnatore',
-  'Player',
-  'Preparatore',
-  'Medico',
-  'Fisio',
-  'Famiglia'
-]
-
-const normalizeRoleName = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ')
-
-async function resolveTeamflowProfileRole(roleId: string | null | undefined): Promise<Profile['role']> {
+async function resolveTeamflowProfileRole(roleId: string | null | undefined): Promise<TeamflowRoleName> {
   if (!roleId) return 'Famiglia'
 
   const { data } = await supabase
@@ -44,22 +28,23 @@ async function resolveTeamflowProfileRole(roleId: string | null | undefined): Pr
     .eq('id', roleId)
     .maybeSingle()
 
-  const roleName = data?.name?.trim()
-  if (roleName && teamflowProfileRoles.includes(roleName as Profile['role'])) {
-    return roleName as Profile['role']
-  }
+  return normalizeTeamflowRoleName(data?.name || roleId) || 'Famiglia'
+}
 
-  const aliases: Record<string, Profile['role']> = {
-    admin: 'Admin',
-    giocatore: 'Player',
-    player: 'Player',
-    famiglia: 'Famiglia',
-    family: 'Famiglia',
-    fisioterapista: 'Fisio',
-    fisio: 'Fisio'
-  }
+async function ensureTeamflowProfile(authUserId: string, email: string, code: string): Promise<Profile | null> {
+  const { error: syncError } = await supabase.rpc('sync_flowme_auth_password', {
+    p_email: email,
+    p_code: code,
+  })
+  if (syncError) throw syncError
 
-  return aliases[normalizeRoleName(roleName || roleId)] || 'Famiglia'
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', authUserId)
+    .maybeSingle()
+  if (error) throw error
+  return data as Profile | null
 }
 
 interface AuthState {
@@ -154,10 +139,75 @@ export const useAuth = create<AuthState>((set, get) => ({
     }
 
     try {
+      // Il codice viene verificato lato database. Non leggere piu persone prima
+      // dell'autenticazione: permette di proteggere la tabella people con RLS.
+      const { error: syncError } = await supabase.rpc('sync_flowme_auth_password', {
+        p_email: emailTrim,
+        p_code: codeTrim,
+      })
+
+      let { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email: emailTrim,
+        password: codeTrim,
+      })
+
+      if (signInError?.message?.includes('Invalid login credentials') && !syncError) {
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email: emailTrim,
+          password: codeTrim,
+          options: { emailRedirectTo: undefined },
+        })
+        if (signUpError || !signUpData.user || !signUpData.session) {
+          throw signUpError || new Error('Accesso creato ma conferma email richiesta.')
+        }
+        await ensureTeamflowProfile(signUpData.user.id, emailTrim, codeTrim)
+        signInData = { user: signUpData.user, session: signUpData.session }
+        signInError = null
+      }
+
+      if (!signInError && signInData.user) {
+        let profileData: Profile | null
+        if (syncError) {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', signInData.user.id)
+            .maybeSingle()
+          if (error) throw error
+          profileData = data as Profile | null
+        } else {
+          profileData = await ensureTeamflowProfile(signInData.user.id, emailTrim, codeTrim)
+        }
+
+        if (!profileData) {
+          throw new Error('Profilo non trovato. Contatta l\'amministratore.')
+        }
+
+        if (profileData.person_id) {
+          const { data: personAccess, error: personError } = await supabase
+            .from('people')
+            .select('teamflow_access_blocked')
+            .eq('id', profileData.person_id)
+            .maybeSingle()
+          if (personError) throw personError
+          if (personAccess?.teamflow_access_blocked) {
+            await supabase.auth.signOut()
+            throw new Error('L\'accesso a TeamFlow per questa persona e stato bloccato dall\'amministratore.')
+          }
+        }
+
+        saveToStorage('auth-userId', signInData.user.id)
+        saveToStorage('auth-profile', profileData)
+        set({ userId: signInData.user.id, profile: profileData, loading: false })
+        return
+      }
+
+      throw signInError || new Error('Email o codice/password non corretti.')
+
       // Verifica che esista una persona con questa email e questo codice TeamFlow (confronto case-insensitive sul codice)
       const { data: people, error: personError } = await supabase
         .from('people')
-        .select('id, given_name, family_name, email, teamflow_app_role, invite_code_teamflow')
+        .select('id, given_name, family_name, email, teamflow_app_role, invite_code_teamflow, teamflow_access_blocked')
         .ilike('email', emailTrim)
 
       if (personError) {
@@ -168,6 +218,11 @@ export const useAuth = create<AuthState>((set, get) => ({
       const person = people?.find(
         p => p.invite_code_teamflow != null && String(p.invite_code_teamflow).trim().toLowerCase() === codeTrim.toLowerCase()
       ) ?? null
+
+      if (person?.teamflow_access_blocked) {
+        set({ loading: false })
+        throw new Error('L\'accesso a TeamFlow per questa persona è stato bloccato dall\'amministratore.')
+      }
 
       // Nessuna persona con quel codice: prova login email + password (es. admin di assistenza)
       if (!person) {
@@ -224,7 +279,7 @@ export const useAuth = create<AuthState>((set, get) => ({
       }
 
       if (!authError && authData?.user) {
-        let profileData: Profile | null = null
+        let profileData: Profile | null = await ensureTeamflowProfile(authData.user.id, emailTrim, codeTrim)
         const { data: fetchedProfile, error: profileError } = await supabase
           .from('profiles')
           .select('*')
@@ -235,19 +290,13 @@ export const useAuth = create<AuthState>((set, get) => ({
         }
         // Profilo mancante (es. primo accesso dopo conferma email): crealo ora che l'utente è in auth.users
         if (!profileData && person) {
-          const { data: created, error: createErr } = await supabase
-            .from('profiles')
-            .insert({
-              id: authData.user.id,
-              email: person.email || emailTrim,
-              first_name: person.given_name || '',
-              last_name: person.family_name || '',
-              full_name: person.given_name || person.family_name ? `${person.given_name || ''} ${person.family_name || ''}`.trim() : null,
-              role: profileRole,
-              person_id: person.id
-            })
-            .select()
-            .single()
+          const { error: createErr } = await supabase.rpc('sync_flowme_auth_password', {
+            p_email: emailTrim,
+            p_code: codeTrim,
+          })
+          const { data: created } = createErr
+            ? { data: null }
+            : await supabase.from('profiles').select('*').eq('id', authData.user.id).maybeSingle()
           if (!createErr && created) profileData = created
         }
         if (!profileData) {
@@ -295,11 +344,13 @@ export const useAuth = create<AuthState>((set, get) => ({
           role: profileRole,
           person_id: person.id
         }
-        const { data: upsertedProfile, error: profileInsertError } = await supabase
-          .from('profiles')
-          .upsert(profilePayload, { onConflict: 'id' })
-          .select()
-          .single()
+        let upsertedProfile: Profile | null = null
+        let profileInsertError: { code?: string } | null = null
+        try {
+          upsertedProfile = await ensureTeamflowProfile(signUpData.user.id, emailTrim, codeTrim)
+        } catch (error) {
+          profileInsertError = error as { code?: string }
+        }
 
         let profileForState: Profile | null = null
         if (!profileInsertError && upsertedProfile) {
@@ -316,7 +367,7 @@ export const useAuth = create<AuthState>((set, get) => ({
             profileForState = { ...existingProfile, password: '' }
             // Aggiorna person_id se non impostato (così la persona resta collegata)
             if (!existingProfile.person_id) {
-              await supabase.from('profiles').update({ person_id: person.id, role: profileRole }).eq('id', signUpData.user.id)
+              await ensureTeamflowProfile(signUpData.user.id, emailTrim, codeTrim)
             }
           }
         }
@@ -380,19 +431,36 @@ export const useAuth = create<AuthState>((set, get) => ({
 
       if (session?.user) {
         let profileData = loadFromStorage('auth-profile') as Profile | null
-        if (!profileData || profileData.id !== session.user.id) {
-          const { data, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .maybeSingle()
-          if (!error && data) {
-            profileData = data as Profile
-            saveToStorage('auth-userId', session.user.id)
-            saveToStorage('auth-profile', profileData)
-          }
+        // Il profilo va sempre aggiornato: ruoli e privilegi possono cambiare
+        // lato amministrazione mentre la sessione dell'utente e' ancora valida.
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .maybeSingle()
+        if (!error && data) {
+          profileData = data as Profile
+          saveToStorage('auth-userId', session.user.id)
+          saveToStorage('auth-profile', profileData)
+        } else if (!error) {
+          profileData = null
         }
         if (profileData) {
+          if (profileData.person_id) {
+            const { data: personAccess } = await supabase
+              .from('people')
+              .select('teamflow_access_blocked')
+              .eq('id', profileData.person_id)
+              .maybeSingle()
+
+            if (personAccess?.teamflow_access_blocked) {
+              await supabase.auth.signOut()
+              localStorage.removeItem('auth-userId')
+              localStorage.removeItem('auth-profile')
+              set({ userId: null, profile: null })
+              return
+            }
+          }
           set({ userId: session.user.id, profile: profileData })
           return
         }

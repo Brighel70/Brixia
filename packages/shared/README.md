@@ -1,4 +1,4 @@
-# @brixia/shared
+# @teamflow/shared
 
 Codice condiviso tra **TeamFlow** (webapp) e **FlowMe** (PWA).
 
@@ -8,8 +8,8 @@ Codice condiviso tra **TeamFlow** (webapp) e **FlowMe** (PWA).
 
 ## Utilizzo
 
-- **TeamFlow**: dipendenza `"@brixia/shared": "file:packages/shared"`, alias in `vite.config.ts`.
-- **FlowMe**: dipendenza che punta a questo package (path relativo alla repo TeamFlow), alias in `vite.config.ts` su `node_modules/@brixia/shared/src/index.ts`.
+- **TeamFlow**: dipendenza `"@teamflow/shared": "file:packages/shared"`, alias in `vite.config.ts`.
+- **FlowMe**: dipendenza che punta a questo package (path relativo alla repo TeamFlow), alias in `vite.config.ts` su `node_modules/@teamflow/shared/src/index.ts`.
 
 ## sessionScheduler
 

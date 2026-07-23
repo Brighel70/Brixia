@@ -113,9 +113,15 @@ export function validateMovementForm(
   const account = accounts.find((a) => a.id === values.accountId)
   if (!account) return 'Il conto selezionato non è attivo o non è disponibile.'
 
-  if (!values.categoryId) return 'Seleziona una categoria.'
+  if (!values.categoryId) return 'Seleziona una sottocategoria.'
   const category = categories.find((c) => c.id === values.categoryId)
-  if (!category) return 'La categoria selezionata non è attiva o non è disponibile.'
+  if (!category) return 'La sottocategoria selezionata non è attiva o non è disponibile.'
+  if (category.code.toUpperCase() === 'QUOTE') {
+    return 'La categoria Quote è riservata agli incassi automatici provenienti da FlowMe.'
+  }
+  if (category.direction && category.direction !== 'both' && category.direction !== values.type) {
+    return 'La categoria selezionata non è compatibile con il tipo di movimento.'
+  }
 
   if (!values.description.trim()) return 'La descrizione è obbligatoria.'
 
@@ -157,22 +163,147 @@ export function filterCategoriesForType(
       if (c.archived_at) return false
       if (c.is_active === false) return false
       if (c.available_in_movements === false) return false
+      if (c.code?.toUpperCase() === 'QUOTE') return false
+      if (c.group?.archived_at || c.group?.is_active === false) return false
     }
     return c.direction === 'both' || c.direction === type
   })
 }
 
+export const BUDGET_UNGROUPED_GROUP_ID = '__ungrouped__'
+
+export interface BudgetGroupOption {
+  id: string
+  code: string
+  name: string
+  activeCategoryCount: number
+}
+
+function deriveGroupOptionsFromCategories(
+  filtered: AccountingCategoryRef[]
+): BudgetGroupOption[] {
+  const groups = new Map<string, BudgetGroupOption>()
+  let hasUngrouped = false
+
+  for (const category of filtered) {
+    if (!category.group_id || !category.group) {
+      hasUngrouped = true
+      continue
+    }
+    if (!groups.has(category.group_id)) {
+      groups.set(category.group_id, {
+        id: category.group_id,
+        code: category.group.code,
+        name: category.group.name,
+        activeCategoryCount: 0
+      })
+    }
+    const group = groups.get(category.group_id)
+    if (group) group.activeCategoryCount += 1
+  }
+
+  const result = [...groups.values()].sort((a, b) =>
+    a.name.localeCompare(b.name, 'it', { sensitivity: 'base' })
+  )
+  if (hasUngrouped) {
+    result.push({
+      id: BUDGET_UNGROUPED_GROUP_ID,
+      code: 'LEGACY',
+      name: 'Senza macro-categoria',
+      activeCategoryCount: filtered.filter((category) => !category.group_id).length
+    })
+  }
+  return result
+}
+
+function filterCategoriesByGroupId(
+  filtered: AccountingCategoryRef[],
+  groupId: string
+): AccountingCategoryRef[] {
+  if (groupId === BUDGET_UNGROUPED_GROUP_ID) {
+    return filtered.filter((c) => !c.group_id)
+  }
+  return filtered.filter((c) => c.group_id === groupId)
+}
+
 export function filterCategoriesForBudget(
   categories: AccountingCategoryRef[],
-  type: ManualMovementType
+  type: ManualMovementType,
+  options?: { retainIds?: string[] }
 ): AccountingCategoryRef[] {
+  const retain = new Set(options?.retainIds ?? [])
   return categories.filter((c) => {
-    if (c.archived_at) return false
-    if (c.is_active === false) return false
-    if (c.available_in_budget === false) return false
-    if (c.code?.toUpperCase() === 'QUOTE') return false
+    const keepInactive = retain.has(c.id)
+    if (!keepInactive) {
+      if (c.archived_at) return false
+      if (c.is_active === false) return false
+      if (c.available_in_budget === false) return false
+      if (c.code?.toUpperCase() === 'QUOTE') return false
+      if (c.group?.archived_at || c.group?.is_active === false) return false
+    }
     return c.direction === 'both' || c.direction === type
   })
+}
+
+/** Macro-categorie con almeno una sottocategoria utilizzabile nel preventivo. */
+export function deriveBudgetGroupOptions(
+  categories: AccountingCategoryRef[],
+  type: ManualMovementType,
+  options?: { retainCategoryIds?: string[] }
+): BudgetGroupOption[] {
+  const retainIds = options?.retainCategoryIds?.filter(Boolean) ?? []
+  return deriveGroupOptionsFromCategories(
+    filterCategoriesForBudget(categories, type, { retainIds })
+  )
+}
+
+export function filterBudgetCategoriesByGroup(
+  categories: AccountingCategoryRef[],
+  type: ManualMovementType,
+  groupId: string,
+  options?: { retainCategoryIds?: string[] }
+): AccountingCategoryRef[] {
+  const retainIds = options?.retainCategoryIds?.filter(Boolean) ?? []
+  return filterCategoriesByGroupId(
+    filterCategoriesForBudget(categories, type, { retainIds }),
+    groupId
+  )
+}
+
+/** Macro-categorie con almeno una sottocategoria utilizzabile in Prima nota. */
+export function deriveMovementGroupOptions(
+  categories: AccountingCategoryRef[],
+  type: ManualMovementType,
+  options?: { retainCategoryIds?: string[] }
+): BudgetGroupOption[] {
+  const retainIds = options?.retainCategoryIds?.filter(Boolean) ?? []
+  return deriveGroupOptionsFromCategories(
+    filterCategoriesForType(categories, type, { retainIds })
+  )
+}
+
+export function filterMovementCategoriesByGroup(
+  categories: AccountingCategoryRef[],
+  type: ManualMovementType,
+  groupId: string,
+  options?: { retainCategoryIds?: string[] }
+): AccountingCategoryRef[] {
+  const retainIds = options?.retainCategoryIds?.filter(Boolean) ?? []
+  return filterCategoriesByGroupId(
+    filterCategoriesForType(categories, type, { retainIds }),
+    groupId
+  )
+}
+
+export function resolveBudgetGroupId(
+  categoryId: string,
+  categories: AccountingCategoryRef[]
+): string {
+  if (!categoryId) return ''
+  const category = categories.find((c) => c.id === categoryId)
+  if (!category) return ''
+  if (!category.group_id) return BUDGET_UNGROUPED_GROUP_ID
+  return category.group_id
 }
 
 export function movementToFormValues(movement: {

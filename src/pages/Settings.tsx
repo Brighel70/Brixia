@@ -10,6 +10,7 @@ import QueryPerformanceMonitor from '@/components/QueryPerformanceMonitor'
 import { useAuth } from '@/store/auth'
 import EventTypesSettings from '@/components/EventTypesSettings'
 import { AccountingCategorySettings } from '@/features/accounting/components/AccountingCategorySettings'
+import { AccountingFiscalProfileSettings } from '@/features/accounting/components/AccountingFiscalProfileSettings'
 import { usePermissions } from '@/hooks/usePermissions'
 import { PERMISSIONS } from '@/config/permissions'
 import TrainingVenuesPanel from '@/components/TrainingVenuesPanel'
@@ -115,6 +116,8 @@ export default function Settings({ embedInLayout = false }: SettingsProps) {
     isAdmin() ||
     hasPermission(PERMISSIONS.ACCOUNTING.VIEW) ||
     hasPermission(PERMISSIONS.ACCOUNTING.MANAGE_SETTINGS)
+  const canManageAccountingSettings =
+    isAdmin() || hasPermission(PERMISSIONS.ACCOUNTING.MANAGE_SETTINGS)
   const [editingCategory, setEditingCategory] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
   const [showEditModal, setShowEditModal] = useState(false)
@@ -140,15 +143,29 @@ export default function Settings({ embedInLayout = false }: SettingsProps) {
   useEffect(() => {
     loadCategories()
     loadProfessionalCategories()
-    
-    // Controlla se c'è un parametro tab nell'URL
-    const urlParams = new URLSearchParams(window.location.search)
-    const tabParam = urlParams.get('tab')
-    
-    if (tabParam && ['categories', 'event-types', 'system', 'templates', 'emails', 'permissions', 'debug', 'performance', 'accounting'].includes(tabParam)) {
-      setActiveTab((tabParam === 'emails' ? 'templates' : tabParam) as 'categories' | 'event-types' | 'system' | 'templates' | 'permissions' | 'debug' | 'performance' | 'accounting')
-    }
   }, [])
+
+  useEffect(() => {
+    const tabParam = searchParams.get('tab')
+    if (
+      tabParam &&
+      ['categories', 'event-types', 'system', 'templates', 'emails', 'permissions', 'debug', 'performance', 'accounting'].includes(
+        tabParam
+      )
+    ) {
+      setActiveTab(
+        (tabParam === 'emails' ? 'templates' : tabParam) as
+          | 'categories'
+          | 'event-types'
+          | 'system'
+          | 'templates'
+          | 'permissions'
+          | 'debug'
+          | 'performance'
+          | 'accounting'
+      )
+    }
+  }, [searchParams])
 
   const loadCategories = async () => {
     try {
@@ -769,10 +786,7 @@ export default function Settings({ embedInLayout = false }: SettingsProps) {
         {/* Tabs */}
         <div className="flex space-x-1 mb-8 bg-gray-100 p-1 rounded-lg">
           <button
-            onClick={() => {
-              setActiveTab('categories')
-              navigate('/settings?tab=categories', { replace: true })
-            }}
+            onClick={() => navigate('/settings?tab=categories', { replace: true })}
             className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
               activeTab === 'categories'
                 ? 'bg-white text-gray-900 shadow-sm'
@@ -782,10 +796,7 @@ export default function Settings({ embedInLayout = false }: SettingsProps) {
             📋 Categorie
           </button>
           <button
-            onClick={() => {
-              setActiveTab('event-types')
-              navigate('/settings?tab=event-types', { replace: true })
-            }}
+            onClick={() => navigate('/settings?tab=event-types', { replace: true })}
             className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
               activeTab === 'event-types'
                 ? 'bg-white text-gray-900 shadow-sm'
@@ -795,10 +806,7 @@ export default function Settings({ embedInLayout = false }: SettingsProps) {
             📅 Tipi evento
           </button>
           <button
-            onClick={() => {
-              setActiveTab('accounting')
-              navigate('/settings?tab=accounting', { replace: true })
-            }}
+            onClick={() => navigate('/settings?tab=accounting', { replace: true })}
             className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
               activeTab === 'accounting'
                 ? 'bg-white text-gray-900 shadow-sm'
@@ -808,10 +816,7 @@ export default function Settings({ embedInLayout = false }: SettingsProps) {
             Contabilità
           </button>
           <button
-            onClick={() => {
-              setActiveTab('system')
-              navigate('/settings?tab=system', { replace: true })
-            }}
+            onClick={() => navigate('/settings?tab=system', { replace: true })}
             className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
               activeTab === 'system'
                 ? 'bg-white text-gray-900 shadow-sm'
@@ -821,10 +826,7 @@ export default function Settings({ embedInLayout = false }: SettingsProps) {
             ⚙️ Sistema
           </button>
           <button
-            onClick={() => {
-              setActiveTab('templates')
-              navigate('/settings?tab=templates', { replace: true })
-            }}
+            onClick={() => navigate('/settings?tab=templates', { replace: true })}
             className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
               activeTab === 'templates'
                 ? 'bg-white text-gray-900 shadow-sm'
@@ -834,10 +836,7 @@ export default function Settings({ embedInLayout = false }: SettingsProps) {
             📝 Template
           </button>
           <button
-            onClick={() => {
-              setActiveTab('permissions')
-              navigate('/settings?tab=permissions', { replace: true })
-            }}
+            onClick={() => navigate('/settings?tab=permissions', { replace: true })}
             className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
               activeTab === 'permissions'
                 ? 'bg-white text-gray-900 shadow-sm'
@@ -847,10 +846,7 @@ export default function Settings({ embedInLayout = false }: SettingsProps) {
             🔐 I Tuoi Permessi
           </button>
           <button
-            onClick={() => {
-              setActiveTab('debug')
-              navigate('/settings?tab=debug', { replace: true })
-            }}
+            onClick={() => navigate('/settings?tab=debug', { replace: true })}
             className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
               activeTab === 'debug'
                 ? 'bg-white text-gray-900 shadow-sm'
@@ -860,10 +856,7 @@ export default function Settings({ embedInLayout = false }: SettingsProps) {
             🔧 Debug
           </button>
           <button
-            onClick={() => {
-              setActiveTab('performance')
-              navigate('/settings?tab=performance', { replace: true })
-            }}
+            onClick={() => navigate('/settings?tab=performance', { replace: true })}
             className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
               activeTab === 'performance'
                 ? 'bg-white text-gray-900 shadow-sm'
@@ -1250,7 +1243,10 @@ export default function Settings({ embedInLayout = false }: SettingsProps) {
         {activeTab === 'accounting' && (
           <div className="w-full">
             {canViewAccountingSettings ? (
-              <AccountingCategorySettings />
+              <>
+                <AccountingCategorySettings />
+                <AccountingFiscalProfileSettings canManage={canManageAccountingSettings} />
+              </>
             ) : (
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
                 Serve il permesso accounting.view o accounting.manage_settings.
@@ -1276,10 +1272,7 @@ export default function Settings({ embedInLayout = false }: SettingsProps) {
                     </p>
                   </div>
                   <button
-                    onClick={() => {
-                      setActiveTab('event-types')
-                      navigate('/settings?tab=event-types', { replace: true })
-                    }}
+                    onClick={() => navigate('/settings?tab=event-types', { replace: true })}
                     className="btn bg-sky-600 text-white px-4 py-2 text-sm hover:bg-sky-700 ml-4"
                   >
                     📅 Gestisci tipi
@@ -1522,7 +1515,7 @@ export default function Settings({ embedInLayout = false }: SettingsProps) {
                 <div className="flex items-center space-x-2">
                   <span className="text-lg">👤</span>
                   <div>
-                    <h3 className="font-semibold text-blue-800">Ruolo: {profile?.role || 'Non definito'}</h3>
+                    <h3 className="font-semibold text-blue-800">Ruolo: {profile?.is_super_admin ? 'Super Admin' : (profile?.role || 'Non definito')}</h3>
                     <p className="text-sm text-blue-600">Visualizza i permessi associati al tuo ruolo</p>
                   </div>
                 </div>
@@ -2196,5 +2189,4 @@ export default function Settings({ embedInLayout = false }: SettingsProps) {
     </div>
   )
 }
-
 

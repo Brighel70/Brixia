@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabaseClient'
+import { getBrandConfig } from '@/config/brand'
 
 /**
  * Trova l'user_id (auth) dell'operatore dal suo nome (full_name).
@@ -66,11 +67,13 @@ export async function sendActivityUpdatedNotificationToUser(
     const title = forPlayer ? 'Appuntamento modificato' : 'Appuntamento riprogrammato'
     const timeStr = payload.time ? String(payload.time).slice(0, 5).replace(':', '.') : ''
     const dateFormatted = formatDateIt(payload.date)
+    const clubName = getBrandConfig().clubName || ''
+    const clubSuffix = clubName ? `\n\n${clubName}` : ''
     const body = forPlayer
       ? `Il tuo appuntamento è stato modificato: ${dateFormatted}${timeStr ? `, ore ${timeStr}` : ''}`
       : payload.player_name
-        ? `L'appuntamento con ${payload.player_name}\nè stato riprogrammato per il giorno\n${dateFormatted}${timeStr ? `, ore ${timeStr}` : ''}\n\nBrixia Rugby`
-        : `Appuntamento riprogrammato per il giorno ${dateFormatted}${timeStr ? `, ore ${timeStr}` : ''}\n\nBrixia Rugby`
+        ? `L'appuntamento con ${payload.player_name}\nè stato riprogrammato per il giorno\n${dateFormatted}${timeStr ? `, ore ${timeStr}` : ''}${clubSuffix}`
+        : `Appuntamento riprogrammato per il giorno ${dateFormatted}${timeStr ? `, ore ${timeStr}` : ''}${clubSuffix}`
 
     const { error } = await supabase.from('notifications').insert({
       user_id: userId,

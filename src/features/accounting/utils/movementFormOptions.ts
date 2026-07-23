@@ -26,7 +26,7 @@ export const CASSA_PAYMENT_METHODS: PaymentMethodOption[] = [
 
 export const BANCA_PAYMENT_METHODS: PaymentMethodOption[] = [
   { value: 'bonifico', label: 'Bonifico' },
-  { value: 'bancomat', label: 'Bancomat / POS' },
+  { value: 'bancomat', label: 'Bancomat' },
   { value: 'carta', label: 'Carta' },
   { value: 'assegno', label: 'Assegno' },
   { value: 'rid', label: 'RID / Addebito' }

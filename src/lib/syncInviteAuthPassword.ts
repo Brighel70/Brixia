@@ -1,7 +1,10 @@
 /**
  * Allinea password Auth al codice invito (FlowMe / TeamFlow).
- * 1) Edge Function Admin API (se deployata)
- * 2) RPC SQL sync_flowme_auth_password (trigger + login)
+ *
+ * Usa la RPC SQL `sync_flowme_auth_password` (già in DB + trigger su people).
+ * L'Edge Function `sync-invite-password` non è ancora deployata sul progetto:
+ * richiamarla da browser produce 404/CORS. Se in futuro verrà deployata,
+ * si può ripristinare come percorso primario (Admin API).
  */
 
 import { supabase } from '@/lib/supabaseClient'
@@ -15,16 +18,8 @@ export async function syncInviteAuthPassword(params: {
   const code = params.code.trim()
   if (!email || !code) return { ok: false, error: 'missing' }
 
-  try {
-    const { data, error } = await supabase.functions.invoke('sync-invite-password', {
-      body: { email, code, door: params.door || 'flowme' },
-    })
-    if (!error && data?.ok) return { ok: true }
-    if (error) console.warn('sync-invite-password function:', error.message, data)
-    else if (data && !data.ok) console.warn('sync-invite-password:', data.error)
-  } catch (e) {
-    console.warn('sync-invite-password invoke failed:', e)
-  }
+  // Nota: `door` è gestita lato SQL (accetta codice FlowMe o TeamFlow).
+  void params.door
 
   const { error: rpcErr } = await supabase.rpc('sync_flowme_auth_password', {
     p_email: email,

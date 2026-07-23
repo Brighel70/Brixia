@@ -276,7 +276,7 @@ export const router = createBrowserRouter([
       <AuthLayout requireAuth={true}>
         <PermissionGuard requiredPermission={PERMISSIONS.USERS.CREATE}>
           <DashboardLayout>
-            <CreateUser embedInLayout />
+            <CreateUser />
           </DashboardLayout>
         </PermissionGuard>
       </AuthLayout>
@@ -367,7 +367,7 @@ export const router = createBrowserRouter([
     element: (
       <AuthLayout requireAuth={true}>
         <DashboardLayout>
-          <EditUser embedInLayout />
+          <EditUser />
         </DashboardLayout>
       </AuthLayout>
     )
@@ -376,7 +376,9 @@ export const router = createBrowserRouter([
     path: '/role-permissions',
     element: (
       <AuthLayout requireAuth={true}>
-        <RolePermissionsManagement />
+        <PermissionGuard requiredPermission={PERMISSIONS.USERS.MANAGE_PERMISSIONS}>
+          <RolePermissionsManagement />
+        </PermissionGuard>
       </AuthLayout>
     )
   }

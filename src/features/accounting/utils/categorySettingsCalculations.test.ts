@@ -3,7 +3,9 @@ import type { AccountingCategorySettingsRow } from '../types'
 import {
   applyMasterGroupToggle,
   buildActivationPayload,
+  filterSettingsRows,
   groupActivationState,
+  isCategorySelectableForMovements,
   isProtectedCategory,
   normalizeCategoryCode,
   suggestCodeFromName
@@ -32,6 +34,16 @@ function cat(
 }
 
 describe('categorySettingsCalculations', () => {
+  it('QUOTE non e selezionabile in Prima nota', () => {
+    expect(
+      isCategorySelectableForMovements({
+        code: 'QUOTE',
+        is_active: true,
+        available_in_movements: true,
+        archived_at: null
+      })
+    ).toBe(false)
+  })
   it('normalizza codice da nome', () => {
     expect(suggestCodeFromName('Materiale sportivo')).toBe('MATERIALE_SPORTIVO')
     expect(normalizeCategoryCode('  foo--bar  ')).toBe('FOO_BAR')
@@ -72,5 +84,50 @@ describe('categorySettingsCalculations', () => {
       [cat({ id: 'q', code: 'QUOTE', is_system: true, is_active: false })]
     )
     expect(payload.categories[0].is_active).toBe(true)
+  })
+
+  it('consente ad Admin e Super Admin di disattivare una categoria protetta', () => {
+    const quote = cat({ id: 'q', code: 'QUOTE', is_system: true, is_active: true })
+    expect(applyMasterGroupToggle([quote], false, true)[0].is_active).toBe(false)
+    expect(buildActivationPayload([], [{ ...quote, is_active: false }], true).categories[0].is_active)
+      .toBe(false)
+  })
+
+  it('non include gli archiviati nel salvataggio batch e li filtra esplicitamente', () => {
+    const archived = {
+      id: 'archived',
+      group_id: 'g1',
+      code: 'ARCHIVIATA',
+      name: 'Archiviata',
+      direction: 'income' as const,
+      default_nature: 'to_classify' as const,
+      include_in_commercial_limit: false,
+      is_system: false,
+      is_active: false,
+      recommended_active: false,
+      sort_order: 0,
+      notes: null,
+      available_in_movements: false,
+      available_in_budget: false,
+      available_in_reports: false,
+      archived_at: '2026-01-01'
+    }
+    const payload = buildActivationPayload([], [archived])
+    expect(payload.categories).toHaveLength(0)
+    const filtered = filterSettingsRows({
+      groups: [
+        {
+          id: 'g1', direction: 'income', code: 'G', name: 'Gruppo', description: null,
+          is_active: false, is_system: false, sort_order: 0, archived_at: '2026-01-01'
+        }
+      ],
+      categories: [archived],
+      direction: 'income',
+      search: '',
+      statusFilter: 'archived',
+      originFilter: 'all'
+    })
+    expect(filtered.groups).toHaveLength(1)
+    expect(filtered.categoriesByGroup.get('g1')).toHaveLength(1)
   })
 })

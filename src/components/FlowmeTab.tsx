@@ -201,7 +201,7 @@ const FlowmeTab: React.FC<FlowmeTabProps> = ({
   }))
 
   const brandConfig = getBrandConfig()
-  const clubName = brandConfig.clubName || 'Brixia Rugby'
+  const clubName = brandConfig.clubName || 'Società'
 
   const handleWhatsAppSend = async (isFlowme: boolean) => {
     const phone = (form.phone || '').trim()

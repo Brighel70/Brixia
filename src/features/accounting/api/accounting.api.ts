@@ -6,11 +6,13 @@ import type {
   AccountingMovement,
   AccountingMovementDetail,
   AccountingReceivable,
+  CreateTransferInput,
   CreateMovementInput,
   MovementSummaryRow,
   ReconcileFeesPreview,
   UpdateMovementInput
 } from '../types'
+import { buildMovementsSearchOrClause, escapeIlikePattern } from '../utils/movementsSearch'
 
 /** Cast mirato: tipi Supabase non rigenerati per le tabelle contabili. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -29,7 +31,7 @@ export async function fetchFiscalYears(): Promise<AccountingFiscalYear[]> {
 export async function fetchAccounts(): Promise<AccountingAccountRef[]> {
   const { data, error } = await db
     .from('accounting_accounts')
-    .select('id, code, name')
+    .select('id, code, name, kind')
     .eq('is_active', true)
     .order('code')
 
@@ -41,7 +43,7 @@ const CATEGORY_SELECT_WITH_SETTINGS = `
   id, code, name, direction, default_nature, group_id,
   is_active, is_system, available_in_movements, available_in_budget, available_in_reports,
   archived_at,
-  group:accounting_category_groups(id, code, name, direction)
+  group:accounting_category_groups(id, code, name, direction, is_active, archived_at)
 `
 
 /** Select compatibile con DB senza migration 019 (niente group_id / available_in_*). */
@@ -185,7 +187,8 @@ export async function createManualMovement(input: CreateMovementInput): Promise<
       id, movement_date, settlement_date, description, direction, amount_cents, origin, status,
       payment_method_raw, document_type, document_number, document_date, reference, notes,
       created_at, updated_at,
-      account:accounting_accounts(id, code, name),
+      account:accounting_accounts!accounting_movements_account_id_fkey(id, code, name),
+      transfer_account:accounting_accounts!accounting_movements_transfer_account_id_fkey(id, code, name),
       category:accounting_categories(id, code, name, direction)
     `
     )
@@ -224,7 +227,8 @@ export async function updateManualMovement(
       id, movement_date, settlement_date, description, direction, amount_cents, origin, status,
       payment_method_raw, document_type, document_number, document_date, reference, notes,
       created_at, updated_at,
-      account:accounting_accounts(id, code, name),
+      account:accounting_accounts!accounting_movements_account_id_fkey(id, code, name),
+      transfer_account:accounting_accounts!accounting_movements_transfer_account_id_fkey(id, code, name),
       category:accounting_categories(id, code, name, direction)
     `
     )
@@ -237,6 +241,88 @@ export async function updateManualMovement(
   return data as AccountingMovement
 }
 
+export async function createManualTransfer(input: CreateTransferInput): Promise<string> {
+  const { data, error } = await db.rpc('accounting_create_manual_transfer', {
+    p_fiscal_year_id: input.fiscalYearId,
+    p_movement_date: input.movementDate,
+    p_settlement_date: input.settlementDate,
+    p_amount_cents: input.amountCents,
+    p_source_account_id: input.sourceAccountId,
+    p_destination_account_id: input.destinationAccountId,
+    p_description: input.description.trim(),
+    p_notes: input.notes?.trim() || null
+  })
+
+  if (error) throw error
+  return data as string
+}
+
+export async function updateManualTransfer(
+  movementId: string,
+  input: Omit<CreateTransferInput, 'fiscalYearId'>
+): Promise<string> {
+  const { data, error } = await db.rpc('accounting_update_manual_transfer', {
+    p_movement_id: movementId,
+    p_movement_date: input.movementDate,
+    p_settlement_date: input.settlementDate,
+    p_amount_cents: input.amountCents,
+    p_source_account_id: input.sourceAccountId,
+    p_destination_account_id: input.destinationAccountId,
+    p_description: input.description.trim(),
+    p_notes: input.notes?.trim() || null
+  })
+
+  if (error) throw error
+  return data as string
+}
+
+export async function postManualMovement(
+  movementId: string,
+  overrideReason?: string | null
+): Promise<string> {
+  const { data, error } = await db.rpc('accounting_post_manual_movement', {
+    p_movement_id: movementId,
+    p_override_reason: overrideReason?.trim() || null
+  })
+  if (error) throw error
+  return data as string
+}
+
+export async function cancelManualMovement(movementId: string, reason: string | null): Promise<string> {
+  const { data, error } = await db.rpc('accounting_cancel_manual_movement', {
+    p_movement_id: movementId,
+    p_reason: reason?.trim() || null
+  })
+  if (error) throw error
+  return data as string
+}
+
+export async function reverseManualMovement(
+  movementId: string,
+  reversalDate: string,
+  reason: string
+): Promise<string> {
+  const { data, error } = await db.rpc('accounting_reverse_manual_movement', {
+    p_movement_id: movementId,
+    p_reversal_date: reversalDate,
+    p_reason: reason.trim()
+  })
+  if (error) throw error
+  return data as string
+}
+
+export async function assignPendingAccount(
+  movementId: string,
+  accountId: string
+): Promise<string> {
+  const { data, error } = await db.rpc('accounting_assign_pending_account', {
+    p_movement_id: movementId,
+    p_account_id: accountId
+  })
+  if (error) throw error
+  return data as string
+}
+
 export async function fetchMovementDetail(movementId: string): Promise<AccountingMovementDetail> {
   const { data, error } = await db
     .from('accounting_movements')
@@ -244,9 +330,10 @@ export async function fetchMovementDetail(movementId: string): Promise<Accountin
       `
       id, movement_date, settlement_date, description, direction, amount_cents, origin, status,
       payment_method_raw, document_type, document_number, document_date, reference, notes,
-      created_at, updated_at,
+      created_at, updated_at, verified_at, verified_by, verification_note,
       receivable_id, reverses_movement_id, reversed_by_movement_id,
-      account:accounting_accounts(id, code, name),
+      account:accounting_accounts!accounting_movements_account_id_fkey(id, code, name),
+      transfer_account:accounting_accounts!accounting_movements_transfer_account_id_fkey(id, code, name),
       category:accounting_categories(id, code, name, direction),
       receivable:accounting_receivables(
         id, description, status, expected_amount_cents, collected_amount_cents, residual_amount_cents
@@ -307,7 +394,7 @@ export function mapSupabaseError(error: unknown): string {
 export async function fetchMovementSummaryRows(fiscalYearId: string): Promise<MovementSummaryRow[]> {
   const { data, error } = await db
     .from('accounting_movements')
-    .select('direction, status, amount_cents')
+    .select('id, direction, status, amount_cents, reverses_movement_id')
     .eq('fiscal_year_id', fiscalYearId)
 
   if (error) throw error
@@ -375,7 +462,8 @@ export async function fetchMovements(params: FetchMovementsParams): Promise<Fetc
       `
       id, movement_date, description, direction, amount_cents, origin, status,
       payment_method_raw, document_type, document_number, document_date, reference,
-      account:accounting_accounts(id, code, name),
+      account:accounting_accounts!accounting_movements_account_id_fkey(id, code, name),
+      transfer_account:accounting_accounts!accounting_movements_transfer_account_id_fkey(id, code, name),
       category:accounting_categories(id, code, name)
     `,
       { count: 'exact' }
@@ -385,7 +473,22 @@ export async function fetchMovements(params: FetchMovementsParams): Promise<Fetc
     .order('created_at', { ascending: false })
 
   if (params.search.trim()) {
-    query = query.ilike('description', `%${params.search.trim()}%`)
+    const term = params.search.trim()
+    const pattern = escapeIlikePattern(term)
+    const [{ data: accounts }, { data: categories }] = await Promise.all([
+      db
+        .from('accounting_accounts')
+        .select('id')
+        .or(`name.ilike."%${pattern}%",code.ilike."%${pattern}%"`),
+      db
+        .from('accounting_categories')
+        .select('id')
+        .or(`name.ilike."%${pattern}%",code.ilike."%${pattern}%"`)
+    ])
+
+    const accountIds = ((accounts ?? []) as { id: string }[]).map((r) => r.id)
+    const categoryIds = ((categories ?? []) as { id: string }[]).map((r) => r.id)
+    query = query.or(buildMovementsSearchOrClause(term, accountIds, categoryIds))
   }
   if (params.dateFrom) query = query.gte('movement_date', params.dateFrom)
   if (params.dateTo) query = query.lte('movement_date', params.dateTo)
@@ -400,6 +503,23 @@ export async function fetchMovements(params: FetchMovementsParams): Promise<Fetc
     rows: (data ?? []) as AccountingMovement[],
     total: count ?? 0
   }
+}
+
+/** Tutti i movimenti filtrati, usati esclusivamente per PDF/esportazioni. */
+export async function fetchAllMovementsForExport(
+  params: Omit<FetchMovementsParams, 'page' | 'pageSize'>
+): Promise<AccountingMovement[]> {
+  const pageSize = 500
+  const firstPage = await fetchMovements({ ...params, page: 1, pageSize })
+  const rows = [...firstPage.rows]
+
+  for (let page = 2; rows.length < firstPage.total; page += 1) {
+    const result = await fetchMovements({ ...params, page, pageSize })
+    rows.push(...result.rows)
+    if (result.rows.length === 0) break
+  }
+
+  return rows
 }
 
 export interface FetchReceivablesParams {

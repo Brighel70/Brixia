@@ -1,6 +1,6 @@
 # TeamFlow
 
-Webapp di gestione per società sportive (Brixia Rugby): anagrafiche, categorie, sessioni/allenamenti, infortuni, eventi, quote, documenti.
+Webapp di gestione per società sportive (prodotto **TeamFlow**; identità club da Personalizzazione Brand): anagrafiche, categorie, sessioni/allenamenti, infortuni, eventi, quote, documenti.
 
 ## Avvio
 
@@ -11,7 +11,7 @@ Webapp di gestione per società sportive (Brixia Rugby): anagrafiche, categorie,
 ## Struttura progetto
 
 - **`src/`** – App React (Vite): pagine, componenti, store, lib.
-- **`packages/shared`** – Pacchetto `@brixia/shared`: codice condiviso con FlowMe (overlapCheck, sessionScheduler).
+- **`packages/shared`** – Pacchetto `@teamflow/shared`: codice condiviso con FlowMe (overlapCheck, sessionScheduler).
 - **`database/`** – Script SQL per Supabase; le migrazioni ordinate sono in `database/migrations/` (vedi README in quella cartella).
 - **`docs/`** – Documentazione (architettura, componenti duplicati, ecc.).
 
@@ -23,4 +23,4 @@ Backend **Supabase** (PostgreSQL). Stesso database usato da **FlowMe** (PWA atle
 
 - **TeamFlow** – Uso prevalentemente da desktop; gestione completa (staff, medici, segreteria).
 - **FlowMe** – PWA per atleti, genitori e staff da mobile/tablet; stesso DB, stesso Supabase.
-- Codice condiviso: `@brixia/shared` (logica sessioni, overlap appuntamenti). Vedi `docs/ARCHITECTURE.md` e `docs/Componenti_duplicati_TeamFlow_FlowMe.md`.
+- Codice condiviso: `@teamflow/shared` (logica sessioni, overlap appuntamenti). Vedi `docs/ARCHITECTURE.md` e `docs/Componenti_duplicati_TeamFlow_FlowMe.md`.

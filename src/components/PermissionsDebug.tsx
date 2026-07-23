@@ -32,7 +32,7 @@ export const PermissionsDebug: React.FC = () => {
           <h4 className="font-semibold text-gray-800 mb-2">👤 Utente</h4>
           <p><strong>Nome:</strong> {profile?.full_name || 'N/A'}</p>
           <p><strong>Email:</strong> {profile?.email || 'N/A'}</p>
-          <p><strong>Ruolo:</strong> {profile?.role || 'N/A'}</p>
+          <p><strong>Ruolo:</strong> {profile?.is_super_admin ? 'Super Admin' : (profile?.role || 'N/A')}</p>
           <p><strong>User Role ID:</strong> {profile?.user_role_id || 'N/A'}</p>
         </div>
 

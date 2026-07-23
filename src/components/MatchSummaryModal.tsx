@@ -430,7 +430,7 @@ export default function MatchSummaryModal({
     }
   }, [finalScore, eventId, isOpen, isHome, eventInfoReady, timelineEvents.length])
   const brandConfig = getBrandConfig()
-  const clubTeamName = brandConfig.clubName || 'Brixia Rugby'
+  const clubTeamName = brandConfig.clubName || 'Società'
   const opponentTeamName = eventDetails?.opponent || opponentName || 'Avversario'
   const homeTeamName = isHome ? clubTeamName : opponentTeamName
   const awayTeamName = isHome ? opponentTeamName : clubTeamName

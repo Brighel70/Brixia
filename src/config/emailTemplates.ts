@@ -1,14 +1,18 @@
-// Template email personalizzati per IL Brixia Rugby
-// Questi template devono essere configurati nel dashboard Supabase
+import { getBrandConfig } from '@/config/brand'
 
-export const EMAIL_TEMPLATES = {
-  // Template per conferma registrazione
-  CONFIRM_SIGNUP: {
-    subject: 'Benvenuto in IL Brixia Rugby - Conferma la tua email',
-    html: `
+// Template email personalizzati per TeamFlow (nome club da Personalizzazione Brand).
+// Questi template devono essere configurati nel dashboard Supabase.
+
+function buildEmailTemplates(clubName: string) {
+  const teamLabel = `Team ${clubName}`
+  return {
+    // Template per conferma registrazione
+    CONFIRM_SIGNUP: {
+      subject: `Benvenuto in ${clubName} - Conferma la tua email`,
+      html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: #0B1B3B; color: white; padding: 20px; text-align: center;">
-          <h1 style="margin: 0; font-size: 28px;">🏉 IL Brixia Rugby</h1>
+          <h1 style="margin: 0; font-size: 28px;">🏉 ${clubName}</h1>
         </div>
         
         <div style="padding: 30px; background: #f8f9fa;">
@@ -17,11 +21,11 @@ export const EMAIL_TEMPLATES = {
           <p style="font-size: 16px; line-height: 1.6;">Ciao,</p>
           
           <p style="font-size: 16px; line-height: 1.6;">
-            Grazie per esserti registrato come membro dello staff di <strong>IL Brixia Rugby</strong>.
+            Grazie per esserti registrato come membro dello staff di <strong>${clubName}</strong>.
           </p>
           
           <p style="font-size: 16px; line-height: 1.6;">
-            Per completare la registrazione e accedere al sistema di gestione presenze, clicca sul pulsante qui sotto:
+            Per completare la registrazione e accedere al sistema di gestione TeamFlow, clicca sul pulsante qui sotto:
           </p>
           
           <div style="text-align: center; margin: 30px 0;">
@@ -35,10 +39,10 @@ export const EMAIL_TEMPLATES = {
           
           <p style="font-size: 16px; line-height: 1.6;"><strong>Questo link è sicuro e ti permetterà di:</strong></p>
           <ul style="font-size: 16px; line-height: 1.6;">
-            <li>Accedere al sistema di gestione presenze</li>
+            <li>Accedere al sistema di gestione TeamFlow</li>
             <li>Visualizzare le tue categorie assegnate</li>
             <li>Registrare presenze durante gli allenamenti</li>
-            <li>Gestire le sessioni di rugby</li>
+            <li>Gestire le sessioni</li>
           </ul>
           
           <div style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 15px; margin: 20px 0;">
@@ -53,45 +57,44 @@ export const EMAIL_TEMPLATES = {
           
           <p style="margin-top: 20px; font-size: 14px; color: #666;">
             Cordiali saluti,<br>
-            <strong>Team IL Brixia Rugby</strong>
+            <strong>${teamLabel}</strong>
           </p>
         </div>
       </div>
     `,
-    text: `
-      Benvenuto in IL Brixia Rugby!
+      text: `
+      Benvenuto in ${clubName}!
 
       Ciao,
 
-      Grazie per esserti registrato come membro dello staff di IL Brixia Rugby.
+      Grazie per esserti registrato come membro dello staff di ${clubName}.
 
-      Per completare la registrazione e accedere al sistema di gestione presenze, 
+      Per completare la registrazione e accedere al sistema di gestione TeamFlow, 
       copia e incolla questo link nel tuo browser:
 
       {{ .ConfirmationURL }}
 
       Questo link è sicuro e ti permetterà di:
-      - Accedere al sistema di gestione presenze
+      - Accedere al sistema di gestione TeamFlow
       - Visualizzare le tue categorie assegnate  
       - Registrare presenze durante gli allenamenti
-      - Gestire le sessioni di rugby
+      - Gestire le sessioni
 
       SICUREZZA: Questo link è generato automaticamente da Supabase e contiene un token di sicurezza univoco.
 
       Se non hai richiesto tu questa registrazione, ignora questa email.
 
       Cordiali saluti,
-      Team IL Brixia Rugby
+      ${teamLabel}
     `
-  },
+    },
 
-  // Template per reset password
-  RESET_PASSWORD: {
-    subject: 'IL Brixia Rugby - Reset Password',
-    html: `
+    RESET_PASSWORD: {
+      subject: `${clubName} - Reset Password`,
+      html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: #0B1B3B; color: white; padding: 20px; text-align: center;">
-          <h1 style="margin: 0; font-size: 28px;">🏉 IL Brixia Rugby</h1>
+          <h1 style="margin: 0; font-size: 28px;">🏉 ${clubName}</h1>
         </div>
         
         <div style="padding: 30px; background: #f8f9fa;">
@@ -100,7 +103,7 @@ export const EMAIL_TEMPLATES = {
           <p style="font-size: 16px; line-height: 1.6;">Ciao,</p>
           
           <p style="font-size: 16px; line-height: 1.6;">
-            Hai richiesto il reset della password per il tuo account in <strong>IL Brixia Rugby</strong>.
+            Hai richiesto il reset della password per il tuo account in <strong>${clubName}</strong> (TeamFlow).
           </p>
           
           <p style="font-size: 16px; line-height: 1.6;">
@@ -128,17 +131,17 @@ export const EMAIL_TEMPLATES = {
           
           <p style="margin-top: 20px; font-size: 14px; color: #666;">
             Cordiali saluti,<br>
-            <strong>Team IL Brixia Rugby</strong>
+            <strong>${teamLabel}</strong>
           </p>
         </div>
       </div>
     `,
-    text: `
-      IL Brixia Rugby - Reset Password
+      text: `
+      ${clubName} - Reset Password
 
       Ciao,
 
-      Hai richiesto il reset della password per il tuo account in IL Brixia Rugby.
+      Hai richiesto il reset della password per il tuo account in ${clubName} (TeamFlow).
 
       Per impostare una nuova password, copia e incolla questo link nel tuo browser:
 
@@ -149,17 +152,16 @@ export const EMAIL_TEMPLATES = {
       Se non hai richiesto tu questo reset, ignora questa email e la tua password rimarrà invariata.
 
       Cordiali saluti,
-      Team IL Brixia Rugby
+      ${teamLabel}
     `
-  },
+    },
 
-  // Template per cambio email
-  CHANGE_EMAIL: {
-    subject: 'IL Brixia Rugby - Conferma Nuova Email',
-    html: `
+    CHANGE_EMAIL: {
+      subject: `${clubName} - Conferma Nuova Email`,
+      html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: #0B1B3B; color: white; padding: 20px; text-align: center;">
-          <h1 style="margin: 0; font-size: 28px;">🏉 IL Brixia Rugby</h1>
+          <h1 style="margin: 0; font-size: 28px;">🏉 ${clubName}</h1>
         </div>
         
         <div style="padding: 30px; background: #f8f9fa;">
@@ -168,7 +170,7 @@ export const EMAIL_TEMPLATES = {
           <p style="font-size: 16px; line-height: 1.6;">Ciao,</p>
           
           <p style="font-size: 16px; line-height: 1.6;">
-            Hai richiesto di cambiare l'email del tuo account in <strong>IL Brixia Rugby</strong>.
+            Hai richiesto di cambiare l'email del tuo account in <strong>${clubName}</strong> (TeamFlow).
           </p>
           
           <p style="font-size: 16px; line-height: 1.6;">
@@ -196,17 +198,17 @@ export const EMAIL_TEMPLATES = {
           
           <p style="margin-top: 20px; font-size: 14px; color: #666;">
             Cordiali saluti,<br>
-            <strong>Team IL Brixia Rugby</strong>
+            <strong>${teamLabel}</strong>
           </p>
         </div>
       </div>
     `,
-    text: `
-      IL Brixia Rugby - Conferma Nuova Email
+      text: `
+      ${clubName} - Conferma Nuova Email
 
       Ciao,
 
-      Hai richiesto di cambiare l'email del tuo account in IL Brixia Rugby.
+      Hai richiesto di cambiare l'email del tuo account in ${clubName} (TeamFlow).
 
       Per confermare la nuova email, copia e incolla questo link nel tuo browser:
 
@@ -217,22 +219,45 @@ export const EMAIL_TEMPLATES = {
       Se non hai richiesto tu questo cambio, ignora questa email.
 
       Cordiali saluti,
-      Team IL Brixia Rugby
+      ${teamLabel}
     `
+    }
+  } as const
+}
+
+export type EmailTemplateKey = keyof ReturnType<typeof buildEmailTemplates>
+
+/** Template email con nome club da brand corrente. */
+export const getEmailTemplates = () => buildEmailTemplates(getBrandConfig().clubName || 'Società')
+
+/** Compat: oggetto ricostruito a ogni accesso tramite getter lazy. */
+export const EMAIL_TEMPLATES = new Proxy({} as ReturnType<typeof buildEmailTemplates>, {
+  get(_target, prop: string | symbol) {
+    const templates = getEmailTemplates()
+    if (typeof prop === 'string' && prop in templates) {
+      return templates[prop as EmailTemplateKey]
+    }
+    return undefined
+  },
+  ownKeys() {
+    return Object.keys(getEmailTemplates())
+  },
+  getOwnPropertyDescriptor(_target, prop) {
+    const templates = getEmailTemplates()
+    if (typeof prop === 'string' && prop in templates) {
+      return { configurable: true, enumerable: true, value: templates[prop as EmailTemplateKey] }
+    }
+    return undefined
   }
+})
+
+export const getEmailTemplate = (type: EmailTemplateKey) => {
+  return getEmailTemplates()[type]
 }
 
-// Funzione helper per ottenere un template specifico
-export const getEmailTemplate = (type: keyof typeof EMAIL_TEMPLATES) => {
-  return EMAIL_TEMPLATES[type]
-}
-
-// Funzione per validare un template
 export const validateEmailTemplate = (template: any) => {
-  return template && 
-         template.subject && 
-         template.html && 
+  return template &&
+         template.subject &&
+         template.html &&
          template.text
 }
-
-

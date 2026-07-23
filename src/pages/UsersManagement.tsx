@@ -5,6 +5,7 @@ import Header from '@/components/Header'
 
 interface User {
   id: string
+  person_id?: string | null
   full_name: string
   email: string
   role: string
@@ -44,6 +45,7 @@ export default function UsersManagement({ embedInLayout = false }: UsersManageme
           email,
           role,
           user_role_id,
+          person_id,
           phone,
           created_at,
           first_name,
@@ -132,8 +134,12 @@ export default function UsersManagement({ embedInLayout = false }: UsersManageme
     })
   }
 
-  const handleEditUser = (userId: string) => {
-    navigate(`/edit-user/${userId}`)
+  const handleEditUser = (user: User) => {
+    if (!user.person_id) {
+      alert('Questo account non è collegato a una scheda persona. Apri Anagrafiche e completa il collegamento prima di modificarne l’accesso.')
+      return
+    }
+    navigate(`/create-person?edit=${user.person_id}&tab=flowme&from=/users-management`)
   }
 
   const handleDeleteUser = async (userId: string, userName: string) => {
@@ -351,16 +357,16 @@ export default function UsersManagement({ embedInLayout = false }: UsersManageme
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => handleEditUser(user.id)}
+                            onClick={() => handleEditUser(user)}
                             className="text-blue-600 hover:text-blue-900 transition-colors"
-                            title="Modifica utente"
+                            title="Apri scheda persona e accessi"
                           >
                             ✏️
                           </button>
                           <button
-                            onClick={() => handleDeleteUser(user.id, user.full_name || `${user.first_name} ${user.last_name}`)}
-                            className="text-red-600 hover:text-red-900 transition-colors"
-                            title="Elimina utente"
+                            onClick={() => handleEditUser(user)}
+                            className="text-slate-500 hover:text-slate-800 transition-colors"
+                            title="Gli accessi si gestiscono dalla scheda persona"
                           >
                             🗑️
                           </button>

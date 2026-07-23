@@ -4,14 +4,14 @@
 
 :root { 
   color-scheme: light dark;
-  /* Variabili brand (sovrascritte da Personalizzazione Brand) */
-  --brixia-primary: #0b1f4d;
-  --brixia-secondary: #4aa3ff;
-  --brixia-accent: #f7f7f5;
-  --brixia-success: #10b981;
-  --brixia-warning: #f59e0b;
-  --brixia-danger: #ef4444;
-  --brixia-info: #3b82f6;
+  /* Variabili brand società (sovrascritte da Personalizzazione Brand) */
+  --brand-primary: #0b1f4d;
+  --brand-secondary: #4aa3ff;
+  --brand-accent: #f7f7f5;
+  --brand-success: #10b981;
+  --brand-warning: #f59e0b;
+  --brand-danger: #ef4444;
+  --brand-info: #3b82f6;
 }
 
 /* stile Apple‑like morbido */

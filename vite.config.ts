@@ -11,11 +11,12 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-      '@brixia/shared': path.resolve(__dirname, './packages/shared/src/index.ts')
+      '@teamflow/shared': path.resolve(__dirname, './packages/shared/src/index.ts')
     }
   },
   optimizeDeps: {
-    include: ['@brixia/shared']
+    // Usa l'alias a packages/shared/src (niente prebundle stale senza export nuovi)
+    exclude: ['@teamflow/shared']
   },
   build: {
     chunkSizeWarningLimit: 2500,

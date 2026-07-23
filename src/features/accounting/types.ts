@@ -38,10 +38,13 @@ export type AccountingDocumentType = 'invoice' | 'receipt' | 'fiscal_receipt' | 
 
 export type ReceivableNature = 'institutional' | 'commercial' | 'mixed' | 'to_classify'
 
+export type AccountingAccountKind = 'cash' | 'bank' | 'other'
+
 export interface AccountingAccountRef {
   id: string
   code: string
   name: string
+  kind?: AccountingAccountKind
 }
 
 export interface AccountingCategoryRef {
@@ -65,6 +68,8 @@ export interface AccountingCategoryGroupRef {
   code: string
   name: string
   direction: 'income' | 'expense'
+  is_active?: boolean
+  archived_at?: string | null
 }
 
 export interface AccountingCategoryGroup {
@@ -134,7 +139,11 @@ export interface AccountingMovement {
   receivable_id?: string | null
   reverses_movement_id?: string | null
   reversed_by_movement_id?: string | null
+  verified_at?: string | null
+  verified_by?: string | null
+  verification_note?: string | null
   account: AccountingAccountRef | null
+  transfer_account?: AccountingAccountRef | null
   category: AccountingCategoryRef | null
 }
 
@@ -192,6 +201,17 @@ export interface UpdateMovementInput {
   type: 'income' | 'expense'
 }
 
+export interface CreateTransferInput {
+  fiscalYearId: string
+  movementDate: string
+  settlementDate: string | null
+  amountCents: number
+  sourceAccountId: string
+  destinationAccountId: string
+  description: string
+  notes: string | null
+}
+
 export type ReceivableStatus =
   | 'assigned'
   | 'partially_paid'
@@ -226,9 +246,11 @@ export interface AccountingReceivable {
 }
 
 export interface MovementSummaryRow {
+  id?: string
   direction: MovementDirection
   status: MovementStatus
   amount_cents: number
+  reverses_movement_id?: string | null
 }
 
 export interface AccountingSummary {
@@ -265,6 +287,83 @@ export type AccountingTabId =
   | 'vat_sponsor'
   | 'counterparties'
   | 'sync'
+  | 'reconciliation'
+  | 'deadlines'
+  | 'audit'
+
+export type ReconciliationSessionStatus =
+  | 'draft'
+  | 'in_progress'
+  | 'completed'
+  | 'cancelled'
+
+export type BankStatementMatchStatus = 'unmatched' | 'matched' | 'excluded'
+
+export interface AccountingReconciliationSession {
+  id: string
+  fiscal_year_id: string
+  account_id: string
+  period_start: string
+  period_end: string
+  opening_balance_cents: number
+  closing_balance_statement_cents: number
+  status: ReconciliationSessionStatus
+  notes: string | null
+  completed_at: string | null
+  created_at?: string
+  updated_at?: string
+  account?: AccountingAccountRef | null
+}
+
+export interface AccountingBankStatementLine {
+  id: string
+  session_id: string
+  line_date: string
+  amount_cents: number
+  description: string
+  reference: string | null
+  external_id: string | null
+  match_status: BankStatementMatchStatus
+  matched_movement_id: string | null
+  exclude_reason: string | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface AccountingReconciliationSummary {
+  session_id: string
+  status: ReconciliationSessionStatus
+  opening_balance_cents: number
+  closing_balance_statement_cents: number
+  statement_net_cents: number
+  expected_closing_from_lines_cents: number
+  managed_net_cents: number
+  managed_closing_cents: number
+  difference_cents: number
+  lines_matched: number
+  lines_unmatched: number
+  lines_excluded: number
+  note?: string
+}
+
+export interface ReconciliationCsvImportResult {
+  imported: number
+  skipped: number
+  errors: Array<{ row: number; error: string }>
+}
+
+export interface ReconciliationCandidateMovement {
+  id: string
+  movement_date: string
+  settlement_date: string | null
+  description: string
+  direction: MovementDirection
+  amount_cents: number
+  status: MovementStatus
+  reference: string | null
+  account_id: string | null
+  transfer_account_id: string | null
+}
 
 export type CommercialKind =
   | 'sponsorship'
@@ -600,12 +699,29 @@ export interface ConsuntivoCategoryRow {
   categoryId: string | null
   categoryCode: string
   categoryName: string
+  groupId: string | null
+  groupCode: string | null
+  groupName: string | null
+  isArchived: boolean
+  isInactive: boolean
   nature: ReceivableNature | 'unknown'
   incomeCents: number
   expenseCents: number
   balanceCents: number
   movementCount: number
   anomalies: string[]
+}
+
+export interface ConsuntivoCategoryGroupRow {
+  groupId: string | null
+  groupCode: string
+  groupName: string
+  isLegacy: boolean
+  incomeCents: number
+  expenseCents: number
+  balanceCents: number
+  movementCount: number
+  categories: ConsuntivoCategoryRow[]
 }
 
 export interface ConsuntivoBudgetCompareRow {
@@ -654,8 +770,100 @@ export interface ConsuntivoKpis {
 export interface ConsuntivoReport {
   kpis: ConsuntivoKpis
   categories: ConsuntivoCategoryRow[]
+  categoryGroups: ConsuntivoCategoryGroupRow[]
   budgetCompare: ConsuntivoBudgetCompareRow[]
-  hasApprovedBudget: boolean
+  hasActiveBudget: boolean
   accounts: ConsuntivoAccountRow[]
   completeness: ConsuntivoCompleteness
+}
+
+export interface FiscalYearClosingChecklistItem {
+  key: string
+  label: string
+  count: number
+  blocking: boolean
+}
+
+export interface FiscalYearClosingChecklist {
+  fiscal_year_id: string
+  blocking: boolean
+  draft_movements: number
+  pending_account_movements: number
+  draft_commercial_documents: number
+  draft_sponsorship_contracts: number
+  open_reconciliation_sessions: number
+  items: FiscalYearClosingChecklistItem[]
+}
+
+export interface AccountingFiscalYearSnapshot {
+  id: string
+  fiscal_year_id: string
+  kind: 'consuntivo_final' | 'prima_nota_final' | 'closing_checklist'
+  payload: Record<string, unknown>
+  generated_at: string
+  generated_by: string | null
+}
+
+export interface AccountingFiscalProfile {
+  id: string
+  legal_form: string
+  tax_code: string | null
+  vat_number: string | null
+  rasd_registration: string | null
+  fiscal_regime: string
+  regime_398_active: boolean
+  regime_398_from: string | null
+  regime_398_to: string | null
+  commercial_activity_active: boolean
+  ets_flag: boolean
+  consultant_name: string | null
+  consultant_notes: string | null
+  fiscal_profile_notes: string | null
+  params_verification_status: 'unverified' | 'verified'
+  params_verified_at: string | null
+  future_modules: Record<string, unknown>
+  disclaimer: string
+  movement_approval_mode?: 'simple' | 'verify_then_post'
+}
+
+export type DeadlineType =
+  | 'vat_reminder'
+  | 'f24_reminder'
+  | 'rasd'
+  | 'rendiconto'
+  | 'document'
+  | 'internal_review'
+  | 'renewal'
+  | 'other'
+
+export type DeadlineStatus = 'open' | 'done' | 'cancelled' | 'snoozed'
+
+export interface AccountingOperationalDeadline {
+  id: string
+  fiscal_year_id: string | null
+  deadline_type: DeadlineType
+  title: string
+  due_on: string
+  remind_on: string | null
+  assignee_profile_id: string | null
+  status: DeadlineStatus
+  notes: string | null
+  is_fiscal_filing: boolean
+  created_at?: string
+  completed_at: string | null
+}
+
+export interface AccountingAuditLogRow {
+  id: string
+  entity_type: string
+  entity_id: string
+  action: string
+  action_label: string
+  actor_display_name: string | null
+  occurred_at: string
+  reason: string | null
+  origin: string
+  old_value: unknown
+  new_value: unknown
+  metadata: unknown
 }

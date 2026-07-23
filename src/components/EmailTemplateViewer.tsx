@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { EMAIL_TEMPLATES, getEmailTemplate } from '@/config/emailTemplates'
+import { EMAIL_TEMPLATES, getEmailTemplate, type EmailTemplateKey } from '@/config/emailTemplates'
 
 interface TemplateViewerProps {
   className?: string
 }
 
 export default function EmailTemplateViewer({ className = '' }: TemplateViewerProps) {
-  const [selectedTemplate, setSelectedTemplate] = useState<keyof typeof EMAIL_TEMPLATES>('CONFIRM_SIGNUP')
+  const [selectedTemplate, setSelectedTemplate] = useState<EmailTemplateKey>('CONFIRM_SIGNUP')
   const [copiedField, setCopiedField] = useState<string | null>(null)
 
   const template = getEmailTemplate(selectedTemplate)
@@ -41,7 +41,7 @@ export default function EmailTemplateViewer({ className = '' }: TemplateViewerPr
           </label>
           <select
             value={selectedTemplate}
-            onChange={(e) => setSelectedTemplate(e.target.value as keyof typeof EMAIL_TEMPLATES)}
+            onChange={(e) => setSelectedTemplate(e.target.value as EmailTemplateKey)}
             className="w-full p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-sky-500 focus:border-transparent"
           >
             <option value="CONFIRM_SIGNUP">Conferma Registrazione</option>
@@ -135,7 +135,7 @@ export default function EmailTemplateViewer({ className = '' }: TemplateViewerPr
       <div className="card p-6 bg-green-50 border border-green-200">
         <h4 className="text-lg font-semibold text-green-800 mb-3">✅ Template Pronto per l'Uso</h4>
         <div className="text-sm text-green-700 space-y-2">
-          <p>• <strong>Branding:</strong> Utilizza i colori ufficiali di IL Brixia Rugby</p>
+          <p>• <strong>Branding:</strong> Utilizza i colori ufficiali della società (Personalizzazione Brand)</p>
           <p>• <strong>Sicurezza:</strong> Include messaggi rassicuranti sulla sicurezza</p>
           <p>• <strong>Responsive:</strong> Design ottimizzato per tutti i dispositivi</p>
           <p>• <strong>Fallback:</strong> Versione testo per client email che non supportano HTML</p>

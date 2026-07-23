@@ -119,6 +119,9 @@ export function computeActualCentsByCategory(
         unattributedReversalCents += row.amount_cents
         continue
       }
+      if (original.status === 'reversed') {
+        continue
+      }
 
       const entry = touch(original.category_id)
       if (original.direction === 'income') {

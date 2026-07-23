@@ -4,6 +4,7 @@ import {
   RLS_READINESS,
   ROLE_ACCESS_MATRIX,
   getRoleAccessRule,
+  normalizeTeamflowRoleName,
 } from './accessModel'
 
 describe('accessModel', () => {
@@ -38,5 +39,12 @@ describe('accessModel', () => {
     expect(RLS_READINESS.teamflowUsesSupabaseAuth).toBe(true)
     expect(RLS_READINESS.categoryScopeCentralized).toBe(true)
     expect(RLS_READINESS.paymentsLedgerCentralized).toBe(true)
+  })
+
+  it('normalizes legacy role labels before applying access rules', () => {
+    expect(normalizeTeamflowRoleName('Player')).toBe('Giocatore')
+    expect(normalizeTeamflowRoleName('Fisio')).toBe('Fisioterapista')
+    expect(normalizeTeamflowRoleName('tutor')).toBe('Famiglia')
+    expect(getRoleAccessRule('Preparatore')?.dataScope).toBe('assigned_categories')
   })
 })

@@ -16,6 +16,7 @@ interface PersonalInfoTabProps {
   onClearLinkRelationError?: (id: string) => void
   onPlayerSelection?: (selectedPlayerIds: string[]) => void
   onBirthDateBlur?: (birthDate: string) => void
+  onEmailBlur?: (email: string) => void
 }
 
 const inputClass =
@@ -33,7 +34,8 @@ const PersonalInfoTab: React.FC<PersonalInfoTabProps> = ({
   personId = null,
   linkRelationErrorIds = [],
   onClearLinkRelationError,
-  onBirthDateBlur
+  onBirthDateBlur,
+  onEmailBlur,
 }) => {
   const capitalizeText = (text: string) => {
     if (!text) return ''
@@ -417,9 +419,11 @@ const PersonalInfoTab: React.FC<PersonalInfoTabProps> = ({
             <div>
               <label className={labelClass}>Email</label>
               <input
+                id="person-email"
                 type="email"
                 value={form.email?.toLowerCase() || ''}
                 onChange={(e) => handleTextChange('email', e.target.value.toLowerCase())}
+                onBlur={(e) => onEmailBlur?.(e.target.value)}
                 disabled={isFieldDisabled()}
                 className={inputClass}
               />

@@ -175,20 +175,46 @@ export const ALL_FLOWME_SECTIONS: FlowmeSectionId[] = [
   'finanziario'
 ]
 
-export function getRoleAccessRule(roleName: string | null | undefined): RoleAccessRule | null {
+/**
+ * Converte le etichette storiche e gli alias tecnici nel nome unico usato
+ * dal contratto di accesso. I dati meno recenti possono ancora contenere
+ * "Player", "Fisio" o "Preparatore".
+ */
+export function normalizeTeamflowRoleName(roleName: string | null | undefined): TeamflowRoleName | null {
   if (!roleName) return null
-  const norm = roleName.trim().toLowerCase()
-  return (
-    ROLE_ACCESS_MATRIX.find((r) => r.teamflowRole.toLowerCase() === norm) ||
-    ROLE_ACCESS_MATRIX.find((r) => {
-      if (norm === 'player' || norm === 'giocatore') return r.teamflowRole === 'Giocatore'
-      if (norm === 'fisio' || norm === 'fisioterapista') return r.teamflowRole === 'Fisioterapista'
-      if (norm === 'preparatore') return r.teamflowRole === 'Preparatore Atletico'
-      if (norm === 'family' || norm === 'famiglia') return r.teamflowRole === 'Famiglia'
-      return false
-    }) ||
-    null
-  )
+
+  const normalized = roleName.trim().toLowerCase().replace(/\s+/g, ' ')
+  const aliases: Record<string, TeamflowRoleName> = {
+    admin: 'Admin',
+    dirigente: 'Dirigente',
+    segreteria: 'Segreteria',
+    'direttore sportivo': 'Direttore Sportivo',
+    'direttore tecnico': 'Direttore Tecnico',
+    allenatore: 'Allenatore',
+    'team manager': 'Team Manager',
+    'team-manager': 'Team Manager',
+    accompagnatore: 'Accompagnatore',
+    giocatore: 'Giocatore',
+    player: 'Giocatore',
+    'preparatore atletico': 'Preparatore Atletico',
+    preparatore: 'Preparatore Atletico',
+    medico: 'Medico',
+    fisioterapista: 'Fisioterapista',
+    fisio: 'Fisioterapista',
+    famiglia: 'Famiglia',
+    family: 'Famiglia',
+    familiare: 'Famiglia',
+    tutor: 'Famiglia',
+  }
+
+  return aliases[normalized] ?? null
+}
+
+export function getRoleAccessRule(roleName: string | null | undefined): RoleAccessRule | null {
+  const normalizedRole = normalizeTeamflowRoleName(roleName)
+  return normalizedRole
+    ? ROLE_ACCESS_MATRIX.find((rule) => rule.teamflowRole === normalizedRole) ?? null
+    : null
 }
 
 /**

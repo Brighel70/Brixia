@@ -67,7 +67,7 @@ export default function GoleeConfirmModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="golee-confirm-title"
@@ -118,7 +118,7 @@ export default function GoleeConfirmModal({
           </h3>
           <p
             id="golee-confirm-message"
-            className="mx-auto mb-7 max-w-[36ch] text-[15px] leading-relaxed"
+            className="mx-auto mb-7 max-w-[36ch] whitespace-pre-line text-[15px] leading-relaxed"
             style={{ color: GOLEE.textMuted }}
           >
             {message}

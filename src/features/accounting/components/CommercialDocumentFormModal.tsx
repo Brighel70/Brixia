@@ -272,7 +272,7 @@ export function CommercialDocumentFormModal({
                 <button
                   type="button"
                   disabled={saving || cpSaving}
-                  className="inline-flex items-center gap-1 text-xs font-medium text-brixia-primary hover:underline disabled:opacity-40"
+                  className="inline-flex items-center gap-1 text-xs font-medium text-brand-primary hover:underline disabled:opacity-40"
                   onClick={() => setCpFormOpen(true)}
                 >
                   <Plus className="h-3 w-3" />
@@ -557,7 +557,7 @@ export function CommercialDocumentFormModal({
             <button
               type="submit"
               disabled={saving}
-              className="rounded-lg bg-brixia-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              className="rounded-lg bg-brand-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
             >
               {saving ? 'Salvataggio…' : 'Salva bozza'}
             </button>

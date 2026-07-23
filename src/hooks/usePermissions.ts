@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/store/auth'
 import { supabase } from '@/lib/supabaseClient'
-import { getRolePermissions, getPermissionCategory } from '@/config/permissions'
+import { normalizeTeamflowRoleName } from '@teamflow/shared'
 
 export interface Permission {
   id: string
@@ -24,6 +24,19 @@ export const usePermissions = () => {
   const [loading, setLoading] = useState(false)
 
   const loadUserPermissions = async () => {
+    if (profile?.is_super_admin) {
+      const { data: allPermissions, error } = await supabase
+        .from('permissions')
+        .select('id, name, description, category, position_order')
+        .order('position_order')
+
+      if (error) console.warn('Errore nel caricamento catalogo Super Admin:', error)
+      setPermissions((allPermissions || []) as Permission[])
+      setUserRole({ id: 'super-admin', name: 'Super Admin', position_order: -1 })
+      setLoading(false)
+      return
+    }
+
     if (!profile?.role) {
       setPermissions([])
       setUserRole(null)
@@ -33,26 +46,18 @@ export const usePermissions = () => {
     try {
       setLoading(true)
       
-      // Carica il ruolo dell'utente usando il nome del ruolo (case-insensitive)
-      const { data: roleData, error: roleError } = await supabase
-        .from('user_roles')
-        .select('*')
-        .ilike('name', profile.role)
-        .maybeSingle()
+      const canonicalRole = normalizeTeamflowRoleName(profile.role)
+      let roleQuery = supabase.from('user_roles').select('*')
+      roleQuery = profile.user_role_id
+        ? roleQuery.eq('id', profile.user_role_id)
+        : roleQuery.ilike('name', canonicalRole || profile.role)
+
+      const { data: roleData, error: roleError } = await roleQuery.maybeSingle()
 
       if (roleError || !roleData) {
-        console.warn('Ruolo non trovato in user_roles, uso permessi di default per:', profile.role)
-        // Se il ruolo non esiste in user_roles, usa i permessi hardcoded
-        const rolePermissions = getRolePermissions(profile.role)
-        const hardcodedPermissions = rolePermissions.map(permName => ({
-          id: permName,
-          name: permName,
-          description: '',
-          category: getPermissionCategory(permName) || 'general',
-          position_order: 0
-        }))
-        setPermissions(hardcodedPermissions)
-        setUserRole({ id: profile.role, name: profile.role, position_order: 0 })
+        console.warn('Ruolo non trovato o non leggibile in user_roles:', profile.role, roleError)
+        setPermissions([])
+        setUserRole(null)
         return
       }
       
@@ -74,17 +79,8 @@ export const usePermissions = () => {
         .eq('role_id', roleData.id)
 
       if (permError) {
-        console.warn('Errore nel caricamento permessi dal database, uso permessi hardcoded')
-        // Fallback ai permessi hardcoded
-        const rolePermissions = getRolePermissions(profile.role)
-        const hardcodedPermissions = rolePermissions.map(permName => ({
-          id: permName,
-          name: permName,
-          description: '',
-          category: getPermissionCategory(permName) || 'general',
-          position_order: 0
-        }))
-        setPermissions(hardcodedPermissions)
+        console.warn('Errore nel caricamento permessi dal database:', permError)
+        setPermissions([])
         return
       }
       
@@ -154,16 +150,18 @@ export const usePermissions = () => {
 
   useEffect(() => {
     loadUserPermissions()
-  }, [profile?.id])
+  }, [profile?.id, profile?.role, profile?.user_role_id, profile?.is_super_admin])
 
   // Controlla se l'utente ha un permesso specifico
   const hasPermission = (permissionName: string): boolean => {
+    if (profile?.is_super_admin) return true
     if (!permissions || permissions.length === 0) return false
     return permissions.some(permission => permission.name === permissionName)
   }
 
   // Controlla se l'utente ha un permesso in una categoria
   const hasPermissionInCategory = (category: string, permissionName: string): boolean => {
+    if (profile?.is_super_admin) return true
     if (!permissions || permissions.length === 0) return false
     return permissions.some(permission => 
       permission.category === category && permission.name === permissionName
@@ -172,13 +170,14 @@ export const usePermissions = () => {
 
   // Controlla se l'utente ha almeno un permesso in una categoria
   const hasAnyPermissionInCategory = (category: string): boolean => {
+    if (profile?.is_super_admin) return true
     if (!permissions || permissions.length === 0) return false
     return permissions.some(permission => permission.category === category)
   }
 
   // Controlla se l'utente è admin
   const isAdmin = (): boolean => {
-    return userRole?.name === 'Admin'
+    return profile?.is_super_admin === true || userRole?.name === 'Admin'
   }
 
   // Controlla se l'utente è dirigente
@@ -218,12 +217,12 @@ export const usePermissions = () => {
 
   // Controlla se l'utente è player
   const isPlayer = (): boolean => {
-    return userRole?.name === 'Player'
+    return userRole?.name === 'Giocatore' || userRole?.name === 'Player'
   }
 
   // Controlla se l'utente è preparatore
   const isPreparatore = (): boolean => {
-    return userRole?.name === 'Preparatore'
+    return userRole?.name === 'Preparatore Atletico' || userRole?.name === 'Preparatore'
   }
 
   // Controlla se l'utente è medico
@@ -233,7 +232,7 @@ export const usePermissions = () => {
 
   // Controlla se l'utente è fisio
   const isFisio = (): boolean => {
-    return userRole?.name === 'Fisio'
+    return userRole?.name === 'Fisioterapista' || userRole?.name === 'Fisio'
   }
 
   // Controlla se l'utente è famiglia
@@ -264,5 +263,3 @@ export const usePermissions = () => {
     reloadPermissions: loadUserPermissions
   }
 }
-
-

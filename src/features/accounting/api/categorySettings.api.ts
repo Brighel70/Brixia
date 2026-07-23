@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabaseClient'
 import type {
+  AccountingCategoryRef,
   AccountingCategoryGroup,
   AccountingCategorySettingsRow,
   CategoryActivationBatchPayload,
@@ -23,8 +24,8 @@ export async function fetchCategoryGroups(): Promise<AccountingCategoryGroup[]> 
   const { data, error } = await db
     .from('accounting_category_groups')
     .select(GROUP_SELECT)
-    .is('archived_at', null)
     .order('direction')
+    .order('archived_at', { ascending: true, nullsFirst: true })
     .order('sort_order')
     .order('code')
 
@@ -36,12 +37,42 @@ export async function fetchCategoriesForSettings(): Promise<AccountingCategorySe
   const { data, error } = await db
     .from('accounting_categories')
     .select(CATEGORY_SETTINGS_SELECT)
-    .is('archived_at', null)
+    .order('archived_at', { ascending: true, nullsFirst: true })
     .order('sort_order')
     .order('code')
 
   if (error) throw error
   return (data ?? []) as AccountingCategorySettingsRow[]
+}
+
+/**
+ * Catalogo operativo per il preventivo. Usa esattamente le stesse tabelle e
+ * gli stessi flag della schermata Impostazioni > Contabilita, evitando liste
+ * locali o cache della pagina Contabilita.
+ */
+export async function fetchBudgetCategoryCatalog(): Promise<AccountingCategoryRef[]> {
+  const [groups, categories] = await Promise.all([
+    fetchCategoryGroups(),
+    fetchCategoriesForSettings()
+  ])
+  const groupsById = new Map(groups.map((group) => [group.id, group]))
+
+  return categories.map((category) => {
+    const group = category.group_id ? groupsById.get(category.group_id) : null
+    return {
+      ...category,
+      group: group
+        ? {
+            id: group.id,
+            code: group.code,
+            name: group.name,
+            direction: group.direction,
+            is_active: group.is_active,
+            archived_at: group.archived_at
+          }
+        : null
+    }
+  })
 }
 
 export async function saveCategoryActivationBatch(
@@ -94,7 +125,7 @@ export async function updateCategoryGroup(input: {
     p_description: input.description ?? null,
     p_sort_order: input.sortOrder ?? null,
     p_is_active: input.isActive ?? null,
-    p_archive: input.archive ?? null
+    p_archived: input.archive ?? null
   })
   if (error) throw error
 }
@@ -140,6 +171,7 @@ export async function updateCategory(input: {
   availableInReports?: boolean | null
   sortOrder?: number | null
   isActive?: boolean | null
+  groupId?: string | null
   archive?: boolean | null
 }): Promise<void> {
   const { error } = await db.rpc('accounting_category_update', {
@@ -153,7 +185,8 @@ export async function updateCategory(input: {
     p_available_in_reports: input.availableInReports ?? null,
     p_sort_order: input.sortOrder ?? null,
     p_is_active: input.isActive ?? null,
-    p_archive: input.archive ?? null
+    p_group_id: input.groupId ?? null,
+    p_archived: input.archive ?? null
   })
   if (error) throw error
 }

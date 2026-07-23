@@ -1,23 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useBlocker } from 'react-router-dom'
 import {
+  Archive,
   ChevronDown,
   ChevronRight,
+  FolderPlus,
+  Pencil,
   Plus,
   RotateCcw,
   Save,
   Search
 } from 'lucide-react'
 import { toast } from 'sonner'
+import GoleeConfirmModal from '@/components/GoleeConfirmModal'
 import { usePermissions } from '@/hooks/usePermissions'
 import { PERMISSIONS } from '@/config/permissions'
 import {
+  countCategoryUsage,
   createCategory,
   createCategoryGroup,
   fetchCategoriesForSettings,
   fetchCategoryGroups,
   resetRecommendedCategoryActivation,
   saveCategoryActivationBatch,
-  updateCategory
+  updateCategory,
+  updateCategoryGroup
 } from '../api/categorySettings.api'
 import type {
   AccountingCategoryGroup,
@@ -35,6 +42,13 @@ import {
 import { receivableNatureLabel } from '../utils/labels'
 
 type DirTab = 'income' | 'expense'
+
+type PendingConfirm =
+  | { kind: 'discard' }
+  | { kind: 'restore' }
+  | { kind: 'archiveCategory'; category: AccountingCategorySettingsRow; detail: string }
+  | { kind: 'archiveGroup'; group: AccountingCategoryGroup }
+  | { kind: 'leave' }
 
 function MasterCheckbox({
   state,
@@ -64,6 +78,7 @@ function MasterCheckbox({
 export function AccountingCategorySettings() {
   const { hasPermission, isAdmin } = usePermissions()
   const canManage = isAdmin() || hasPermission(PERMISSIONS.ACCOUNTING.MANAGE_SETTINGS)
+  const canManageSystemCategories = isAdmin()
   const canView = canManage || hasPermission(PERMISSIONS.ACCOUNTING.VIEW)
 
   const [loading, setLoading] = useState(true)
@@ -71,7 +86,9 @@ export function AccountingCategorySettings() {
   const [error, setError] = useState<string | null>(null)
   const [dirTab, setDirTab] = useState<DirTab>('income')
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
+  const [statusFilter, setStatusFilter] = useState<
+    'all' | 'active' | 'inactive' | 'archived'
+  >('all')
   const [originFilter, setOriginFilter] = useState<'all' | 'system' | 'custom'>('all')
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
@@ -81,6 +98,8 @@ export function AccountingCategorySettings() {
 
   const [groupModal, setGroupModal] = useState(false)
   const [catModal, setCatModal] = useState<{ groupId: string } | null>(null)
+  const [editingGroup, setEditingGroup] = useState<AccountingCategoryGroup | null>(null)
+  const [editingCategory, setEditingCategory] = useState<AccountingCategorySettingsRow | null>(null)
   const [groupForm, setGroupForm] = useState({
     direction: 'income' as DirTab,
     name: '',
@@ -101,11 +120,21 @@ export function AccountingCategorySettings() {
     sortOrder: '0',
     isActive: true
   })
+  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null)
+  const [confirmingAction, setConfirmingAction] = useState(false)
 
   const dirty = useMemo(() => {
     const snap = JSON.stringify({ groups, categories })
     return baseline !== '' && snap !== baseline
   }, [groups, categories, baseline])
+
+  const blocker = useBlocker(Boolean(dirty && canManage))
+
+  useEffect(() => {
+    if (blocker.state === 'blocked') {
+      setPendingConfirm({ kind: 'leave' })
+    }
+  }, [blocker.state])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -166,7 +195,10 @@ export function AccountingCategorySettings() {
     setCategories((prev) => {
       const inGroup = prev.filter((c) => c.group_id === groupId)
       const others = prev.filter((c) => c.group_id !== groupId)
-      return [...others, ...applyMasterGroupToggle(inGroup, activate)]
+      return [
+        ...others,
+        ...applyMasterGroupToggle(inGroup, activate, canManageSystemCategories)
+      ]
     })
     patchGroup(groupId, { is_active: activate })
   }
@@ -175,7 +207,45 @@ export function AccountingCategorySettings() {
     if (!canManage) return
     setSaving(true)
     try {
-      await saveCategoryActivationBatch(buildActivationPayload(groups, categories))
+      if (canManageSystemCategories) {
+        const previous = JSON.parse(baseline) as {
+          groups: AccountingCategoryGroup[]
+          categories: AccountingCategorySettingsRow[]
+        }
+        const previousGroups = new Map(previous.groups.map((group) => [group.id, group]))
+        const previousCategories = new Map(
+          previous.categories.map((category) => [category.id, category])
+        )
+        const groupUpdates = groups.filter(
+          (group) => previousGroups.get(group.id)?.is_active !== group.is_active
+        )
+        const categoryUpdates = categories.filter((category) => {
+          const old = previousCategories.get(category.id)
+          return (
+            old?.is_active !== category.is_active ||
+            old?.available_in_movements !== category.available_in_movements ||
+            old?.available_in_budget !== category.available_in_budget ||
+            old?.available_in_reports !== category.available_in_reports
+          )
+        })
+
+        await Promise.all([
+          ...groupUpdates.map((group) =>
+            updateCategoryGroup({ id: group.id, isActive: group.is_active })
+          ),
+          ...categoryUpdates.map((category) =>
+            updateCategory({
+              id: category.id,
+              isActive: category.is_active,
+              availableInMovements: category.available_in_movements,
+              availableInBudget: category.available_in_budget,
+              availableInReports: category.available_in_reports
+            })
+          )
+        ])
+      } else {
+        await saveCategoryActivationBatch(buildActivationPayload(groups, categories))
+      }
       toast.success('Configurazione categorie salvata')
       await load()
     } catch (err) {
@@ -186,44 +256,164 @@ export function AccountingCategorySettings() {
   }
 
   const handleResetLocal = () => {
-    if (!window.confirm('Annullare le modifiche non salvate?')) return
-    void load()
+    setPendingConfirm({ kind: 'discard' })
   }
 
-  const handleRestoreRecommended = async () => {
+  const handleRestoreRecommended = () => {
     if (!canManage) return
-    if (
-      !window.confirm(
-        'Ripristinare la configurazione consigliata? Le personalizzazioni di attivazione verranno sovrascritte.'
-      )
-    ) {
-      return
-    }
-    setSaving(true)
-    try {
-      await resetRecommendedCategoryActivation()
-      toast.success('Configurazione consigliata ripristinata')
-      await load()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Ripristino non riuscito')
-    } finally {
-      setSaving(false)
-    }
+    setPendingConfirm({ kind: 'restore' })
   }
 
   const handleSelectAll = (activate: boolean) => {
-    const groupIds = new Set(filtered.groups.map((g) => g.id))
+    const groupIds = new Set(filtered.groups.filter((g) => !g.archived_at).map((g) => g.id))
     setCategories((prev) =>
       prev.map((c) => {
-        if (!c.group_id || !groupIds.has(c.group_id)) return c
-        if (isProtectedCategory(c)) return { ...c, is_active: true }
+        if (!c.group_id || !groupIds.has(c.group_id) || c.archived_at) return c
+        if (isProtectedCategory(c) && !canManageSystemCategories) {
+          return { ...c, is_active: true }
+        }
         return { ...c, is_active: activate }
       })
     )
     setGroups((prev) =>
-      prev.map((g) => (groupIds.has(g.id) ? { ...g, is_active: activate } : g))
+      prev.map((g) =>
+        groupIds.has(g.id) && !g.archived_at ? { ...g, is_active: activate } : g
+      )
     )
   }
+
+  const handleCategoryArchive = async (category: AccountingCategorySettingsRow) => {
+    try {
+      const usage = await countCategoryUsage(category.id)
+      const detail = `${usage.movements} moviment${usage.movements === 1 ? 'o' : 'i'} e ${usage.budgetLines} righ${usage.budgetLines === 1 ? 'a' : 'e'} di Preventivo collegate.\nLo storico resterà invariato.`
+      setPendingConfirm({ kind: 'archiveCategory', category, detail })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Archiviazione non riuscita')
+    }
+  }
+
+  const handleGroupArchive = (group: AccountingCategoryGroup) => {
+    const activeChildren = categories.filter(
+      (category) =>
+        category.group_id === group.id && !category.archived_at && category.is_active
+    ).length
+    if (activeChildren > 0) {
+      toast.error('Disattiva o archivia prima tutte le sottocategorie attive della macro-categoria.')
+      return
+    }
+    setPendingConfirm({ kind: 'archiveGroup', group })
+  }
+
+  const closePendingConfirm = () => {
+    if (confirmingAction) return
+    if (pendingConfirm?.kind === 'leave' && blocker.state === 'blocked') {
+      blocker.reset()
+    }
+    setPendingConfirm(null)
+  }
+
+  const runPendingConfirm = async () => {
+    if (!pendingConfirm) return
+
+    if (pendingConfirm.kind === 'discard') {
+      setPendingConfirm(null)
+      void load()
+      return
+    }
+
+    if (pendingConfirm.kind === 'leave') {
+      setPendingConfirm(null)
+      if (blocker.state === 'blocked') blocker.proceed()
+      return
+    }
+
+    setConfirmingAction(true)
+    try {
+      if (pendingConfirm.kind === 'restore') {
+        await resetRecommendedCategoryActivation()
+        toast.success('Configurazione consigliata ripristinata')
+        await load()
+      } else if (pendingConfirm.kind === 'archiveCategory') {
+        await updateCategory({
+          id: pendingConfirm.category.id,
+          archive: true,
+          isActive: false
+        })
+        toast.success('Categoria archiviata')
+        await load()
+      } else if (pendingConfirm.kind === 'archiveGroup') {
+        await updateCategoryGroup({ id: pendingConfirm.group.id, archive: true, isActive: false })
+        toast.success('Macro-categoria archiviata')
+        await load()
+      }
+      setPendingConfirm(null)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Operazione non riuscita')
+    } finally {
+      setConfirmingAction(false)
+    }
+  }
+
+  const confirmModalProps = (() => {
+    if (!pendingConfirm) {
+      return {
+        open: false,
+        title: '',
+        message: '',
+        confirmLabel: 'Conferma',
+        cancelLabel: 'Annulla',
+        variant: 'warning' as const
+      }
+    }
+    switch (pendingConfirm.kind) {
+      case 'discard':
+        return {
+          open: true,
+          title: 'Annullare le modifiche?',
+          message: 'Le modifiche non salvate andranno perse.',
+          confirmLabel: 'Annulla modifiche',
+          cancelLabel: 'Continua a modificare',
+          variant: 'warning' as const
+        }
+      case 'restore':
+        return {
+          open: true,
+          title: 'Ripristinare la configurazione consigliata?',
+          message:
+            'Le personalizzazioni di attivazione verranno sovrascritte. Potrai comunque salvare o annullare dopo il ripristino.',
+          confirmLabel: 'Ripristina',
+          cancelLabel: 'Annulla',
+          variant: 'warning' as const
+        }
+      case 'archiveCategory':
+        return {
+          open: true,
+          title: `Archiviare "${pendingConfirm.category.name}"?`,
+          message: pendingConfirm.detail,
+          confirmLabel: 'Archivia',
+          cancelLabel: 'Annulla',
+          variant: 'danger' as const
+        }
+      case 'archiveGroup':
+        return {
+          open: true,
+          title: `Archiviare "${pendingConfirm.group.name}"?`,
+          message: 'Lo storico resterà invariato.',
+          confirmLabel: 'Archivia',
+          cancelLabel: 'Annulla',
+          variant: 'danger' as const
+        }
+      case 'leave':
+        return {
+          open: true,
+          title: 'Uscire senza salvare?',
+          message: 'Le modifiche apportate potrebbero non essere salvate.',
+          confirmLabel: 'Esci',
+          cancelLabel: 'Annulla',
+          variant: 'warning' as const
+        }
+    }
+  })()
 
   if (!canView) {
     return (
@@ -254,6 +444,7 @@ export function AccountingCategorySettings() {
   }
 
   return (
+    <>
     <div className="space-y-4 pb-24">
       <div>
         <h2 className="text-xl font-bold text-slate-900">Categorie contabili</h2>
@@ -264,7 +455,8 @@ export function AccountingCategorySettings() {
 
       <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
         Natura e rilevanza fiscale (limite commerciale) devono essere confermate dal
-        commercialista. QUOTE resta sempre attiva per la sincronizzazione automatica.
+        commercialista. Admin e Super Admin possono gestire anche le categorie di sistema;
+        codici e direzioni tecniche restano fissi per non interrompere le automazioni.
       </div>
 
       <div className="flex flex-wrap gap-2 border-b border-slate-200">
@@ -280,7 +472,7 @@ export function AccountingCategorySettings() {
             onClick={() => setDirTab(id)}
             className={`border-b-2 px-3 py-2 text-sm font-medium ${
               dirTab === id
-                ? 'border-brixia-primary text-slate-900'
+                ? 'border-brand-primary text-slate-900'
                 : 'border-transparent text-slate-500'
             }`}
           >
@@ -289,13 +481,13 @@ export function AccountingCategorySettings() {
         ))}
       </div>
 
-      <div className="flex flex-wrap items-end gap-3 rounded-xl bg-white p-4 shadow-sm">
-        <div className="min-w-[180px] flex-1">
-          <label className="mb-1 block text-xs font-medium text-slate-600">Ricerca</label>
+      <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-[#E8ECF0] bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+        <div className="min-w-[260px] flex-1">
+          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Ricerca</label>
           <div className="relative">
-            <Search className="absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
+            <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
             <input
-              className="w-full rounded-lg border border-slate-300 py-2 pl-8 pr-3 text-sm"
+              className="w-full rounded-xl border border-[#D9E2EC] bg-[#FBFCFE] py-2.5 pl-9 pr-3 text-sm text-slate-800 outline-none transition focus:border-[#2F6DF6] focus:ring-2 focus:ring-[#2F6DF6]/15"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Gruppo, nome o codice…"
@@ -303,21 +495,22 @@ export function AccountingCategorySettings() {
           </div>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">Stato</label>
+          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Stato</label>
           <select
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            className="rounded-xl border border-[#D9E2EC] bg-[#FBFCFE] px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-[#2F6DF6]"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
           >
             <option value="all">Tutte</option>
             <option value="active">Attive</option>
             <option value="inactive">Inattive</option>
+            <option value="archived">Archiviate</option>
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">Origine</label>
+          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Origine</label>
           <select
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            className="rounded-xl border border-[#D9E2EC] bg-[#FBFCFE] px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-[#2F6DF6]"
             value={originFilter}
             onChange={(e) => setOriginFilter(e.target.value as typeof originFilter)}
           >
@@ -328,7 +521,7 @@ export function AccountingCategorySettings() {
         </div>
         <button
           type="button"
-          className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium"
+          className="rounded-xl border border-[#D9E2EC] px-3 py-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-45"
           onClick={() => handleSelectAll(true)}
           disabled={!canManage}
         >
@@ -336,7 +529,7 @@ export function AccountingCategorySettings() {
         </button>
         <button
           type="button"
-          className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium"
+          className="rounded-xl border border-[#D9E2EC] px-3 py-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-45"
           onClick={() => handleSelectAll(false)}
           disabled={!canManage}
         >
@@ -344,7 +537,7 @@ export function AccountingCategorySettings() {
         </button>
         <button
           type="button"
-          className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium"
+          className="rounded-xl border border-[#D9E2EC] px-3 py-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
           onClick={() => {
             const next: Record<string, boolean> = {}
             filtered.groups.forEach((g) => {
@@ -357,7 +550,7 @@ export function AccountingCategorySettings() {
         </button>
         <button
           type="button"
-          className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium"
+          className="rounded-xl border border-[#D9E2EC] px-3 py-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
           onClick={() => {
             const next: Record<string, boolean> = {}
             filtered.groups.forEach((g) => {
@@ -372,7 +565,7 @@ export function AccountingCategorySettings() {
           <>
             <button
               type="button"
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-[#D9E2EC] px-3 py-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
               onClick={() => void handleRestoreRecommended()}
             >
               <RotateCcw className="h-3.5 w-3.5" />
@@ -380,7 +573,7 @@ export function AccountingCategorySettings() {
             </button>
             <button
               type="button"
-              className="inline-flex items-center gap-1 rounded-lg bg-brixia-primary px-3 py-2 text-xs font-semibold text-white"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-brand-primary px-3 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:opacity-90"
               onClick={() => {
                 setGroupForm({
                   direction: dirTab,
@@ -403,66 +596,72 @@ export function AccountingCategorySettings() {
       <div className="space-y-3">
         {filtered.groups.map((g) => {
           const cats = filtered.categoriesByGroup.get(g.id) ?? []
-          const allInGroup = categories.filter((c) => c.group_id === g.id)
+          const allInGroup = categories.filter((c) => c.group_id === g.id && !c.archived_at)
           const master = groupActivationState(allInGroup)
           const activeCount = allInGroup.filter((c) => c.is_active).length
           const isOpen = expanded[g.id] !== false
           return (
-            <div key={g.id} className="rounded-xl bg-white shadow-sm">
-              <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
-                <MasterCheckbox
-                  state={master}
-                  disabled={!canManage}
-                  onChange={(next) => handleMasterToggle(g.id, next)}
-                />
-                <button
-                  type="button"
-                  className="text-slate-500"
-                  onClick={() => setExpanded((p) => ({ ...p, [g.id]: !isOpen }))}
-                >
-                  {isOpen ? (
-                    <ChevronDown className="h-4 w-4" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4" />
-                  )}
-                </button>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-semibold text-slate-900">{g.name}</span>
-                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-slate-600">
-                      {g.code}
-                    </span>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                        g.is_system
-                          ? 'bg-blue-100 text-blue-800'
-                          : 'bg-violet-100 text-violet-800'
-                      }`}
-                    >
-                      {g.is_system ? 'Sistema' : 'Personalizzata'}
-                    </span>
-                    {!g.is_active && (
-                      <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
-                        Inattiva
-                      </span>
-                    )}
-                    {master === 'indeterminate' && (
-                      <span className="text-[10px] text-amber-700">
-                        Parzialmente attiva (categorie protette)
-                      </span>
-                    )}
-                  </div>
-                  {g.description && (
-                    <p className="mt-0.5 text-xs text-slate-500">{g.description}</p>
-                  )}
-                  <p className="mt-0.5 text-xs text-slate-500">
-                    Sottocategorie attive: {activeCount}/{allInGroup.length}
-                  </p>
-                </div>
-                {canManage && (
+            <div key={g.id} className="overflow-hidden rounded-2xl border border-[#E8ECF0] bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-[#EEF2F6] px-4 py-3.5">
+                <div className="flex shrink-0 items-center gap-2">
+                  <MasterCheckbox
+                    state={master}
+                    disabled={!canManage || !!g.archived_at}
+                    onChange={(next) => handleMasterToggle(g.id, next)}
+                  />
                   <button
                     type="button"
-                    className="rounded border border-slate-300 px-2 py-1 text-xs"
+                    className="rounded-lg p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                    onClick={() => setExpanded((p) => ({ ...p, [g.id]: !isOpen }))}
+                  >
+                    {isOpen ? (
+                      <ChevronDown className="h-4 w-4" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="text-[19px] font-bold text-[#1A2332]">{g.name}</span>
+                  <span className="rounded-md bg-[#F0F4F8] px-1.5 py-0.5 font-mono text-sm font-semibold text-slate-600">
+                    {g.code}
+                  </span>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-sm font-semibold ${
+                      g.is_system
+                        ? 'bg-[#EAF2FF] text-[#2F6DF6]'
+                        : 'bg-[#F2EDFF] text-[#7758D9]'
+                    }`}
+                  >
+                    {g.is_system ? 'Sistema' : 'Personalizzata'}
+                  </span>
+                  {!g.is_active && (
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-sm font-semibold text-slate-700">
+                      Inattiva
+                    </span>
+                  )}
+                  {g.archived_at && (
+                    <span className="rounded-full bg-[#FFF4E5] px-2 py-0.5 text-sm font-semibold text-[#B46700]">
+                      Archiviata
+                    </span>
+                  )}
+                  {master === 'indeterminate' && !canManageSystemCategories && (
+                    <span className="text-sm font-medium text-[#B46700]">
+                      Parzialmente attiva (categorie protette)
+                    </span>
+                  )}
+                  {g.description && (
+                    <span className="text-base text-slate-500">{g.description}</span>
+                  )}
+                  <span className="text-base text-slate-500">
+                    <span className="font-semibold text-[#1A2332]">{activeCount}/{allInGroup.length}</span> sottocategorie attive
+                  </span>
+                </div>
+                <div className="ml-auto flex shrink-0 items-center justify-end gap-1.5">
+                {canManage && !g.archived_at && (
+                  <button
+                    type="button"
+                    className="rounded-lg border border-[#D9E2EC] p-2 text-[#2F6DF6] transition hover:bg-[#EAF2FF]"
                     onClick={() => {
                       setCatForm({
                         name: '',
@@ -478,60 +677,128 @@ export function AccountingCategorySettings() {
                       })
                       setCatModal({ groupId: g.id })
                     }}
+                    title="Nuova sottocategoria"
+                    aria-label="Nuova sottocategoria"
                   >
-                    Nuova sottocategoria
+                    <FolderPlus className="h-4 w-4" />
                   </button>
                 )}
+                {canManage && (!g.is_system || canManageSystemCategories) && (
+                  <>
+                    {!g.archived_at && (
+                      <button
+                        type="button"
+                        className="rounded-lg border border-[#D9E2EC] p-2 text-slate-600 transition hover:bg-slate-50"
+                        onClick={() => setEditingGroup({ ...g })}
+                        title="Modifica macro-categoria"
+                        aria-label="Modifica macro-categoria"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                    )}
+                    {!g.is_system && (
+                    <button
+                      type="button"
+                      className={`rounded-lg border p-2 transition ${g.archived_at ? 'border-[#BFEEDC] text-[#0B9A6D] hover:bg-[#E6FAF3]' : 'border-[#F5D3D3] text-[#D14F4F] hover:bg-[#FFF1F1]'}`}
+                      onClick={() => {
+                        if (g.archived_at) {
+                          void updateCategoryGroup({ id: g.id, archive: false })
+                            .then(() => {
+                              toast.success('Macro-categoria ripristinata')
+                              return load()
+                            })
+                            .catch((err) =>
+                              toast.error(err instanceof Error ? err.message : 'Ripristino non riuscito')
+                            )
+                        } else {
+                          void handleGroupArchive(g)
+                        }
+                      }}
+                      title={g.archived_at ? 'Ripristina macro-categoria' : 'Archivia macro-categoria'}
+                      aria-label={g.archived_at ? 'Ripristina macro-categoria' : 'Archivia macro-categoria'}
+                    >
+                      {g.archived_at ? <RotateCcw className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+                    </button>
+                    )}
+                  </>
+                )}
+                </div>
               </div>
               {isOpen && (
-                <ul className="divide-y divide-slate-50">
+                <>
+                <div className="hidden bg-[#F8FAFC] px-4 py-2 xl:grid xl:grid-cols-[42px_minmax(260px,1.45fr)_150px_150px_126px_120px_minmax(300px,1fr)_92px] xl:items-center xl:gap-3">
+                  <span />
+                  <span className="text-sm font-bold uppercase tracking-wide text-slate-500">Nome</span>
+                  <span className="text-sm font-bold uppercase tracking-wide text-slate-500">Codice</span>
+                  <span className="text-sm font-bold uppercase tracking-wide text-slate-500">Natura</span>
+                  <span className="text-sm font-bold uppercase tracking-wide text-slate-500">Origine</span>
+                  <span className="text-sm font-bold uppercase tracking-wide text-slate-500">Stato</span>
+                  <span className="text-sm font-bold uppercase tracking-wide text-slate-500">Utilizzi</span>
+                  <span className="text-right text-sm font-bold uppercase tracking-wide text-slate-500">Azioni</span>
+                </div>
+                <ul className="divide-y divide-[#EEF2F6]">
                   {cats.length === 0 ? (
-                    <li className="px-4 py-3 text-sm text-slate-500">Nessuna sottocategoria.</li>
+                    <li className="px-4 py-3 text-base text-slate-500">Nessuna sottocategoria.</li>
                   ) : (
                     cats.map((c) => (
                       <li
                         key={c.id}
-                        className="flex flex-wrap items-center gap-3 px-4 py-2.5 text-sm"
+                        className="grid gap-3 px-4 py-3 text-[17px] xl:grid-cols-[42px_minmax(260px,1.45fr)_150px_150px_126px_120px_minmax(300px,1fr)_92px] xl:items-center"
                       >
                         <input
                           type="checkbox"
-                          className="h-4 w-4"
-                          disabled={!canManage || isProtectedCategory(c)}
+                          className="h-4 w-4 rounded border-slate-300 text-[#2F6DF6]"
+                          disabled={
+                            !canManage ||
+                            (isProtectedCategory(c) && !canManageSystemCategories) ||
+                            !!c.archived_at
+                          }
                           checked={c.is_active}
                           onChange={(e) =>
                             patchCategory(c.id, {
-                              is_active: isProtectedCategory(c) ? true : e.target.checked
+                              is_active:
+                                isProtectedCategory(c) && !canManageSystemCategories
+                                  ? true
+                                  : e.target.checked
                             })
                           }
                           title={
-                            isProtectedCategory(c)
+                            isProtectedCategory(c) && !canManageSystemCategories
                               ? 'QUOTE non può essere disattivata'
                               : undefined
                           }
                         />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-medium text-slate-900">{c.name}</span>
-                            <span className="font-mono text-xs text-slate-500">{c.code}</span>
-                            <span className="text-xs text-slate-500">
+                        <div className="min-w-0 xl:contents">
+                          <div className="flex flex-wrap items-center gap-2 xl:contents">
+                            <span className="min-w-0 truncate font-semibold text-[#1A2332] xl:col-start-2">{c.name}</span>
+                            <span className="w-fit rounded-md bg-[#F0F4F8] px-1.5 py-0.5 font-mono text-sm font-semibold text-slate-600 xl:col-start-3">{c.code}</span>
+                            <span className="text-base text-slate-500 xl:col-start-4">
                               {receivableNatureLabel(c.default_nature)}
                             </span>
                             <span
-                              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                                c.is_system
-                                  ? 'bg-blue-100 text-blue-800'
-                                  : 'bg-violet-100 text-violet-800'
+                              className={`w-fit rounded-full px-2 py-0.5 text-sm font-semibold xl:col-start-5 ${
+                                !c.is_active || c.archived_at
+                                  ? 'bg-slate-100 text-slate-500'
+                                  : c.is_system
+                                    ? 'bg-[#EAF2FF] text-[#2F6DF6]'
+                                    : 'bg-[#F2EDFF] text-[#7758D9]'
                               }`}
                             >
                               {c.is_system ? 'Sistema' : 'Personalizzata'}
                             </span>
-                            {!c.is_active && (
-                              <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
-                                Inattiva
-                              </span>
-                            )}
+                            <span
+                              className={`w-fit rounded-full px-2 py-0.5 text-sm font-semibold xl:col-start-6 ${
+                                c.archived_at
+                                  ? 'bg-[#FFF4E5] text-[#B46700]'
+                                  : c.is_active
+                                    ? 'bg-[#E6FAF3] text-[#0B9A6D]'
+                                    : 'bg-slate-100 text-slate-700'
+                              }`}
+                            >
+                              {c.archived_at ? 'Archiviata' : c.is_active ? 'Attiva' : 'Inattiva'}
+                            </span>
                           </div>
-                          <p className="mt-0.5 text-[11px] text-slate-500">
+                          <p className="hidden">
                             {[
                               c.available_in_movements ? 'Prima nota' : null,
                               c.available_in_budget ? 'Preventivo' : null,
@@ -540,38 +807,82 @@ export function AccountingCategorySettings() {
                               .filter(Boolean)
                               .join(' · ') || 'Nessun utilizzo'}
                           </p>
+                          <div className="flex flex-wrap gap-1.5 text-sm text-slate-600 xl:col-start-7">
+                            {(
+                              [
+                                ['available_in_movements', 'Prima nota'],
+                                ['available_in_budget', 'Preventivo'],
+                                ['available_in_reports', 'Report']
+                              ] as const
+                            ).map(([field, label]) => {
+                              const highlighted = c[field] && c.is_active && !c.archived_at
+                              return (
+                              <label key={field} className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-semibold ${highlighted ? 'bg-[#EAF2FF] text-[#2F6DF6]' : 'bg-[#F4F6F8] text-slate-400'}`}>
+                                <input
+                                  type="checkbox"
+                                  className={`h-3.5 w-3.5 rounded border-slate-300 ${highlighted ? 'accent-[#2F6DF6]' : 'accent-slate-400'}`}
+                                  checked={c[field]}
+                                  disabled={
+                                    !canManage ||
+                                    !!c.archived_at ||
+                                    (isProtectedCategory(c) && !canManageSystemCategories)
+                                  }
+                                  onChange={(event) =>
+                                    patchCategory(c.id, { [field]: event.target.checked })
+                                  }
+                                />
+                                {label}
+                              </label>
+                              )
+                            })}
+                          </div>
                         </div>
-                        {canManage && !c.is_system && (
-                          <button
-                            type="button"
-                            className="rounded border border-slate-300 px-2 py-0.5 text-xs"
-                            onClick={() => {
-                              if (
-                                !window.confirm(
-                                  'Archiviare questa sottocategoria? Resterà visibile nello storico.'
-                                )
-                              ) {
-                                return
-                              }
-                              void updateCategory({ id: c.id, archive: true })
-                                .then(() => {
-                                  toast.success('Categoria archiviata')
-                                  return load()
-                                })
-                                .catch((err) =>
-                                  toast.error(
-                                    err instanceof Error ? err.message : 'Archiviazione non riuscita'
-                                  )
-                                )
-                            }}
-                          >
-                            Archivia
-                          </button>
+                        {canManage && (!c.is_system || canManageSystemCategories) && (
+                          <div className="flex items-center justify-end gap-1.5 xl:col-start-8">
+                            {!c.archived_at && (
+                              <button
+                                type="button"
+                                className="rounded-lg border border-[#D9E2EC] p-2 text-slate-600 transition hover:bg-slate-50"
+                                onClick={() => setEditingCategory({ ...c })}
+                                title="Modifica sottocategoria"
+                                aria-label="Modifica sottocategoria"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                            {!c.is_system && (
+                            <button
+                              type="button"
+                              className={`rounded-lg border p-2 transition ${c.archived_at ? 'border-[#BFEEDC] text-[#0B9A6D] hover:bg-[#E6FAF3]' : 'border-[#F5D3D3] text-[#D14F4F] hover:bg-[#FFF1F1]'}`}
+                              onClick={() => {
+                                if (c.archived_at) {
+                                  void updateCategory({ id: c.id, archive: false })
+                                    .then(() => {
+                                      toast.success('Categoria ripristinata')
+                                      return load()
+                                    })
+                                    .catch((err) =>
+                                      toast.error(
+                                        err instanceof Error ? err.message : 'Ripristino non riuscito'
+                                      )
+                                    )
+                                } else {
+                                  void handleCategoryArchive(c)
+                                }
+                              }}
+                              title={c.archived_at ? 'Ripristina sottocategoria' : 'Archivia sottocategoria'}
+                              aria-label={c.archived_at ? 'Ripristina sottocategoria' : 'Archivia sottocategoria'}
+                            >
+                              {c.archived_at ? <RotateCcw className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
+                            </button>
+                            )}
+                          </div>
                         )}
                       </li>
                     ))
                   )}
                 </ul>
+                </>
               )}
             </div>
           )
@@ -593,7 +904,7 @@ export function AccountingCategorySettings() {
               </button>
               <button
                 type="button"
-                className="inline-flex items-center gap-2 rounded-lg bg-brixia-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-lg bg-brand-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                 onClick={() => void handleSave()}
                 disabled={saving}
               >
@@ -660,6 +971,16 @@ export function AccountingCategorySettings() {
                   onChange={(e) => setGroupForm((f) => ({ ...f, description: e.target.value }))}
                 />
               </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={groupForm.isActive}
+                  onChange={(event) =>
+                    setGroupForm((current) => ({ ...current, isActive: event.target.checked }))
+                  }
+                />
+                Macro-categoria attiva
+              </label>
             </div>
             <div className="mt-5 flex justify-end gap-2">
               <button
@@ -671,7 +992,7 @@ export function AccountingCategorySettings() {
               </button>
               <button
                 type="button"
-                className="rounded-lg bg-brixia-primary px-3 py-2 text-sm font-semibold text-white"
+                className="rounded-lg bg-brand-primary px-3 py-2 text-sm font-semibold text-white"
                 onClick={() => {
                   void createCategoryGroup({
                     direction: groupForm.direction,
@@ -809,7 +1130,7 @@ export function AccountingCategorySettings() {
               </button>
               <button
                 type="button"
-                className="rounded-lg bg-brixia-primary px-3 py-2 text-sm font-semibold text-white"
+                className="rounded-lg bg-brand-primary px-3 py-2 text-sm font-semibold text-white"
                 onClick={() => {
                   void createCategory({
                     groupId: catModal.groupId,
@@ -840,6 +1161,287 @@ export function AccountingCategorySettings() {
           </div>
         </div>
       )}
+
+      {editingGroup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+            <h3 className="text-lg font-semibold">Modifica macro-categoria</h3>
+            <p className="mt-1 text-xs text-slate-500">Codice e tipo restano invariati.</p>
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="text-xs font-medium text-slate-600">Nome</label>
+                <input
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  value={editingGroup.name}
+                  onChange={(event) =>
+                    setEditingGroup((current) =>
+                      current ? { ...current, name: event.target.value } : current
+                    )
+                  }
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600">Descrizione</label>
+                <textarea
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  rows={3}
+                  value={editingGroup.description ?? ''}
+                  onChange={(event) =>
+                    setEditingGroup((current) =>
+                      current ? { ...current, description: event.target.value } : current
+                    )
+                  }
+                />
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={editingGroup.is_active}
+                  onChange={(event) =>
+                    setEditingGroup((current) =>
+                      current ? { ...current, is_active: event.target.checked } : current
+                    )
+                  }
+                />
+                Macro-categoria attiva
+              </label>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                onClick={() => setEditingGroup(null)}
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-brand-primary px-3 py-2 text-sm font-semibold text-white"
+                onClick={() => {
+                  const group = editingGroup
+                  void updateCategoryGroup({
+                    id: group.id,
+                    name: group.name,
+                    description: group.description,
+                    isActive: group.is_active
+                  })
+                    .then(() => {
+                      toast.success('Macro-categoria aggiornata')
+                      setEditingGroup(null)
+                      return load()
+                    })
+                    .catch((err) =>
+                      toast.error(err instanceof Error ? err.message : 'Aggiornamento non riuscito')
+                    )
+                }}
+              >
+                Salva
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingCategory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl bg-white p-5 shadow-xl">
+            <h3 className="text-lg font-semibold">Modifica sottocategoria</h3>
+            <p className="mt-1 text-xs text-slate-500">Codice e direzione restano invariati.</p>
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="text-xs font-medium text-slate-600">Nome</label>
+                <input
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  value={editingCategory.name}
+                  onChange={(event) =>
+                    setEditingCategory((current) =>
+                      current ? { ...current, name: event.target.value } : current
+                    )
+                  }
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600">Macro-categoria</label>
+                <select
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  value={editingCategory.group_id ?? ''}
+                  onChange={(event) =>
+                    setEditingCategory((current) =>
+                      current ? { ...current, group_id: event.target.value || null } : current
+                    )
+                  }
+                >
+                  {groups
+                    .filter(
+                      (group) =>
+                        group.direction === editingCategory.direction && !group.archived_at
+                    )
+                    .map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {group.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600">Natura</label>
+                <select
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  value={editingCategory.default_nature}
+                  onChange={(event) =>
+                    setEditingCategory((current) =>
+                      current
+                        ? {
+                            ...current,
+                            default_nature: event.target.value as ReceivableNature
+                          }
+                        : current
+                    )
+                  }
+                >
+                  <option value="institutional">Istituzionale</option>
+                  <option value="commercial">Commerciale</option>
+                  <option value="mixed">Misto</option>
+                  <option value="to_classify">Da classificare</option>
+                </select>
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={editingCategory.include_in_commercial_limit}
+                  onChange={(event) =>
+                    setEditingCategory((current) =>
+                      current
+                        ? {
+                            ...current,
+                            include_in_commercial_limit: event.target.checked
+                          }
+                        : current
+                    )
+                  }
+                />
+                Inclusione nel limite commerciale
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={editingCategory.is_active}
+                  onChange={(event) =>
+                    setEditingCategory((current) =>
+                      current ? { ...current, is_active: event.target.checked } : current
+                    )
+                  }
+                />
+                Sottocategoria attiva
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={editingCategory.available_in_movements}
+                  onChange={(event) =>
+                    setEditingCategory((current) =>
+                      current
+                        ? { ...current, available_in_movements: event.target.checked }
+                        : current
+                    )
+                  }
+                />
+                Disponibile in Prima nota
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={editingCategory.available_in_budget}
+                  onChange={(event) =>
+                    setEditingCategory((current) =>
+                      current ? { ...current, available_in_budget: event.target.checked } : current
+                    )
+                  }
+                />
+                Disponibile nel Preventivo
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={editingCategory.available_in_reports}
+                  onChange={(event) =>
+                    setEditingCategory((current) =>
+                      current ? { ...current, available_in_reports: event.target.checked } : current
+                    )
+                  }
+                />
+                Disponibile nei Report/Consuntivo
+              </label>
+              <div>
+                <label className="text-xs font-medium text-slate-600">Note</label>
+                <textarea
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  rows={3}
+                  value={editingCategory.notes ?? ''}
+                  onChange={(event) =>
+                    setEditingCategory((current) =>
+                      current ? { ...current, notes: event.target.value } : current
+                    )
+                  }
+                />
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                onClick={() => setEditingCategory(null)}
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-brand-primary px-3 py-2 text-sm font-semibold text-white"
+                onClick={() => {
+                  const category = editingCategory
+                  void updateCategory({
+                    id: category.id,
+                    name: category.name,
+                    notes: category.notes,
+                    defaultNature: category.default_nature,
+                    includeInCommercialLimit: category.include_in_commercial_limit,
+                    availableInMovements: category.available_in_movements,
+                    availableInBudget: category.available_in_budget,
+                    availableInReports: category.available_in_reports,
+                    isActive: category.is_active,
+                    groupId: category.group_id
+                  })
+                    .then(() => {
+                      toast.success('Categoria aggiornata')
+                      setEditingCategory(null)
+                      return load()
+                    })
+                    .catch((err) =>
+                      toast.error(err instanceof Error ? err.message : 'Aggiornamento non riuscito')
+                    )
+                }}
+              >
+                Salva
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+      <GoleeConfirmModal
+        open={confirmModalProps.open}
+        title={confirmModalProps.title}
+        message={confirmModalProps.message}
+        confirmLabel={confirmModalProps.confirmLabel}
+        cancelLabel={confirmModalProps.cancelLabel}
+        variant={confirmModalProps.variant}
+        confirming={confirmingAction}
+        confirmingLabel="Attendere…"
+        onCancel={closePendingConfirm}
+        onConfirm={() => {
+          void runPendingConfirm()
+        }}
+      />
+    </>
   )
 }

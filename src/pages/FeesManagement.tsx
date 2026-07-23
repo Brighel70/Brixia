@@ -322,8 +322,8 @@ const FeesManagement: React.FC<FeesManagementProps> = ({ embedInLayout = false }
     if (feeFilters.search) {
       const searchLower = feeFilters.search.toLowerCase()
       filtered = filtered.filter(fee => 
-        fee.name.toLowerCase().includes(searchLower) ||
-        fee.description.toLowerCase().includes(searchLower)
+        fee.name?.toLowerCase().includes(searchLower) ||
+        (fee.description ?? '').toLowerCase().includes(searchLower)
       )
     }
 
@@ -1862,7 +1862,7 @@ Per qualsiasi necessità o chiarimento restiamo a disposizione.
 Grazie per la collaborazione e per il sostegno al progetto.
 
 Un cordiale saluto,
-Brixia Rugby`
+${getBrandConfig().clubName || 'Staff'}`
 
       const content = template?.content || defaultContent
       const dataScadenza = dueDate ? new Date(dueDate).toLocaleDateString('it-IT') : ''
@@ -2735,7 +2735,19 @@ Brixia Rugby`
               </div>
 
               {loading ? (
-                <div className="text-center py-8">Caricamento...</div>
+                <div className="text-center py-8 text-white/80">Caricamento...</div>
+              ) : filteredFees.length === 0 ? (
+                <div className="rounded-lg border border-white/20 bg-white/10 px-6 py-10 text-center text-white/90">
+                  <p className="font-medium">Nessuna quota da mostrare</p>
+                  <p className="mt-2 text-sm text-white/70">
+                    {fees.length === 0
+                      ? 'Il catalogo risulta vuoto oppure non hai permesso di vedere le quote (fees.view / ruolo club-wide). Se hai appena applicato le migration di sicurezza, applica anche 053_fix_fees_catalog_club_wide_access.sql.'
+                      : 'Nessuna quota corrisponde ai filtri attuali. Prova a resettare ricerca, tipo, categoria o importi.'}
+                  </p>
+                  {message && (
+                    <p className="mt-3 text-sm text-rose-200">{message}</p>
+                  )}
+                </div>
               ) : feeViewMode === 'table' ? (
                 <div className="bg-white shadow rounded-lg overflow-hidden">
                   <table className="min-w-full divide-y divide-gray-200">

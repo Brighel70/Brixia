@@ -65,13 +65,10 @@ export default function QRCodeScanner({ onScanSuccess, onClose }: QRCodeScannerP
       }
 
       // Verifica se l'utente è un giocatore
-      const { data: player } = await supabase
-        .from('players')
-        .select('id')
-        .eq('person_id', profile.person_id)
-        .single()
+      // Attendance is keyed by the shared people.id.
+      const playerId = profile.person_id
 
-      if (!player) {
+      if (!playerId) {
         throw new Error('Utente non è un giocatore')
       }
 
@@ -80,7 +77,7 @@ export default function QRCodeScanner({ onScanSuccess, onClose }: QRCodeScannerP
         .from('attendance')
         .select('id')
         .eq('session_id', data.sessionId)
-        .eq('player_id', player.id)
+        .eq('player_id', playerId)
         .single()
 
       if (existingAttendance) {
@@ -92,7 +89,7 @@ export default function QRCodeScanner({ onScanSuccess, onClose }: QRCodeScannerP
         .from('attendance')
         .insert({
           session_id: data.sessionId,
-          player_id: player.id,
+          player_id: playerId,
           status: 'PRESENTE',
           created_at: new Date().toISOString()
         })
@@ -106,7 +103,7 @@ export default function QRCodeScanner({ onScanSuccess, onClose }: QRCodeScannerP
       // Notifica il successo al componente padre
       onScanSuccess({
         sessionId: data.sessionId,
-        playerId: player.id,
+        playerId,
         categoryName: session.categories?.name
       })
 

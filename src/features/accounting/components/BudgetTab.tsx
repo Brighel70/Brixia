@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { CheckCircle2, Lock, Pencil, Plus, Trash2 } from 'lucide-react'
+import { CheckCircle2, FileText, Lock, Pencil, Plus, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { formatFeeAmount } from '@/utils/feeUtils'
 import type {
   AccountingBudget,
@@ -14,6 +15,10 @@ import {
   budgetLineToFormValues,
   type BudgetLineFormValues
 } from './BudgetLineFormModal'
+import { previewBudgetPdf } from '../utils/accountingReportsPdf'
+import { reservePdfPreviewWindow } from '../utils/documentTemplates'
+import { AccountingPdfOptionsModal } from './AccountingPdfOptionsModal'
+import type { AccountingPdfDetailLevel } from '../utils/accountingReportsPdf'
 
 interface BudgetTabProps {
   fiscalYear: AccountingFiscalYear | null
@@ -28,6 +33,7 @@ interface BudgetTabProps {
   canCreate: boolean
   canEditDraft: boolean
   canApprove: boolean
+  canExport: boolean
   onCreateBudget: () => Promise<void>
   onSaveNotes: (notes: string) => Promise<void>
   onApprove: () => Promise<void>
@@ -78,6 +84,7 @@ export function BudgetTab({
   canCreate,
   canEditDraft,
   canApprove,
+  canExport,
   onCreateBudget,
   onSaveNotes,
   onApprove,
@@ -92,6 +99,8 @@ export function BudgetTab({
   const [editingLineId, setEditingLineId] = useState<string | null>(null)
   const [lineFormInitial, setLineFormInitial] = useState<Partial<BudgetLineFormValues>>()
   const [confirmApprove, setConfirmApprove] = useState(false)
+  const [pdfGenerating, setPdfGenerating] = useState(false)
+  const [pdfOptionsOpen, setPdfOptionsOpen] = useState(false)
 
   const notesValue = notesDraft ?? budget?.notes ?? ''
   const isDraft = budget?.status === 'draft'
@@ -129,6 +138,30 @@ export function BudgetTab({
     }
     setLineFormOpen(false)
     setEditingLineId(null)
+  }
+
+  const handleGeneratePdf = async (detailLevel: AccountingPdfDetailLevel) => {
+    if (!fiscalYear || !budget || pdfGenerating) return
+    const previewWindow = reservePdfPreviewWindow()
+    setPdfGenerating(true)
+    try {
+      await previewBudgetPdf({
+        fiscalYear,
+        budget,
+        rows: comparisonRows,
+        totals,
+        categories,
+        detailLevel,
+        previewWindow
+      })
+      toast.success('PDF del preventivo generato')
+      setPdfOptionsOpen(false)
+    } catch (err) {
+      if (previewWindow && !previewWindow.closed) previewWindow.close()
+      toast.error(err instanceof Error ? err.message : 'Generazione PDF non riuscita')
+    } finally {
+      setPdfGenerating(false)
+    }
   }
 
   if (loading) {
@@ -169,7 +202,7 @@ export function BudgetTab({
             type="button"
             disabled={saving}
             onClick={() => void onCreateBudget()}
-            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-brixia-primary px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
           >
             <Plus className="h-4 w-4" />
             Crea preventivo
@@ -206,12 +239,23 @@ export function BudgetTab({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            {canExport && (
+              <button
+                type="button"
+                onClick={() => setPdfOptionsOpen(true)}
+                disabled={pdfGenerating}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                <FileText className="h-4 w-4" />
+                {pdfGenerating ? 'Generazione PDF...' : 'Genera PDF'}
+              </button>
+            )}
             {canEdit && (
               <button
                 type="button"
                 onClick={openCreateLine}
                 disabled={saving}
-                className="inline-flex items-center gap-2 rounded-xl bg-brixia-primary px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-xl bg-brand-primary px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
                 <Plus className="h-4 w-4" />
                 Aggiungi voce
@@ -443,6 +487,15 @@ export function BudgetTab({
         }}
         onSubmit={handleLineSubmit}
       />
+      <AccountingPdfOptionsModal
+        open={pdfOptionsOpen}
+        title="Bilancio preventivo"
+        generating={pdfGenerating}
+        onClose={() => {
+          if (!pdfGenerating) setPdfOptionsOpen(false)
+        }}
+        onGenerate={handleGeneratePdf}
+      />
     </div>
   )
 }
@@ -605,7 +658,7 @@ function LinesTable({
                 <div className="mt-2 flex gap-2">
                   <button
                     type="button"
-                    className="text-sm text-brixia-primary"
+                    className="text-sm text-brand-primary"
                     onClick={() => onEdit(line)}
                   >
                     Modifica

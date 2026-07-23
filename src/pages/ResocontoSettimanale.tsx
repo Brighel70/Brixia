@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabaseClient'
 import Header from '@/components/Header'
 import { formatCurrency } from '@/utils/feeUtils'
 import jsPDF from 'jspdf'
+import { getBrandConfig } from '@/config/brand'
 import {
   ChevronLeft,
   ChevronRight,
@@ -222,7 +223,7 @@ export default function ResocontoSettimanale({ embedInLayout = false }: Resocont
     doc.text(formatWeekRange().toUpperCase(), margin, 24)
     doc.setFontSize(9)
     doc.setTextColor(slate400[0], slate400[1], slate400[2])
-    doc.text(`Brixia Rugby - ${new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`, pageWidth - margin, 14, { align: 'right' })
+    doc.text(`${getBrandConfig().clubName} - ${new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`, pageWidth - margin, 14, { align: 'right' })
     doc.text(`Generato alle ${new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`, pageWidth - margin, 22, { align: 'right' })
 
     // === 7 COLONNE GIORNI (design card) ===
@@ -370,7 +371,7 @@ export default function ResocontoSettimanale({ embedInLayout = false }: Resocont
     doc.line(margin, pageHeight - 8, pageWidth - margin, pageHeight - 8)
     doc.setFontSize(8)
     doc.setTextColor(slate400[0], slate400[1], slate400[2])
-    doc.text(`Brixia Rugby - Resoconto settimanale - ${startDateStr} - ${endDateStr}`, pageWidth / 2, pageHeight - 4, { align: 'center' })
+    doc.text(`${getBrandConfig().clubName} - Resoconto settimanale - ${startDateStr} - ${endDateStr}`, pageWidth / 2, pageHeight - 4, { align: 'center' })
 
     // Apri il PDF in una nuova scheda: decidi tu se salvarlo
     window.open(doc.output('bloburl'), '_blank')

@@ -34,7 +34,8 @@ const inCat: AccountingCategoryRef = {
   code: 'ALTRE_ENTRATE',
   name: 'Altre entrate',
   direction: 'income',
-  default_nature: 'commercial'
+  default_nature: 'commercial',
+  group: { id: 'group-income', code: 'ENTRATE', name: 'Entrate diverse', direction: 'income' }
 }
 
 const accounts = [
@@ -71,6 +72,41 @@ function m(partial: Partial<ConsuntivoMovementRow> & Pick<ConsuntivoMovementRow,
 }
 
 describe('consuntivoCalculations', () => {
+  it('raggruppa per macro-categoria e conserva le categorie legacy', () => {
+    const legacy: AccountingCategoryRef = {
+      id: 'cat-legacy',
+      code: 'STORICA',
+      name: 'Voce storica',
+      direction: 'income',
+      default_nature: 'to_classify',
+      archived_at: '2026-01-01',
+      is_active: false
+    }
+    const report = computeConsuntivoReport({
+      movements: [
+        m({ id: 'grouped', category_id: 'cat-in', amount_cents: 1200 }),
+        m({ id: 'legacy', category_id: 'cat-legacy', amount_cents: 800 })
+      ],
+      filters: baseFilters,
+      categories: [inCat, legacy],
+      accounts,
+      budgetLines: [],
+      hasActiveBudget: false,
+      fees: null,
+      quoteCategory: null
+    })
+    expect(report.categoryGroups).toHaveLength(2)
+    expect(report.categoryGroups[0]).toMatchObject({
+      groupCode: 'ENTRATE', incomeCents: 1200, movementCount: 1
+    })
+    expect(report.categoryGroups[1]).toMatchObject({
+      isLegacy: true, incomeCents: 800
+    })
+    expect(report.categoryGroups[1].categories[0]).toMatchObject({
+      isArchived: true, isInactive: true
+    })
+  })
+
   it('conteggia entrate e uscite posted', () => {
     const rows = [
       m({ id: '1', direction: 'income', amount_cents: 5000, category_id: 'cat-in' }),
@@ -82,7 +118,7 @@ describe('consuntivoCalculations', () => {
     expect(byCategory.get('cat-out')?.expenseCents).toBe(2000)
   })
 
-  it('storno entrata riduce entrate della categoria originale', () => {
+  it('storno di un originale gia stornato non riduce una seconda volta la categoria', () => {
     const rows = [
       m({ id: 'pay', direction: 'income', status: 'reversed', amount_cents: 3000, category_id: 'cat-q' }),
       m({
@@ -105,10 +141,10 @@ describe('consuntivoCalculations', () => {
       rows,
       new Set(rows.map((r) => r.id))
     )
-    expect(byCategory.get('cat-q')?.incomeCents).toBe(5000)
+    expect(byCategory.get('cat-q')?.incomeCents).toBe(8000)
   })
 
-  it('storno uscita riduce uscite della categoria originale', () => {
+  it('storno di un uscita gia stornata non riduce una seconda volta la categoria', () => {
     const rows = [
       m({
         id: 'exp',
@@ -136,7 +172,7 @@ describe('consuntivoCalculations', () => {
       rows,
       new Set(rows.map((r) => r.id))
     )
-    expect(byCategory.get('cat-out')?.expenseCents).toBe(2500)
+    expect(byCategory.get('cat-out')?.expenseCents).toBe(4000)
   })
 
   it('storno senza originale non attribuito', () => {
@@ -179,7 +215,7 @@ describe('consuntivoCalculations', () => {
       categories: [quoteCat, inCat, outCat],
       accounts,
       budgetLines: [],
-      hasApprovedBudget: false,
+      hasActiveBudget: false,
       fees: {
         expectedCents: 50000,
         collectedCents: 10000,
@@ -263,7 +299,7 @@ describe('consuntivoCalculations', () => {
       categories: [quoteCat, inCat, outCat],
       accounts,
       budgetLines: [],
-      hasApprovedBudget: false,
+      hasActiveBudget: false,
       fees: null,
       quoteCategory: quoteCat
     })
@@ -289,7 +325,7 @@ describe('consuntivoCalculations', () => {
       categories: [quoteCat, inCat, outCat],
       accounts,
       budgetLines: [],
-      hasApprovedBudget: false,
+      hasActiveBudget: false,
       fees: null,
       quoteCategory: quoteCat
     })

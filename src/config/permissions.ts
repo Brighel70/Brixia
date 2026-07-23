@@ -1,6 +1,6 @@
 /**
  * Permessi menu TeamFlow (CRUD per area).
- * Ambito dati / sezioni FlowMe: vedi `@brixia/shared` → `accessModel.ts`
+ * Ambito dati / sezioni FlowMe: vedi `@teamflow/shared` → `accessModel.ts`
  * e `RUOLI_E_PERMESSI.md`.
  */
 import {
@@ -8,7 +8,7 @@ import {
   getRoleAccessRule,
   type DataScope,
   type RoleAccessRule,
-} from '@brixia/shared'
+} from '@teamflow/shared'
 
 export { ROLE_ACCESS_MATRIX, getRoleAccessRule }
 export type { DataScope, RoleAccessRule }
@@ -71,6 +71,18 @@ export const PERMISSIONS = {
   BRAND: {
     MANAGE: 'brand.manage'
   },
+  DOCUMENTS: {
+    VIEW: 'documents.view',
+    MANAGE: 'documents.manage'
+  },
+  HEALTH: {
+    VIEW: 'health.view',
+    MANAGE: 'health.manage'
+  },
+  FEES: {
+    VIEW: 'fees.view',
+    MANAGE: 'fees.manage'
+  },
   ACCOUNTING: {
     VIEW: 'accounting.view',
     CREATE: 'accounting.create',
@@ -84,187 +96,6 @@ export const PERMISSIONS = {
   }
 } as const
 
-export const ROLES = {
-  ADMIN: 'Admin',
-  DIRIGENTE: 'Dirigente',
-  SEGRETERIA: 'Segreteria',
-  DIRETTORE_SPORTIVO: 'Direttore Sportivo',
-  DIRETTORE_TECNICO: 'Direttore Tecnico',
-  ALLENATORE: 'Allenatore',
-  GIOCATORE: 'Giocatore',
-  PREPARATORE: 'Preparatore Atletico',
-  TEAM_MANAGER: 'Team Manager',
-  ACCOMPAGNATORE: 'Accompagnatore',
-  MEDICO: 'Medico',
-  FISIO: 'Fisioterapista',
-  FAMIGLIA: 'Famiglia'
-} as const
-
-export const ROLE_PERMISSIONS = {
-  [ROLES.ADMIN]: [
-    // Admin ha accesso completo a tutto
-    ...Object.values(PERMISSIONS).flatMap(category => Object.values(category))
-  ],
-  [ROLES.DIRIGENTE]: [
-    // Dirigente: accesso quasi completo, tranne gestione utenti
-    PERMISSIONS.PLAYERS.VIEW,
-    PERMISSIONS.PLAYERS.CREATE,
-    PERMISSIONS.PLAYERS.EDIT,
-    PERMISSIONS.PLAYERS.DELETE,
-    PERMISSIONS.PLAYERS.EXPORT,
-    PERMISSIONS.EVENTS.VIEW,
-    PERMISSIONS.EVENTS.CREATE,
-    PERMISSIONS.EVENTS.EDIT,
-    PERMISSIONS.EVENTS.DELETE,
-    PERMISSIONS.SESSIONS.VIEW,
-    PERMISSIONS.SESSIONS.CREATE,
-    PERMISSIONS.SESSIONS.EDIT,
-    PERMISSIONS.SESSIONS.DELETE,
-    PERMISSIONS.SESSIONS.START,
-    PERMISSIONS.SESSIONS.STOP,
-    PERMISSIONS.ATTENDANCE.VIEW,
-    PERMISSIONS.ATTENDANCE.MARK,
-    PERMISSIONS.ATTENDANCE.EDIT,
-    PERMISSIONS.ATTENDANCE.EXPORT,
-    PERMISSIONS.STAFF.VIEW,
-    PERMISSIONS.CATEGORIES.VIEW,
-    PERMISSIONS.CATEGORIES.CREATE,
-    PERMISSIONS.CATEGORIES.EDIT,
-    PERMISSIONS.CATEGORIES.DELETE,
-    PERMISSIONS.SETTINGS.VIEW,
-    PERMISSIONS.SETTINGS.EDIT,
-    PERMISSIONS.SETTINGS.BRAND,
-    PERMISSIONS.USERS.VIEW,
-    PERMISSIONS.COUNCIL.MANAGE,
-    PERMISSIONS.BRAND.MANAGE
-  ],
-  [ROLES.SEGRETERIA]: [
-    // Segreteria: gestione amministrativa
-    PERMISSIONS.PLAYERS.VIEW,
-    PERMISSIONS.PLAYERS.CREATE,
-    PERMISSIONS.PLAYERS.EDIT,
-    PERMISSIONS.PLAYERS.EXPORT,
-    PERMISSIONS.STAFF.VIEW,
-    PERMISSIONS.CATEGORIES.VIEW,
-    PERMISSIONS.ATTENDANCE.VIEW,
-    PERMISSIONS.ATTENDANCE.EXPORT,
-    PERMISSIONS.SETTINGS.VIEW
-  ],
-  [ROLES.DIRETTORE_SPORTIVO]: [
-    // Direttore Sportivo: gestione sportiva
-    PERMISSIONS.PLAYERS.VIEW,
-    PERMISSIONS.PLAYERS.CREATE,
-    PERMISSIONS.PLAYERS.EDIT,
-    PERMISSIONS.PLAYERS.DELETE,
-    PERMISSIONS.EVENTS.VIEW,
-    PERMISSIONS.EVENTS.CREATE,
-    PERMISSIONS.EVENTS.EDIT,
-    PERMISSIONS.SESSIONS.VIEW,
-    PERMISSIONS.SESSIONS.CREATE,
-    PERMISSIONS.SESSIONS.EDIT,
-    PERMISSIONS.SESSIONS.DELETE,
-    PERMISSIONS.ATTENDANCE.VIEW,
-    PERMISSIONS.ATTENDANCE.MARK,
-    PERMISSIONS.ATTENDANCE.EDIT,
-    PERMISSIONS.CATEGORIES.VIEW,
-    PERMISSIONS.CATEGORIES.CREATE,
-    PERMISSIONS.CATEGORIES.EDIT
-  ],
-  [ROLES.DIRETTORE_TECNICO]: [
-    // Direttore Tecnico: gestione tecnica
-    PERMISSIONS.PLAYERS.VIEW,
-    PERMISSIONS.PLAYERS.CREATE,
-    PERMISSIONS.PLAYERS.EDIT,
-    PERMISSIONS.EVENTS.VIEW,
-    PERMISSIONS.EVENTS.CREATE,
-    PERMISSIONS.EVENTS.EDIT,
-    PERMISSIONS.SESSIONS.VIEW,
-    PERMISSIONS.SESSIONS.CREATE,
-    PERMISSIONS.SESSIONS.EDIT,
-    PERMISSIONS.ATTENDANCE.VIEW,
-    PERMISSIONS.ATTENDANCE.MARK,
-    PERMISSIONS.ATTENDANCE.EDIT,
-    PERMISSIONS.CATEGORIES.VIEW
-  ],
-  [ROLES.ALLENATORE]: [
-    // Allenatore: gestione allenamenti
-    PERMISSIONS.PLAYERS.VIEW,
-    PERMISSIONS.PLAYERS.EDIT,
-    PERMISSIONS.EVENTS.VIEW,
-    PERMISSIONS.EVENTS.CREATE,
-    PERMISSIONS.EVENTS.EDIT,
-    PERMISSIONS.SESSIONS.VIEW,
-    PERMISSIONS.SESSIONS.CREATE,
-    PERMISSIONS.SESSIONS.EDIT,
-    PERMISSIONS.SESSIONS.START,
-    PERMISSIONS.SESSIONS.STOP,
-    PERMISSIONS.ATTENDANCE.VIEW,
-    PERMISSIONS.ATTENDANCE.MARK,
-    PERMISSIONS.ATTENDANCE.EDIT,
-    PERMISSIONS.CATEGORIES.VIEW
-  ],
-  [ROLES.GIOCATORE]: [
-    // Giocatore: accesso limitato ai propri dati
-    PERMISSIONS.PLAYERS.VIEW,
-    PERMISSIONS.EVENTS.VIEW,
-    PERMISSIONS.SESSIONS.VIEW,
-    PERMISSIONS.ATTENDANCE.VIEW,
-    PERMISSIONS.CATEGORIES.VIEW
-  ],
-  [ROLES.PREPARATORE]: [
-    // Preparatore Atletico: gestione fisica
-    PERMISSIONS.PLAYERS.VIEW,
-    PERMISSIONS.PLAYERS.EDIT,
-    PERMISSIONS.EVENTS.VIEW,
-    PERMISSIONS.SESSIONS.VIEW,
-    PERMISSIONS.ATTENDANCE.VIEW,
-    PERMISSIONS.CATEGORIES.VIEW
-  ],
-  [ROLES.TEAM_MANAGER]: [
-    // Team Manager: gestione logistica
-    PERMISSIONS.PLAYERS.VIEW,
-    PERMISSIONS.EVENTS.VIEW,
-    PERMISSIONS.EVENTS.CREATE,
-    PERMISSIONS.EVENTS.EDIT,
-    PERMISSIONS.ATTENDANCE.VIEW,
-    PERMISSIONS.ATTENDANCE.MARK,
-    PERMISSIONS.CATEGORIES.VIEW
-  ],
-  [ROLES.ACCOMPAGNATORE]: [
-    // Accompagnatore: supporto trasferte
-    PERMISSIONS.PLAYERS.VIEW,
-    PERMISSIONS.EVENTS.VIEW,
-    PERMISSIONS.ATTENDANCE.VIEW,
-    PERMISSIONS.ATTENDANCE.MARK,
-    PERMISSIONS.CATEGORIES.VIEW
-  ],
-  [ROLES.MEDICO]: [
-    // Medico: gestione sanitaria
-    PERMISSIONS.PLAYERS.VIEW,
-    PERMISSIONS.PLAYERS.EDIT,
-    PERMISSIONS.ATTENDANCE.VIEW,
-    PERMISSIONS.CATEGORIES.VIEW
-  ],
-  [ROLES.FISIO]: [
-    // Fisioterapista: riabilitazione
-    PERMISSIONS.PLAYERS.VIEW,
-    PERMISSIONS.PLAYERS.EDIT,
-    PERMISSIONS.ATTENDANCE.VIEW,
-    PERMISSIONS.CATEGORIES.VIEW
-  ],
-  [ROLES.FAMIGLIA]: [
-    // Famiglia: tipicamente FlowMe; su TeamFlow solo lettura minima
-    PERMISSIONS.PLAYERS.VIEW,
-    PERMISSIONS.EVENTS.VIEW,
-    PERMISSIONS.ATTENDANCE.VIEW
-  ]
-}
-
-// Funzione helper per ottenere i permessi di un ruolo
-export const getRolePermissions = (role: string): string[] => {
-  return ROLE_PERMISSIONS[role as keyof typeof ROLE_PERMISSIONS] || []
-}
-
 // Funzione helper per ottenere la categoria di un permesso
 export const getPermissionCategory = (permission: string): string => {
   const categoryMap: Record<string, string> = {
@@ -277,7 +108,10 @@ export const getPermissionCategory = (permission: string): string => {
     'settings.': 'Impostazioni',
     'users.': 'Utenti',
     'council.': 'Consiglio',
-    'brand.': 'Brand'
+    'brand.': 'Brand',
+    'documents.': 'Documenti',
+    'health.': 'Sanitaria',
+    'fees.': 'Quote'
   }
 
   for (const [prefix, category] of Object.entries(categoryMap)) {

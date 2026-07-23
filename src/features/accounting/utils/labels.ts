@@ -53,26 +53,32 @@ export function movementDirectionBadgeClass(direction: MovementDirection): strin
   return map[direction] ?? 'bg-slate-100 text-slate-700'
 }
 
-export function movementStatusLabel(status: MovementStatus): string {
-  const map: Record<MovementStatus, string> = {
+export function movementStatusLabel(status: MovementStatus | string): string {
+  const normalized = String(status ?? '')
+    .trim()
+    .toLowerCase()
+  const map: Record<string, string> = {
     draft: 'Bozza',
     pending_account: 'Conto da assegnare',
     posted: 'Contabilizzato',
     reversed: 'Stornato',
     cancelled: 'Annullato'
   }
-  return map[status] ?? status
+  return map[normalized] ?? (normalized ? `Stato: ${normalized}` : 'Senza stato')
 }
 
-export function movementStatusBadgeClass(status: MovementStatus): string {
-  const map: Record<MovementStatus, string> = {
-    draft: 'bg-slate-100 text-slate-700',
+export function movementStatusBadgeClass(status: MovementStatus | string): string {
+  const normalized = String(status ?? '')
+    .trim()
+    .toLowerCase()
+  const map: Record<string, string> = {
+    draft: 'bg-amber-100 text-amber-900',
     pending_account: 'bg-amber-100 text-amber-800',
     posted: 'bg-emerald-100 text-emerald-800',
     reversed: 'bg-orange-100 text-orange-800',
     cancelled: 'bg-gray-200 text-gray-600'
   }
-  return map[status] ?? 'bg-slate-100 text-slate-700'
+  return map[normalized] ?? 'bg-slate-100 text-slate-700'
 }
 
 export function movementOriginLabel(origin: MovementOrigin): string {

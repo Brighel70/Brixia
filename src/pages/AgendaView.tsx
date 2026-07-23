@@ -19,7 +19,7 @@ function daysBetween(dateStart: string, dateEnd: string): number {
   const ms = b.getTime() - a.getTime()
   return Math.floor(ms / (24 * 60 * 60 * 1000))
 }
-import { checkOverlap, formatOverlapHardError, type OverlapActivity } from '@brixia/shared'
+import { checkOverlap, formatOverlapHardError, type OverlapActivity } from '@teamflow/shared'
 
 type Appointment = {
   id: string
@@ -1727,7 +1727,7 @@ export default function AgendaView({ embedInLayout = false }: AgendaViewProps) {
 
   return (
     <div
-      className={`flex flex-col w-full min-w-0 ${embedFromUrl ? 'min-h-screen bg-transparent' : embedInLayout ? 'h-full min-h-0 overflow-hidden min-h-full' : 'min-h-screen bg-gradient-to-br from-brixia-primary via-brixia-secondary to-brixia-accent'}`}
+      className={`flex flex-col w-full min-w-0 ${embedFromUrl ? 'min-h-screen bg-transparent' : embedInLayout ? 'h-full min-h-0 overflow-hidden min-h-full' : 'min-h-screen bg-gradient-to-br from-brand-primary via-brand-secondary to-brand-accent'}`}
       style={embedLight ? { backgroundColor: GOLEE.surfaceMuted } : undefined}
     >
       {!embedFromUrl && !embedInLayout && (
@@ -2995,13 +2995,13 @@ export default function AgendaView({ embedInLayout = false }: AgendaViewProps) {
               <li><span className="font-medium">Giocatore:</span> {notificationChoiceModal.playerName}</li>
             </ul>
             <div className="flex flex-col gap-2">
-              <button type="button" onClick={() => handleSendNotification('operator')} disabled={sendingNotification} className="w-full px-4 py-2.5 text-sm font-medium text-white bg-brixia-secondary rounded-lg hover:opacity-90 disabled:opacity-50">
+              <button type="button" onClick={() => handleSendNotification('operator')} disabled={sendingNotification} className="w-full px-4 py-2.5 text-sm font-medium text-white bg-brand-secondary rounded-lg hover:opacity-90 disabled:opacity-50">
                 {sendingNotification ? 'Invio...' : 'Solo all\'operatore'}
               </button>
-              <button type="button" onClick={() => handleSendNotification('player')} disabled={sendingNotification} className="w-full px-4 py-2.5 text-sm font-medium text-white bg-brixia-secondary rounded-lg hover:opacity-90 disabled:opacity-50">
+              <button type="button" onClick={() => handleSendNotification('player')} disabled={sendingNotification} className="w-full px-4 py-2.5 text-sm font-medium text-white bg-brand-secondary rounded-lg hover:opacity-90 disabled:opacity-50">
                 {sendingNotification ? 'Invio...' : 'Solo al giocatore'}
               </button>
-              <button type="button" onClick={() => handleSendNotification('both')} disabled={sendingNotification} className="w-full px-4 py-2.5 text-sm font-medium text-white bg-brixia-primary rounded-lg hover:opacity-90 disabled:opacity-50">
+              <button type="button" onClick={() => handleSendNotification('both')} disabled={sendingNotification} className="w-full px-4 py-2.5 text-sm font-medium text-white bg-brand-primary rounded-lg hover:opacity-90 disabled:opacity-50">
                 {sendingNotification ? 'Invio...' : 'A entrambi'}
               </button>
               <button type="button" onClick={() => setNotificationChoiceModal(null)} disabled={sendingNotification} className="w-full px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50">

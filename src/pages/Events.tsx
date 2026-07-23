@@ -49,6 +49,7 @@ import GoleeConfirmModal from '@/components/GoleeConfirmModal'
 import GoleeRenameFileModal from '@/components/GoleeRenameFileModal'
 import { getMatchListDisplayRole, getPlayerProfileRoleLabel } from '@/utils/personUtils'
 import { formatDisplayPersonName } from '@/lib/formatPersonName'
+import { resolveMatchListCreatedBy } from '@/lib/resolveMatchListCreatedBy'
 import { useAuth } from '@/store/auth'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useEventTypes } from '@/hooks/useEventTypes'
@@ -878,7 +879,7 @@ interface EventMatchList {
   category_id: string
   selected_players: { player_id: string; number: number }[]
   event_id: string | null
-  created_by: string
+  created_by: string | null
   created_at: string
 }
 
@@ -3658,25 +3659,6 @@ export default function Events({ embedInLayout = false }: EventsProps) {
     }
   }, [])
 
-  const resolveMatchListCreatedBy = async () => {
-    if (!profile) return null
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) return null
-
-    const candidateIds = [profile.person_id, user.id].filter(Boolean) as string[]
-    for (const candidateId of candidateIds) {
-      const { data: personData } = await supabase
-        .from('people')
-        .select('id')
-        .eq('id', candidateId)
-        .maybeSingle()
-      if (personData?.id) return personData.id
-    }
-
-    return null
-  }
-
   const handleEventMatchListConfirm = async (
     selectedPlayers: { player_id: string; number: number }[],
     listName: string,
@@ -3686,9 +3668,14 @@ export default function Events({ embedInLayout = false }: EventsProps) {
     if (!selectedEvent || selectedEvent.event_type !== 'partita') return
 
     try {
-      const createdBy = await resolveMatchListCreatedBy()
-      if (!createdBy) {
-        alert('Errore: impossibile determinare l\'utente per salvare la formazione.')
+      const isSuperAdmin = profile?.is_super_admin === true
+      const createdBy = isSuperAdmin ? null : await resolveMatchListCreatedBy(profile)
+      if (!createdBy && !isSuperAdmin) {
+        showFormAlert(
+          'Questo account non è ancora associato a un profilo operativo della società. Un Super Admin globale deve invece essere abilitato come tale, senza richiedere una scheda persona.',
+          'Lista gara non creata',
+          'warning',
+        )
         return
       }
 
@@ -3714,6 +3701,7 @@ export default function Events({ embedInLayout = false }: EventsProps) {
             selected_players: selectedPlayers,
             event_id: eventId ?? selectedEvent.id,
             created_by: createdBy,
+            created_by_profile_id: profile?.id ?? null,
           })
 
         if (error) throw error
@@ -3724,7 +3712,20 @@ export default function Events({ embedInLayout = false }: EventsProps) {
       await loadEventFormation(selectedEvent)
     } catch (error) {
       console.error('Errore nella gestione formazione:', error)
-      alert('Errore nel salvataggio della formazione')
+      const msg = error instanceof Error ? error.message : String(error)
+      if (/fetch|network|failed to load|name_not_resolved/i.test(msg)) {
+        showFormAlert(
+          'Verifica la connessione e riprova tra qualche istante.',
+          'Salvataggio non riuscito',
+          'error',
+        )
+      } else {
+        showFormAlert(
+          msg || 'Non è stato possibile salvare la lista gara.',
+          'Salvataggio non riuscito',
+          'error',
+        )
+      }
     }
   }
 
@@ -3952,8 +3953,20 @@ export default function Events({ embedInLayout = false }: EventsProps) {
       }
     } catch (uploadError) {
       console.error(`Errore nel caricamento di ${file.name}:`, uploadError)
+      const detail =
+        uploadError &&
+        typeof uploadError === 'object' &&
+        'message' in uploadError &&
+        typeof (uploadError as { message?: unknown }).message === 'string'
+          ? String((uploadError as { message: string }).message)
+          : ''
+      const isRls =
+        detail.toLowerCase().includes('row-level security') ||
+        detail.toLowerCase().includes('violates row-level security')
       showFormAlert(
-        `Errore nel caricamento di «${file.name}».`,
+        isRls
+          ? `Errore nel caricamento di «${file.name}».\n\nManca l’autorizzazione storage per i verbali eventi (path docs/events/). Applica la migration 046_allow_events_docs_storage.sql su Supabase, poi riprova.`
+          : `Errore nel caricamento di «${file.name}».`,
         'Caricamento non riuscito',
         'error',
       )
@@ -4011,8 +4024,20 @@ export default function Events({ embedInLayout = false }: EventsProps) {
           uploadedDocs.push({ file: filename, label })
         } catch (uploadError) {
           console.error(`Errore nel caricamento di ${file.name}:`, uploadError)
+          const detail =
+            uploadError &&
+            typeof uploadError === 'object' &&
+            'message' in uploadError &&
+            typeof (uploadError as { message?: unknown }).message === 'string'
+              ? String((uploadError as { message: string }).message)
+              : ''
+          const isRls =
+            detail.toLowerCase().includes('row-level security') ||
+            detail.toLowerCase().includes('violates row-level security')
           showFormAlert(
-            `Errore nel caricamento di «${file.name}».`,
+            isRls
+              ? `Errore nel caricamento di «${file.name}».\n\nManca l’autorizzazione storage per i verbali eventi (path docs/events/). Applica la migration 046_allow_events_docs_storage.sql su Supabase, poi riprova.`
+              : `Errore nel caricamento di «${file.name}».`,
             'Caricamento non riuscito',
             'error',
           )
@@ -6651,7 +6676,7 @@ export default function Events({ embedInLayout = false }: EventsProps) {
                 onClick={() => setEventsTab('eventi')}
                 className={`rounded-md px-3 py-1.5 text-[13px] font-semibold transition-colors focus:outline-none ${
                   eventsTab === 'eventi'
-                    ? 'bg-brixia-primary text-white shadow-sm'
+                    ? 'bg-brand-primary text-white shadow-sm'
                     : 'text-[#8A94A6] hover:text-[#1F2933]'
                 }`}
               >
@@ -6661,7 +6686,7 @@ export default function Events({ embedInLayout = false }: EventsProps) {
                 onClick={() => setEventsTab('archivio')}
                 className={`rounded-md px-3 py-1.5 text-[13px] font-semibold transition-colors focus:outline-none ${
                   eventsTab === 'archivio'
-                    ? 'bg-brixia-primary text-white shadow-sm'
+                    ? 'bg-brand-primary text-white shadow-sm'
                     : 'text-[#8A94A6] hover:text-[#1F2933]'
                 }`}
               >
@@ -6675,7 +6700,7 @@ export default function Events({ embedInLayout = false }: EventsProps) {
                 onClick={() => setEventsViewMode('list')}
                 className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] font-semibold transition-colors ${
                   eventsViewMode === 'list'
-                    ? 'bg-brixia-primary text-white shadow-sm'
+                    ? 'bg-brand-primary text-white shadow-sm'
                     : 'text-[#8A94A6]'
                 }`}
                 title="Vista Timeline"
@@ -6688,7 +6713,7 @@ export default function Events({ embedInLayout = false }: EventsProps) {
                 onClick={() => setEventsViewMode('calendar')}
                 className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] font-semibold transition-colors ${
                   eventsViewMode === 'calendar'
-                    ? 'bg-brixia-primary text-white shadow-sm'
+                    ? 'bg-brand-primary text-white shadow-sm'
                     : 'text-[#8A94A6]'
                 }`}
                 title="Vista Mese"
@@ -6759,7 +6784,7 @@ export default function Events({ embedInLayout = false }: EventsProps) {
               }}
               className={`mb-[1px] h-[34px] shrink-0 rounded-md px-3 text-[12px] font-semibold transition-colors ${
                 filterDate || filterEventType || filterCategory || filterKeyword.trim()
-                  ? 'bg-brixia-primary text-white hover:opacity-90'
+                  ? 'bg-brand-primary text-white hover:opacity-90'
                   : ''
               }`}
               style={

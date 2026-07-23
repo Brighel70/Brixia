@@ -1,16 +1,21 @@
 import { createPortal } from 'react-dom'
-import { FileText, Pencil, X } from 'lucide-react'
+import { ArrowRightLeft, CheckCircle2, FileText, Landmark, Pencil, Trash2, X } from 'lucide-react'
 import { GOLEE } from '@/config/goleeTheme'
 import { formatFeeAmount } from '@/utils/feeUtils'
 import type { AccountingMovementDetail } from '../types'
 import { isManualDraftEditable, isSystemMovementOrigin } from '../utils/movementHelpers'
+import {
+  isManualDraft,
+  isManualPosted,
+  needsAccountAssignment,
+  type MovementLifecycleAction
+} from '../utils/movementLifecycle'
 import {
   formatDocumentLabel,
   formatPaymentReferenceLabel,
   paymentMethodLabel
 } from '../utils/movementFormOptions'
 import {
-  movementDirectionBadgeClass,
   movementDirectionLabel,
   movementOriginLabel,
   movementStatusBadgeClass,
@@ -23,13 +28,17 @@ interface MovementDetailPanelProps {
   error: string | null
   movement: AccountingMovementDetail | null
   canEdit: boolean
+  canPost: boolean
+  canVerify?: boolean
   onClose: () => void
   onEdit: () => void
+  onEditTransfer: () => void
+  onLifecycleAction: (action: MovementLifecycleAction) => void
 }
 
-function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+function DetailField({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="py-3 border-b last:border-0" style={{ borderColor: GOLEE.border }}>
+    <div className="min-w-0 flex-1">
       <dt
         className="text-xs font-semibold uppercase tracking-wide"
         style={{ color: GOLEE.textMuted }}
@@ -43,20 +52,60 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
   )
 }
 
+function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="border-b py-3 last:border-0" style={{ borderColor: GOLEE.border }}>
+      <DetailField label={label} value={value} />
+    </div>
+  )
+}
+
+function DetailRowGroup({
+  children,
+  cols = 2
+}: {
+  children: React.ReactNode
+  cols?: 2 | 3
+}) {
+  return (
+    <div
+      className={`grid gap-3 border-b py-3 last:border-0 ${
+        cols === 3 ? 'grid-cols-3' : 'grid-cols-2'
+      }`}
+      style={{ borderColor: GOLEE.border }}
+    >
+      {children}
+    </div>
+  )
+}
+
 export function MovementDetailPanel({
   open,
   loading,
   error,
   movement,
   canEdit,
+  canPost,
+  canVerify = false,
   onClose,
-  onEdit
+  onEdit,
+  onEditTransfer,
+  onLifecycleAction
 }: MovementDetailPanelProps) {
   if (!open || typeof document === 'undefined') return null
 
   const editable =
     movement && canEdit && isManualDraftEditable(movement.origin, movement.status)
   const systemOrigin = movement ? isSystemMovementOrigin(movement.origin) : false
+  const canPostMovement = !!movement && canPost && isManualDraft(movement.origin, movement.status)
+  const canVerifyMovement =
+    !!movement &&
+    canVerify &&
+    isManualDraft(movement.origin, movement.status) &&
+    !movement.verified_at
+  const canCancelMovement = !!movement && canEdit && isManualDraft(movement.origin, movement.status)
+  const canReverseMovement = !!movement && canPost && isManualPosted(movement.origin, movement.status)
+  const canAssignAccount = !!movement && canPost && needsAccountAssignment(movement.origin, movement.status)
 
   return createPortal(
     <div
@@ -91,6 +140,23 @@ export function MovementDetailPanel({
             <div>
               <h2 className="text-lg font-bold tracking-tight" style={{ color: GOLEE.text }}>
                 Dettaglio movimento
+                {movement &&
+                  (movement.direction === 'income' || movement.direction === 'expense') && (
+                    <>
+                      {' '}
+                      (
+                      <span
+                        className={
+                          movement.direction === 'income'
+                            ? 'font-bold text-emerald-600'
+                            : 'font-bold text-rose-600'
+                        }
+                      >
+                        {movementDirectionLabel(movement.direction)}
+                      </span>
+                      )
+                    </>
+                  )}
               </h2>
               {movement && (
                 <p className="mt-0.5 text-sm" style={{ color: GOLEE.textMuted }}>
@@ -145,69 +211,92 @@ export function MovementDetailPanel({
               )}
 
               <dl>
-                <DetailRow
-                  label="Data movimento"
-                  value={new Date(movement.movement_date).toLocaleDateString('it-IT')}
-                />
-                <DetailRow
-                  label="Data pagamento"
-                  value={
-                    movement.settlement_date
-                      ? new Date(movement.settlement_date).toLocaleDateString('it-IT')
-                      : '—'
-                  }
-                />
-                <DetailRow
-                  label="Direzione"
-                  value={
-                    <span
-                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${movementDirectionBadgeClass(movement.direction)}`}
-                    >
-                      {movementDirectionLabel(movement.direction)}
-                    </span>
-                  }
-                />
-                <DetailRow label="Importo" value={formatFeeAmount(movement.amount_cents)} />
-                <DetailRow
-                  label="Conto"
-                  value={
-                    movement.account
-                      ? `${movement.account.code} — ${movement.account.name}`
-                      : '—'
-                  }
-                />
-                <DetailRow
-                  label="Categoria"
-                  value={
-                    movement.category
-                      ? `${movement.category.code} — ${movement.category.name}`
-                      : '—'
-                  }
-                />
-                <DetailRow label="Origine" value={movementOriginLabel(movement.origin)} />
-                <DetailRow
-                  label="Stato"
-                  value={
-                    <span
-                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${movementStatusBadgeClass(movement.status)}`}
-                    >
-                      {movementStatusLabel(movement.status)}
-                    </span>
-                  }
-                />
-                <DetailRow
-                  label="Metodo pagamento"
-                  value={paymentMethodLabel(movement.payment_method_raw)}
-                />
-                <DetailRow label="Documento" value={formatDocumentLabel(movement)} />
-                <DetailRow
-                  label="Data documento"
-                  value={
-                    movement.document_date
-                      ? new Date(movement.document_date).toLocaleDateString('it-IT')
-                      : '—'
-                  }
-                />
+                <DetailRowGroup>
+                  <DetailField
+                    label="Data movimento"
+                    value={new Date(movement.movement_date).toLocaleDateString('it-IT')}
+                  />
+                  <DetailField
+                    label="Data pagamento"
+                    value={
+                      movement.settlement_date
+                        ? new Date(movement.settlement_date).toLocaleDateString('it-IT')
+                        : '—'
+                    }
+                  />
+                </DetailRowGroup>
+                <DetailRowGroup>
+                  <DetailField
+                    label="Importo"
+                    value={formatFeeAmount(movement.amount_cents)}
+                  />
+                  <DetailField
+                    label="Conto"
+                    value={movement.account ? movement.account.name : '—'}
+                  />
+                </DetailRowGroup>
+                {movement.direction === 'transfer' && (
+                  <DetailRow
+                    label="Conto di destinazione"
+                    value={movement.transfer_account ? movement.transfer_account.name : '—'}
+                  />
+                )}
+                <DetailRowGroup>
+                  <DetailField
+                    label="Categoria"
+                    value={movement.category?.code ?? '—'}
+                  />
+                  <DetailField
+                    label="Sottocategoria"
+                    value={movement.category?.name ?? '—'}
+                  />
+                </DetailRowGroup>
+                <DetailRowGroup>
+                  <DetailField
+                    label="Stato"
+                    value={
+                      <span className="inline-flex flex-wrap items-center gap-1.5">
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${movementStatusBadgeClass(movement.status)}`}
+                          title={`Stato tecnico: ${movement.status}`}
+                          translate="no"
+                        >
+                          {movementStatusLabel(movement.status)}
+                        </span>
+                        {movement.verified_at && (
+                          <span
+                            className="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-800"
+                            title={
+                              movement.verification_note
+                                ? movement.verification_note
+                                : `Verificato il ${new Date(movement.verified_at).toLocaleString('it-IT')}`
+                            }
+                          >
+                            Verificato
+                          </span>
+                        )}
+                      </span>
+                    }
+                  />
+                  <DetailField
+                    label="Metodo pagamento"
+                    value={paymentMethodLabel(movement.payment_method_raw)}
+                  />
+                </DetailRowGroup>
+                <DetailRowGroup>
+                  <DetailField
+                    label="Documento"
+                    value={formatDocumentLabel(movement)}
+                  />
+                  <DetailField
+                    label="Data documento"
+                    value={
+                      movement.document_date
+                        ? new Date(movement.document_date).toLocaleDateString('it-IT')
+                        : '—'
+                    }
+                  />
+                </DetailRowGroup>
                 <DetailRow
                   label="Riferimento pagamento"
                   value={formatPaymentReferenceLabel(movement)}
@@ -258,38 +347,107 @@ export function MovementDetailPanel({
                     )
                   }
                 />
-                <DetailRow
-                  label="Creato il"
-                  value={
-                    movement.created_at
-                      ? new Date(movement.created_at).toLocaleString('it-IT')
-                      : '—'
-                  }
-                />
-                <DetailRow
-                  label="Aggiornato il"
-                  value={
-                    movement.updated_at
-                      ? new Date(movement.updated_at).toLocaleString('it-IT')
-                      : '—'
-                  }
-                />
+                <DetailRowGroup>
+                  <DetailField
+                    label="Creato il"
+                    value={
+                      movement.created_at
+                        ? new Date(movement.created_at).toLocaleString('it-IT')
+                        : '—'
+                    }
+                  />
+                  <DetailField
+                    label="Aggiornato il"
+                    value={
+                      movement.updated_at
+                        ? new Date(movement.updated_at).toLocaleString('it-IT')
+                        : '—'
+                    }
+                  />
+                </DetailRowGroup>
               </dl>
             </>
           )}
         </div>
 
-        {editable && (
+        {movement && !loading && (
           <div className="border-t px-5 py-4" style={{ borderColor: GOLEE.border }}>
-            <button
-              type="button"
-              onClick={onEdit}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(0,196,140,0.3)]"
-              style={{ backgroundColor: GOLEE.accent }}
-            >
-              <Pencil className="h-4 w-4" />
-              Modifica bozza
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              {editable && (
+                <button
+                  type="button"
+                  onClick={movement.direction === 'transfer' ? onEditTransfer : onEdit}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold"
+                  style={{
+                    color: GOLEE.text,
+                    backgroundColor: GOLEE.surfaceMuted
+                  }}
+                >
+                  <Pencil className="h-4 w-4" />
+                  {movement.direction === 'transfer' ? 'Modifica giroconto' : 'Modifica bozza'}
+                </button>
+              )}
+              {canVerifyMovement && (
+                <button
+                  type="button"
+                  onClick={() => onLifecycleAction('verify')}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-sky-800/35 bg-sky-600 px-4 py-3 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(2,132,199,0.25)]"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  Verifica
+                </button>
+              )}
+              {canPostMovement && (
+                <button
+                  type="button"
+                  onClick={() => onLifecycleAction('post')}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-700/40 px-4 py-3 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(0,196,140,0.3)]"
+                  style={{ backgroundColor: GOLEE.accent }}
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  Contabilizza
+                </button>
+              )}
+              {canAssignAccount && (
+                <button
+                  type="button"
+                  onClick={() => onLifecycleAction('assign_account')}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-800/35 bg-[#1677FF] px-4 py-3 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(22,119,255,0.25)]"
+                >
+                  <Landmark className="h-4 w-4" />
+                  Assegna conto
+                </button>
+              )}
+              {canReverseMovement && (
+                <button
+                  type="button"
+                  onClick={() => onLifecycleAction('reverse')}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-orange-800/35 bg-orange-600 px-4 py-3 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(234,88,12,0.22)]"
+                >
+                  <ArrowRightLeft className="h-4 w-4" />
+                  Storna movimento
+                </button>
+              )}
+              {canCancelMovement && (
+                <button
+                  type="button"
+                  onClick={() => onLifecycleAction('cancel')}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Annulla bozza
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onClose}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                style={{ backgroundColor: GOLEE.surface }}
+              >
+                <X className="h-4 w-4" />
+                Chiudi
+              </button>
+            </div>
           </div>
         )}
       </aside>

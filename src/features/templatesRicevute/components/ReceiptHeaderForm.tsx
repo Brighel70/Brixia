@@ -6,7 +6,7 @@ const FIELDS: { key: keyof Pick<
   import('../types').ReceiptHeaderSettings,
   'nome_associazione' | 'sede_legale' | 'cf_associazione' | 'piva_associazione' | 'affiliazione_fir' | 'luogo'
 >; label: string; placeholder: string }[] = [
-  { key: 'nome_associazione', label: 'Nome associazione', placeholder: 'Es. A.S.D. Brixia Rugby' },
+  { key: 'nome_associazione', label: 'Nome associazione', placeholder: 'Es. A.S.D. nome società' },
   { key: 'sede_legale', label: 'Sede legale', placeholder: 'Es. Via Roma 1, 25100 Brescia' },
   { key: 'cf_associazione', label: 'Codice fiscale associazione', placeholder: 'Es. 12345678901' },
   { key: 'piva_associazione', label: 'P.IVA associazione', placeholder: 'Es. IT12345678901' },

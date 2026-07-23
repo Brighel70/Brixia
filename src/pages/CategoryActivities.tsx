@@ -20,6 +20,9 @@ import TrainingVenueSelect from '@/components/TrainingVenueSelect'
 import { useTrainingVenues } from '@/hooks/useTrainingVenues'
 import { readCategoryIds, personHasCategory } from '@/lib/categoryMemberships'
 import { formatDisplayPersonName } from '@/lib/formatPersonName'
+import { getBrandConfig } from '@/config/brand'
+import GoleeAlertModal, { type GoleeAlertVariant } from '@/components/GoleeAlertModal'
+import { resolveMatchListCreatedBy } from '@/lib/resolveMatchListCreatedBy'
 
 const statuses = [
   { key: 'PRESENTE', short: 'P' },
@@ -151,6 +154,11 @@ export default function CategoryActivities({ embedInLayout = false }: CategoryAc
   const [selectedListDetails, setSelectedListDetails] = useState<any>(null)
   const [showMatchScorecard, setShowMatchScorecard] = useState(false)
   const [selectedMatchList, setSelectedMatchList] = useState<any>(null)
+  const [matchListAlert, setMatchListAlert] = useState<{
+    title: string
+    message: string
+    variant: GoleeAlertVariant
+  } | null>(null)
 
   // Titolo header: "Attività [Nome Categoria]" (es. Attività Serie B)
   useEffect(() => {
@@ -1788,7 +1796,11 @@ export default function CategoryActivities({ embedInLayout = false }: CategoryAc
     }
   }
 
-    const handleMatchListConfirm = async (selectedPlayers: any[], listName: string, listType: string, eventId?: string) => {
+    /*
+     * Flusso storico disattivato: creava una persona tecnica quando mancava
+     * il collegamento del profilo. La gestione attiva e' subito sotto.
+     */
+    const legacyHandleMatchListConfirm = async (selectedPlayers: any[], listName: string, listType: string, eventId?: string) => {
       try {
         // Verifica che il profilo sia caricato
         if (!profile) {
@@ -1984,6 +1996,72 @@ export default function CategoryActivities({ embedInLayout = false }: CategoryAc
       }
     }
 
+
+  const handleMatchListConfirm = async (selectedPlayers: any[], listName: string, listType: string, eventId?: string) => {
+    if (!profile) {
+      setMatchListAlert({
+        title: 'Profilo non disponibile',
+        message: 'Ricarica la pagina e riprova.',
+        variant: 'warning',
+      })
+      return
+    }
+
+    try {
+      const isSuperAdmin = profile.is_super_admin === true
+      const createdBy = isSuperAdmin ? null : await resolveMatchListCreatedBy(profile)
+
+      if (!createdBy && !isSuperAdmin) {
+        setMatchListAlert({
+          title: 'Lista gara non creata',
+          message: 'Questo account non e ancora associato a una persona operativa della societa. Chiedi alla segreteria di completare il collegamento tra profilo e anagrafica.',
+          variant: 'warning',
+        })
+        return
+      }
+
+      if (editingMatchList) {
+        const { error } = await supabase
+          .from('match_lists')
+          .update({
+            name: listName,
+            type: listType,
+            selected_players: selectedPlayers,
+            event_id: eventId,
+          })
+          .eq('id', editingMatchList.id)
+
+        if (error) throw error
+      } else {
+        const { error } = await supabase
+          .from('match_lists')
+          .insert({
+            name: listName,
+            type: listType,
+            category_id: currentCategoryId,
+            selected_players: selectedPlayers,
+            event_id: eventId,
+            created_by: createdBy,
+            created_by_profile_id: profile.id,
+          })
+
+        if (error) throw error
+      }
+
+      await loadSavedLists(currentCategoryId)
+      setEditingMatchList(null)
+      setShowMatchListModal(false)
+      setMatchListAlert({
+        title: editingMatchList ? 'Lista gara aggiornata' : 'Lista gara creata',
+        message: 'Le selezioni sono state salvate correttamente.',
+        variant: 'success',
+      })
+    } catch (error) {
+      console.error('Error with match list:', error)
+      const message = error instanceof Error ? error.message : 'Non e stato possibile salvare la lista gara.'
+      setMatchListAlert({ title: 'Salvataggio non riuscito', message, variant: 'error' })
+    }
+  }
 
   const editMatchList = (list: any) => {
     // Imposta la lista da modificare
@@ -2214,7 +2292,7 @@ export default function CategoryActivities({ embedInLayout = false }: CategoryAc
       doc.setFillColor(darkBlue[0], darkBlue[1], darkBlue[2])
       doc.rect(0, 0, pageWidth, 50, 'F')
       
-      // Carica e inserisce il logo Brixia Rugby
+      // Carica e inserisce il logo società (brand)
       try {
         // Usa il logo bianco e celeste per lo sfondo scuro
         const logoResponse = await fetch('/logo bianco e celeste.png')
@@ -2334,7 +2412,7 @@ export default function CategoryActivities({ embedInLayout = false }: CategoryAc
       doc.setTextColor(156, 163, 175) // gray-400
       doc.setFontSize(8)
       doc.setFont('helvetica', 'normal')
-      doc.text('Generato automaticamente da Brixia Rugby Management System', pageWidth / 2, footerY + 8, { align: 'center' })
+      doc.text(`${getBrandConfig().clubName || 'Società'} · Generato da TeamFlow`, pageWidth / 2, footerY + 8, { align: 'center' })
       
       // Data generazione
       const now = new Date()
@@ -2373,7 +2451,7 @@ export default function CategoryActivities({ embedInLayout = false }: CategoryAc
       {!embedInLayout && <Header title={categoryName} showBack={true} hideCenterLogo={true} />}
       
       {/* Tab bar: a sinistra sempre la scelta non fatta (Partite se sei in Allenamenti, Allenamenti se sei in Partite). A destra i tag del contesto corrente, sempre gli stessi. */}
-      <div className="bg-[#232C4A] border-t border-slate-600 shadow-sm">
+      <div className="bg-brand-primary border-t border-white/10 shadow-sm">
         <div className="max-w-[min(1800px,96vw)] w-full mx-auto px-4">
           <div className="flex items-center justify-between">
             {/* Sinistra: sempre la scelta non fatta (per passare all'altra vista) */}
@@ -4105,6 +4183,14 @@ export default function CategoryActivities({ embedInLayout = false }: CategoryAc
         categoryId={currentCategoryId || ''}
         editingList={editingMatchList}
         initialEventId={selectedEventForList}
+      />
+
+      <GoleeAlertModal
+        open={matchListAlert != null}
+        title={matchListAlert?.title ?? ''}
+        message={matchListAlert?.message ?? ''}
+        variant={matchListAlert?.variant ?? 'info'}
+        onClose={() => setMatchListAlert(null)}
       />
 
       {/* Modal per visualizzare le liste salvate */}

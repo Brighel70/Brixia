@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import Header from '@/components/Header'
 import { PERMISSIONS } from '@/config/permissions'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -6,7 +7,9 @@ import { AccountingKpiCards } from '@/features/accounting/components/AccountingK
 import { AccountingPageHeader } from '@/features/accounting/components/AccountingPageHeader'
 import { MovementDetailPanel } from '@/features/accounting/components/MovementDetailPanel'
 import { MovementFormModal } from '@/features/accounting/components/MovementFormModal'
+import { MovementLifecycleModal } from '@/features/accounting/components/MovementLifecycleModal'
 import { MovementsTab } from '@/features/accounting/components/MovementsTab'
+import { TransferFormModal } from '@/features/accounting/components/TransferFormModal'
 import { OverviewTab } from '@/features/accounting/components/OverviewTab'
 import { ReceivablesTab } from '@/features/accounting/components/ReceivablesTab'
 import { SyncTab } from '@/features/accounting/components/SyncTab'
@@ -14,16 +17,22 @@ import { BudgetTab } from '@/features/accounting/components/BudgetTab'
 import { ConsuntivoTab } from '@/features/accounting/components/ConsuntivoTab'
 import { VatSponsorTab } from '@/features/accounting/components/VatSponsorTab'
 import { CounterpartiesTab } from '@/features/accounting/components/CounterpartiesTab'
+import { ReconciliationTab } from '@/features/accounting/components/ReconciliationTab'
+import { FiscalYearCloseWizard } from '@/features/accounting/components/FiscalYearCloseWizard'
+import { DeadlinesTab } from '@/features/accounting/components/DeadlinesTab'
+import { AuditTab } from '@/features/accounting/components/AuditTab'
 import { ACCOUNTING_TABS } from '@/features/accounting/constants'
 import { useAccountingPage } from '@/features/accounting/hooks/useAccountingPage'
 import type { AccountingTabId } from '@/features/accounting/types'
 import { isFiscalYearOpenForEditing } from '@/features/accounting/utils/movementValidation'
+import type { MovementLifecycleAction } from '@/features/accounting/utils/movementLifecycle'
 
 interface AccountingManagementProps {
   embedInLayout?: boolean
 }
 
 export default function AccountingManagement({ embedInLayout = false }: AccountingManagementProps) {
+  const [lifecycleAction, setLifecycleAction] = useState<MovementLifecycleAction | null>(null)
   const { hasPermission, isAdmin } = usePermissions()
   const canVerify = isAdmin() || hasPermission(PERMISSIONS.ACCOUNTING.VERIFY)
   const canCreate = isAdmin() || hasPermission(PERMISSIONS.ACCOUNTING.CREATE)
@@ -31,6 +40,8 @@ export default function AccountingManagement({ embedInLayout = false }: Accounti
   const canApprove = isAdmin() || hasPermission(PERMISSIONS.ACCOUNTING.POST)
   const canExport = isAdmin() || hasPermission(PERMISSIONS.ACCOUNTING.EXPORT)
   const canManageSettings = isAdmin() || hasPermission(PERMISSIONS.ACCOUNTING.MANAGE_SETTINGS)
+  const canClosePeriod = isAdmin() || hasPermission(PERMISSIONS.ACCOUNTING.CLOSE_PERIOD)
+  const canAuditView = isAdmin() || hasPermission(PERMISSIONS.ACCOUNTING.AUDIT_VIEW)
 
   const {
     loading,
@@ -77,16 +88,28 @@ export default function AccountingManagement({ embedInLayout = false }: Accounti
     movementFormMode,
     movementFormInitial,
     movementSaving,
+    movementsPdfGenerating,
     openCreateMovement,
     openEditMovement,
     closeMovementForm,
     saveMovementForm,
+    generateMovementsPdfAction,
+    transferFormOpen,
+    transferFormMode,
+    transferFormInitial,
+    transferSaving,
+    openCreateTransfer,
+    openEditTransfer,
+    closeTransferForm,
+    saveTransferForm,
     detailOpen,
     detailMovement,
     detailLoading,
     detailError,
     openMovementDetail,
     closeMovementDetail,
+    lifecycleSaving,
+    runMovementLifecycleAction,
     budget,
     budgetLines,
     budgetComparison,
@@ -106,10 +129,28 @@ export default function AccountingManagement({ embedInLayout = false }: Accounti
     resetConsuntivoFilters,
     consuntivoMovements,
     consuntivoBudgetLines,
-    consuntivoHasApprovedBudget,
+    consuntivoHasActiveBudget,
     consuntivoFees,
     consuntivoLoading,
     consuntivoError,
+    reconciliationSessions,
+    selectedReconciliationSessionId,
+    reconciliationLines,
+    reconciliationSummary,
+    reconciliationCandidates,
+    reconciliationLoading,
+    reconciliationSaving,
+    reconciliationError,
+    loadReconciliation,
+    selectReconciliationSession,
+    createReconciliationSessionAction,
+    addReconciliationLineAction,
+    importReconciliationCsvAction,
+    matchReconciliationLineAction,
+    unmatchReconciliationLineAction,
+    excludeReconciliationLineAction,
+    completeReconciliationSessionAction,
+    cancelReconciliationSessionAction,
     vatDocuments,
     vatPeriods,
     vatCounterparties,
@@ -141,7 +182,23 @@ export default function AccountingManagement({ embedInLayout = false }: Accounti
     createCounterpartyAction,
     updateCounterpartyAction,
     archiveCounterpartyAction,
-    reactivateCounterpartyAction
+    reactivateCounterpartyAction,
+    closingChecklist,
+    closingChecklistLoading,
+    loadClosingChecklist,
+    openFiscalYearAction,
+    startClosingAction,
+    closeFiscalYearAction,
+    reopenFiscalYearAction,
+    deadlines,
+    deadlinesLoading,
+    loadDeadlines,
+    createDeadlineAction,
+    setDeadlineStatusAction,
+    auditRows,
+    auditLoading,
+    auditError,
+    loadAudit
   } = useAccountingPage()
 
   const fiscalYearOpen = isFiscalYearOpenForEditing(selectedFiscalYear)
@@ -186,6 +243,25 @@ export default function AccountingManagement({ embedInLayout = false }: Accounti
         onRefresh={() => void refresh()}
       />
 
+      {canClosePeriod && (
+        <div className="mb-4">
+          <FiscalYearCloseWizard
+            fiscalYear={selectedFiscalYear}
+            checklist={closingChecklist}
+            loading={closingChecklistLoading}
+            canClose={canClosePeriod}
+            canReopen={isAdmin()}
+            onRefreshChecklist={async () => {
+              await loadClosingChecklist()
+            }}
+            onOpen={openFiscalYearAction}
+            onStartClosing={startClosingAction}
+            onClose={closeFiscalYearAction}
+            onReopen={reopenFiscalYearAction}
+          />
+        </div>
+      )}
+
       {error && (
         <div className="mb-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">
           {error}
@@ -215,7 +291,7 @@ export default function AccountingManagement({ embedInLayout = false }: Accounti
                 onClick={() => setActiveTab(tab.id as AccountingTabId)}
                 className={`border-b-2 py-2 px-1 text-sm font-medium transition-colors ${
                   activeTab === tab.id
-                    ? 'border-brixia-secondary text-white'
+                    ? 'border-brand-secondary text-white'
                     : 'border-transparent text-white/60 hover:text-white/90'
                 }`}
               >
@@ -253,8 +329,19 @@ export default function AccountingManagement({ embedInLayout = false }: Accounti
               loading={movementsLoading}
               error={movementsError}
               canCreate={canCreate}
+              canExport={canExport}
               fiscalYearOpen={fiscalYearOpen}
               onCreateClick={openCreateMovement}
+              onCreateTransferClick={openCreateTransfer}
+              pdfGenerating={movementsPdfGenerating}
+              onGeneratePdf={async () => {
+                try {
+                  await generateMovementsPdfAction()
+                  toast.success('PDF della Prima nota generato')
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : 'Generazione PDF non riuscita')
+                }
+              }}
               onMovementClick={(m) => void openMovementDetail(m)}
             />
           )}
@@ -286,6 +373,7 @@ export default function AccountingManagement({ embedInLayout = false }: Accounti
               canCreate={canCreate}
               canEditDraft={canEditDraft}
               canApprove={canApprove}
+              canExport={canExport}
               onCreateBudget={async () => {
                 try {
                   await createBudgetForYear()
@@ -361,7 +449,7 @@ export default function AccountingManagement({ embedInLayout = false }: Accounti
               accounts={accounts}
               categories={categories}
               budgetLines={consuntivoBudgetLines}
-              hasApprovedBudget={consuntivoHasApprovedBudget}
+              hasActiveBudget={consuntivoHasActiveBudget}
               fees={consuntivoFees}
               filters={consuntivoFilters}
               onFiltersChange={handleConsuntivoFiltersChange}
@@ -369,6 +457,56 @@ export default function AccountingManagement({ embedInLayout = false }: Accounti
               loading={consuntivoLoading}
               error={consuntivoError}
               canExport={canExport}
+              onOpenReconciliation={() => setActiveTab('reconciliation')}
+            />
+          )}
+          {activeTab === 'reconciliation' && (
+            <ReconciliationTab
+              fiscalYear={selectedFiscalYear}
+              accounts={accounts}
+              sessions={reconciliationSessions}
+              selectedSessionId={selectedReconciliationSessionId}
+              lines={reconciliationLines}
+              summary={reconciliationSummary}
+              candidates={reconciliationCandidates}
+              loading={reconciliationLoading}
+              saving={reconciliationSaving}
+              error={reconciliationError}
+              canVerify={canVerify}
+              onSelectSession={(id) => void selectReconciliationSession(id)}
+              onRefresh={() => void loadReconciliation()}
+              onCreateSession={createReconciliationSessionAction}
+              onAddLine={addReconciliationLineAction}
+              onImportCsv={importReconciliationCsvAction}
+              onMatch={matchReconciliationLineAction}
+              onUnmatch={unmatchReconciliationLineAction}
+              onExclude={excludeReconciliationLineAction}
+              onComplete={completeReconciliationSessionAction}
+              onCancel={cancelReconciliationSessionAction}
+            />
+          )}
+          {activeTab === 'deadlines' && (
+            <DeadlinesTab
+              fiscalYear={selectedFiscalYear}
+              deadlines={deadlines}
+              loading={deadlinesLoading}
+              canManage={canCreate || canManageSettings}
+              onRefresh={() => void loadDeadlines()}
+              onCreate={async (input) => {
+                await createDeadlineAction(input)
+              }}
+              onSetStatus={async (id, status) => {
+                await setDeadlineStatusAction(id, status)
+              }}
+            />
+          )}
+          {activeTab === 'audit' && (
+            <AuditTab
+              rows={auditRows}
+              loading={auditLoading}
+              error={auditError}
+              canView={canAuditView}
+              onRefresh={() => void loadAudit()}
             />
           )}
           {activeTab === 'vat_sponsor' && (
@@ -606,15 +744,68 @@ export default function AccountingManagement({ embedInLayout = false }: Accounti
         onSubmit={handleSaveMovement}
       />
 
+      <TransferFormModal
+        isOpen={transferFormOpen}
+        mode={transferFormMode}
+        fiscalYear={selectedFiscalYear}
+        accounts={accounts}
+        initialValues={transferFormInitial}
+        saving={transferSaving}
+        onClose={closeTransferForm}
+        onSubmit={async (values, amountCents) => {
+          try {
+            await saveTransferForm(values, amountCents)
+            toast.success(transferFormMode === 'create' ? 'Bozza giroconto salvata' : 'Giroconto aggiornato')
+          } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Salvataggio giroconto non riuscito')
+            throw err
+          }
+        }}
+      />
+
       <MovementDetailPanel
         open={detailOpen}
         loading={detailLoading}
         error={detailError}
         movement={detailMovement}
         canEdit={canEditDraft}
+        canPost={canApprove}
+        canVerify={canVerify}
         onClose={closeMovementDetail}
         onEdit={() => {
           if (detailMovement) void openEditMovement(detailMovement.id)
+        }}
+        onEditTransfer={() => {
+          if (detailMovement) void openEditTransfer(detailMovement.id)
+        }}
+        onLifecycleAction={(action) => setLifecycleAction(action)}
+      />
+
+      <MovementLifecycleModal
+        action={lifecycleAction}
+        movement={detailMovement}
+        fiscalYear={selectedFiscalYear}
+        accounts={accounts}
+        saving={lifecycleSaving}
+        onClose={() => {
+          if (!lifecycleSaving) setLifecycleAction(null)
+        }}
+        onConfirm={async (request) => {
+          try {
+            await runMovementLifecycleAction(request)
+            const messages: Record<MovementLifecycleAction, string> = {
+              post: 'Movimento contabilizzato',
+              cancel: 'Bozza annullata',
+              reverse: 'Storno creato correttamente',
+              assign_account: 'Conto assegnato e movimento contabilizzato',
+              verify: 'Movimento verificato'
+            }
+            toast.success(messages[request.action])
+            setLifecycleAction(null)
+          } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Operazione non riuscita')
+            throw err
+          }
         }}
       />
     </>

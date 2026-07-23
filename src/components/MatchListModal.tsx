@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Check, RotateCcw } from 'lucide-react';
+import { Check, RotateCcw, X } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { getPositionDisplayName } from '@/utils/personUtils';
 import { readCategoryIds, expandCategoryFilterIds, loadPlayersForCategories } from '@/lib/categoryMemberships';
 import { formatDisplayPersonName } from '@/lib/formatPersonName';
-
+import { GOLEE } from '@/config/goleeTheme';
 // Tabella dei ruoli del rugby
 const RUGBY_ROLES: { [key: number]: string } = {
   1: 'Pilone SX',
@@ -44,7 +44,7 @@ interface MatchList {
   type: 'match' | 'friendly' | 'training';
   event_id: string | null;
   selected_players: { player_id: string; number: number }[];
-  created_by: string;
+  created_by: string | null;
   created_at: string;
   updated_at?: string;
   events?: {
@@ -418,20 +418,41 @@ const MatchListModal: React.FC<MatchListModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white text-gray-900 rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B1220]/50 p-4 backdrop-blur-[2px]"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="match-list-modal-title"
+    >
+      <div
+        className="bg-white text-gray-900 rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6 rounded-t-2xl">
-          <div>
-            <h2 className="text-2xl font-bold">
+        <div
+          className="relative rounded-t-2xl px-6 py-5 text-white"
+          style={{ backgroundColor: 'var(--brand-primary, #0b1f4d)' }}
+        >
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute right-3 top-3 rounded-xl p-2 text-white/80 transition-colors hover:bg-white/15 hover:text-white"
+            aria-label="Chiudi"
+            title="Chiudi"
+          >
+            <X className="h-5 w-5" strokeWidth={2} />
+          </button>
+          <div className="pr-10">
+            <h2 id="match-list-modal-title" className="text-2xl font-bold">
               {editingList ? 'Modifica Lista Gara' : 'Crea Lista Gara'}
               {linkedMatchTitle ? `: ${linkedMatchTitle}` : ''}
             </h2>
             {linkedMatchDateLabel && (
-              <p className="mt-1 text-blue-100 text-sm">{linkedMatchDateLabel}</p>
+              <p className="mt-1 text-sm text-white/75">{linkedMatchDateLabel}</p>
             )}
             {step === 'players' && (
-              <p className="text-blue-50 mt-2 text-sm font-medium">
+              <p className="mt-2 text-sm font-medium text-white/90">
                 Titolari: {startersCount}/15 · A disposizione: {benchCount}
               </p>
             )}
@@ -447,6 +468,7 @@ const MatchListModal: React.FC<MatchListModalProps> = ({
               
               <div className="grid grid-cols-1 gap-3">
                 <button
+                  type="button"
                   onClick={() => handleListTypeSelect('match')}
                   className="p-4 border-2 border-blue-200 rounded-xl hover:border-blue-400 hover:bg-blue-50 transition-all duration-200 text-left"
                 >
@@ -464,6 +486,7 @@ const MatchListModal: React.FC<MatchListModalProps> = ({
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => handleListTypeSelect('friendly')}
                   className="p-4 border-2 border-yellow-200 rounded-xl hover:border-yellow-400 hover:bg-yellow-50 transition-all duration-200 text-left"
                 >
@@ -479,6 +502,7 @@ const MatchListModal: React.FC<MatchListModalProps> = ({
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => handleListTypeSelect('training')}
                   className="p-4 border-2 border-green-200 rounded-xl hover:border-green-400 hover:bg-green-50 transition-all duration-200 text-left"
                 >
@@ -491,6 +515,17 @@ const MatchListModal: React.FC<MatchListModalProps> = ({
                       <div className="text-sm text-gray-600">Sessione di allenamento</div>
                     </div>
                   </div>
+                </button>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-xl border px-5 py-2.5 text-sm font-semibold transition-colors hover:bg-gray-50"
+                  style={{ borderColor: GOLEE.border, color: GOLEE.textMuted }}
+                >
+                  Annulla
                 </button>
               </div>
             </div>

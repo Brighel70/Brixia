@@ -8,14 +8,14 @@
 
 ## Codice condiviso
 
-- **`@brixia/shared`** (pacchetto in `TeamFlow/packages/shared`):
+- **`@teamflow/shared`** (pacchetto in `TeamFlow/packages/shared`):
   - **overlapCheck** – Validazione anti-accavallamento appuntamenti (buffer, regole giocatore/medico/macchinari).
   - **sessionScheduler** – Logica per creare sessioni automatiche da `training_locations`; entrambe le app usano lo stesso modulo passando il client Supabase.
-- FlowMe referenzia il pacchetto con `"@brixia/shared": "file:../../TEAMFLOW/TeamFlow/packages/shared"` (path relativo alla propria repo).
+- FlowMe referenzia il pacchetto con `"@teamflow/shared": "file:../../TEAMFLOW/TeamFlow/packages/shared"` (path relativo alla propria repo). Dopo il rename, aggiornare anche la dependency in FlowMe.
 
 ## Componenti duplicati
 
-Alcuni componenti UI esistono in entrambe le app (modali infortuni/partite, calendario settimanale). Sono documentati in `Componenti_duplicati_TeamFlow_FlowMe.md`; le modifiche vanno tenute allineate a mano o in futuro spostate in un pacchetto condiviso (es. `@brixia/shared-ui`).
+Alcuni componenti UI esistono in entrambe le app (modali infortuni/partite, calendario settimanale). Sono documentati in `Componenti_duplicati_TeamFlow_FlowMe.md`; le modifiche vanno tenute allineate a mano o in futuro spostate in un pacchetto condiviso (es. `@teamflow/shared-ui`).
 
 ## Brand e configurazione
 

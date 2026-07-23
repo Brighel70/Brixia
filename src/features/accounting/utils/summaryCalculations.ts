@@ -22,6 +22,10 @@ export function computeAccountingSummary(
   let incomeCents = 0
   let expenseCents = 0
   let reversalCents = 0
+  let reversalBalanceAdjustmentCents = 0
+  const byId = new Map(
+    movementRows.flatMap((row) => (row.id ? [[row.id, row] as const] : []))
+  )
 
   for (const row of movementRows) {
     if (row.status === 'reversed' || row.status === 'cancelled' || row.status === 'draft') {
@@ -43,6 +47,11 @@ export function computeAccountingSummary(
       (row.status === 'posted' || row.status === 'pending_account')
     ) {
       reversalCents += row.amount_cents
+      const original = row.reverses_movement_id ? byId.get(row.reverses_movement_id) : undefined
+      if (!original || original.status === 'reversed') continue
+
+      reversalBalanceAdjustmentCents +=
+        original.direction === 'expense' ? row.amount_cents : -row.amount_cents
     }
   }
 
@@ -50,7 +59,7 @@ export function computeAccountingSummary(
     incomeCents,
     expenseCents,
     reversalCents,
-    balanceCents: incomeCents - expenseCents - reversalCents,
+    balanceCents: incomeCents - expenseCents + reversalBalanceAdjustmentCents,
     residualCreditsCents,
     pendingReviewCount
   }

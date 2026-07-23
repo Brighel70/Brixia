@@ -1,4 +1,5 @@
-import { Plus, RotateCcw } from 'lucide-react'
+import { ArrowRightLeft, ChevronDown, FileText, Plus, RotateCcw } from 'lucide-react'
+import { useState } from 'react'
 import { formatFeeAmount } from '@/utils/feeUtils'
 import type {
   AccountingAccountRef,
@@ -7,19 +8,15 @@ import type {
   MovementDirection,
   MovementStatus
 } from '../types'
-import {
-  formatDocumentLabel,
-  formatPaymentReferenceLabel,
-  paymentMethodLabel
-} from '../utils/movementFormOptions'
+import { formatDocumentLabel, paymentMethodLabel } from '../utils/movementFormOptions'
 import {
   movementDirectionBadgeClass,
   movementDirectionLabel,
-  movementOriginLabel,
   movementStatusBadgeClass,
   movementStatusLabel
 } from '../utils/labels'
-import { isSystemMovementOrigin } from '../utils/movementHelpers'
+
+const COL_CATEGORIA = 'min-w-[16rem] w-[22%] px-4 py-3 text-sm text-slate-600'
 
 interface MovementsTabProps {
   accounts: AccountingAccountRef[]
@@ -34,8 +31,12 @@ interface MovementsTabProps {
   loading: boolean
   error: string | null
   canCreate: boolean
+  canExport: boolean
   fiscalYearOpen: boolean
   onCreateClick: () => void
+  onCreateTransferClick: () => void
+  pdfGenerating: boolean
+  onGeneratePdf: () => Promise<void>
   onMovementClick: (movement: AccountingMovement) => void
 }
 
@@ -46,7 +47,11 @@ function MovementRow({
   movement: AccountingMovement
   onClick: () => void
 }) {
-  const system = isSystemMovementOrigin(movement.origin)
+  const accountLabel =
+    movement.direction === 'transfer' && movement.transfer_account
+      ? `${movement.account?.name ?? '—'} -> ${movement.transfer_account.name}`
+      : movement.account?.name ?? '—'
+
   return (
     <tr
       className="cursor-pointer hover:bg-slate-50"
@@ -74,24 +79,16 @@ function MovementRow({
         {formatFeeAmount(movement.amount_cents)}
       </td>
       <td className="px-4 py-3 text-sm text-slate-600">
-        {movement.account ? `${movement.account.code} — ${movement.account.name}` : '—'}
+        {accountLabel}
       </td>
-      <td className="px-4 py-3 text-sm text-slate-600">
+      <td className={COL_CATEGORIA}>
         {movement.category ? `${movement.category.code} — ${movement.category.name}` : '—'}
-      </td>
-      <td className="px-4 py-3 text-sm text-slate-600">
-        <span className="inline-flex items-center gap-1">
-          {movementOriginLabel(movement.origin)}
-          {system && (
-            <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-blue-700">
-              Sync
-            </span>
-          )}
-        </span>
       </td>
       <td className="px-4 py-3">
         <span
-          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${movementStatusBadgeClass(movement.status)}`}
+          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${movementStatusBadgeClass(movement.status)}`}
+          title={`Stato tecnico: ${movement.status}`}
+          translate="no"
         >
           {movementStatusLabel(movement.status)}
         </span>
@@ -99,9 +96,8 @@ function MovementRow({
       <td className="px-4 py-3 text-sm text-slate-600">
         {paymentMethodLabel(movement.payment_method_raw)}
       </td>
-      <td className="px-4 py-3 text-sm text-slate-600">{formatDocumentLabel(movement)}</td>
       <td className="px-4 py-3 text-sm text-slate-600">
-        {formatPaymentReferenceLabel(movement)}
+        {formatDocumentLabel(movement)}
       </td>
     </tr>
   )
@@ -114,12 +110,16 @@ function MovementCard({
   movement: AccountingMovement
   onClick: () => void
 }) {
-  const system = isSystemMovementOrigin(movement.origin)
+  const accountLabel =
+    movement.direction === 'transfer' && movement.transfer_account
+      ? `${movement.account?.name ?? '—'} -> ${movement.transfer_account.name}`
+      : movement.account?.name ?? '—'
+
   return (
     <button
       type="button"
       onClick={onClick}
-      className="w-full rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm hover:border-brixia-primary/40"
+      className="w-full rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm hover:border-brand-primary/40"
     >
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -137,7 +137,9 @@ function MovementCard({
           {movementDirectionLabel(movement.direction)}
         </span>
         <span
-          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${movementStatusBadgeClass(movement.status)}`}
+          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${movementStatusBadgeClass(movement.status)}`}
+          title={`Stato tecnico: ${movement.status}`}
+          translate="no"
         >
           {movementStatusLabel(movement.status)}
         </span>
@@ -145,16 +147,11 @@ function MovementCard({
       <dl className="mt-3 grid grid-cols-1 gap-1 text-sm text-slate-600">
         <div>
           <span className="text-slate-500">Conto: </span>
-          {movement.account ? `${movement.account.code} — ${movement.account.name}` : '—'}
+          {accountLabel}
         </div>
         <div>
           <span className="text-slate-500">Categoria: </span>
           {movement.category ? `${movement.category.code} — ${movement.category.name}` : '—'}
-        </div>
-        <div>
-          <span className="text-slate-500">Origine: </span>
-          {movementOriginLabel(movement.origin)}
-          {system && ' · Sync'}
         </div>
         <div>
           <span className="text-slate-500">Metodo: </span>
@@ -163,10 +160,6 @@ function MovementCard({
         <div>
           <span className="text-slate-500">Documento: </span>
           {formatDocumentLabel(movement)}
-        </div>
-        <div>
-          <span className="text-slate-500">Rif. pagamento: </span>
-          {formatPaymentReferenceLabel(movement)}
         </div>
       </dl>
     </button>
@@ -186,10 +179,15 @@ export function MovementsTab({
   loading,
   error,
   canCreate,
+  canExport,
   fiscalYearOpen,
   onCreateClick,
+  onCreateTransferClick,
+  pdfGenerating,
+  onGeneratePdf,
   onMovementClick
 }: MovementsTabProps) {
+  const [createMenuOpen, setCreateMenuOpen] = useState(false)
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
   const hasFilters =
     filters.search ||
@@ -203,33 +201,73 @@ export function MovementsTab({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div />
-        {canCreate && (
-          <button
-            type="button"
-            onClick={onCreateClick}
-            disabled={!fiscalYearOpen}
-            title={
-              fiscalYearOpen
-                ? 'Crea nuova bozza'
-                : 'Disponibile solo con esercizio aperto'
-            }
-            className="inline-flex items-center gap-2 rounded-lg bg-brixia-primary px-4 py-2 text-sm font-medium text-white hover:bg-brixia-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Plus className="h-4 w-4" />
-            Nuovo movimento
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {canExport && (
+            <button
+              type="button"
+              onClick={() => void onGeneratePdf()}
+              disabled={pdfGenerating || loading}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              <FileText className="h-4 w-4" />
+              {pdfGenerating ? 'Generazione PDF...' : 'Genera PDF'}
+            </button>
+          )}
+          {canCreate && (
+            <div className="relative">
+            <button
+              type="button"
+              onClick={() => setCreateMenuOpen((open) => !open)}
+              disabled={!fiscalYearOpen}
+              title={fiscalYearOpen ? 'Crea una nuova bozza' : 'Disponibile solo con esercizio aperto'}
+              className="inline-flex items-center gap-2 rounded-lg bg-brand-primary px-4 py-2 text-sm font-medium text-white hover:bg-brand-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Plus className="h-4 w-4" />
+              Nuova registrazione
+              <ChevronDown className="h-4 w-4" />
+            </button>
+            {createMenuOpen && fiscalYearOpen && (
+              <div className="absolute right-0 z-20 mt-2 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCreateMenuOpen(false)
+                    onCreateClick()
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-800 hover:bg-slate-50"
+                >
+                  <Plus className="h-4 w-4 text-emerald-600" />
+                  Entrata o uscita
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCreateMenuOpen(false)
+                    onCreateTransferClick()
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-800 hover:bg-blue-50"
+                >
+                  <ArrowRightLeft className="h-4 w-4 text-blue-600" />
+                  Giroconto tra conti
+                </button>
+              </div>
+            )}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="rounded-xl bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-end gap-4">
           <div className="min-w-[180px] flex-1">
-            <label className="mb-1 block text-xs font-medium text-slate-600">Cerca</label>
+            <label className="mb-1 block whitespace-nowrap text-xs font-medium text-slate-600" translate="no">
+              Cerca
+            </label>
             <input
               type="search"
               value={filters.search}
               onChange={(e) => onFiltersChange({ search: e.target.value })}
-              placeholder="Descrizione, riferimento, metodo..."
+              placeholder="Cerca in tutte le colonne..."
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
             />
           </div>
@@ -243,7 +281,7 @@ export function MovementsTab({
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">A</label>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Al</label>
             <input
               type="date"
               value={filters.dateTo}
@@ -332,7 +370,7 @@ export function MovementsTab({
             <button
               type="button"
               onClick={onCreateClick}
-              className="mt-4 inline-flex items-center gap-2 rounded-lg bg-brixia-primary px-4 py-2 text-sm font-medium text-white"
+              className="mt-4 inline-flex items-center gap-2 rounded-lg bg-brand-primary px-4 py-2 text-sm font-medium text-white"
             >
               <Plus className="h-4 w-4" />
               Nuovo movimento
@@ -353,15 +391,15 @@ export function MovementsTab({
                       'Importo',
                       'Conto',
                       'Categoria',
-                      'Origine',
                       'Stato',
                       'Metodo',
-                      'Documento',
-                      'Rif. pagamento'
+                      'Documento'
                     ].map((h) => (
                       <th
                         key={h}
-                        className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
+                        className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500${
+                          h === 'Categoria' ? ' min-w-[16rem] w-[22%]' : ''
+                        }`}
                       >
                         {h}
                       </th>

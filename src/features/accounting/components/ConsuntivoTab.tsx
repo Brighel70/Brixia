@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Download, Printer, RotateCcw } from 'lucide-react'
+import { BarChart3, Download, FileText, RotateCcw } from 'lucide-react'
+import { toast } from 'sonner'
 import { formatFeeAmount } from '@/utils/feeUtils'
 import type {
   AccountingAccountRef,
@@ -17,6 +18,10 @@ import {
   consuntivoReportToCsv,
   downloadConsuntivoCsv
 } from '../utils/consuntivoCalculations'
+import { previewBudgetComparisonPdf, previewConsuntivoPdf } from '../utils/accountingReportsPdf'
+import { reservePdfPreviewWindow } from '../utils/documentTemplates'
+import { AccountingPdfOptionsModal } from './AccountingPdfOptionsModal'
+import type { AccountingPdfDetailLevel } from '../utils/accountingReportsPdf'
 import { findQuoteCategory } from '../utils/budgetCalculations'
 import {
   movementDirectionLabel,
@@ -30,7 +35,7 @@ interface ConsuntivoTabProps {
   accounts: AccountingAccountRef[]
   categories: AccountingCategoryRef[]
   budgetLines: AccountingBudgetLine[]
-  hasApprovedBudget: boolean
+  hasActiveBudget: boolean
   fees: FeesBudgetAggregate | null
   filters: ConsuntivoFilterState
   onFiltersChange: (patch: Partial<ConsuntivoFilterState>) => void
@@ -38,6 +43,7 @@ interface ConsuntivoTabProps {
   loading: boolean
   error: string | null
   canExport: boolean
+  onOpenReconciliation?: () => void
 }
 
 function formatPercent(value: number | null): string {
@@ -58,6 +64,7 @@ function natureLabel(nature: ReceivableNature | 'unknown'): string {
 }
 
 type PeriodMode = 'year' | 'custom'
+type PdfKind = 'consuntivo' | 'comparison'
 
 export function ConsuntivoTab({
   fiscalYear,
@@ -65,18 +72,22 @@ export function ConsuntivoTab({
   accounts,
   categories,
   budgetLines,
-  hasApprovedBudget,
+  hasActiveBudget,
   fees,
   filters,
   onFiltersChange,
   onResetFilters,
   loading,
   error,
-  canExport
+  canExport,
+  onOpenReconciliation
 }: ConsuntivoTabProps) {
   const [periodMode, setPeriodMode] = useState<PeriodMode>(
     filters.dateFrom || filters.dateTo ? 'custom' : 'year'
   )
+  const [pdfGenerating, setPdfGenerating] = useState(false)
+  const [pdfOptionsOpen, setPdfOptionsOpen] = useState(false)
+  const [pdfKind, setPdfKind] = useState<PdfKind>('consuntivo')
 
   const quoteCategory = useMemo(() => findQuoteCategory(categories), [categories])
 
@@ -88,7 +99,7 @@ export function ConsuntivoTab({
         categories,
         accounts,
         budgetLines,
-        hasApprovedBudget,
+        hasActiveBudget,
         fees,
         quoteCategory
       }),
@@ -98,7 +109,7 @@ export function ConsuntivoTab({
       categories,
       accounts,
       budgetLines,
-      hasApprovedBudget,
+      hasActiveBudget,
       fees,
       quoteCategory
     ]
@@ -117,8 +128,38 @@ export function ConsuntivoTab({
     downloadConsuntivoCsv(csv, `consuntivo-${fiscalYear.code}.csv`)
   }
 
-  const handlePrint = () => {
-    window.print()
+  const handleGeneratePdf = async (detailLevel: AccountingPdfDetailLevel) => {
+    if (pdfGenerating) return
+    if (pdfKind === 'comparison' && !report.hasActiveBudget) {
+      toast.error('Per il confronto serve prima un preventivo')
+      return
+    }
+    const previewWindow = reservePdfPreviewWindow()
+    setPdfGenerating(true)
+    try {
+      if (pdfKind === 'comparison') {
+        await previewBudgetComparisonPdf({
+          fiscalYear,
+          report,
+          categories,
+          detailLevel,
+          previewWindow
+        })
+      } else {
+        await previewConsuntivoPdf({ fiscalYear, report, detailLevel, previewWindow })
+      }
+      toast.success(
+        pdfKind === 'comparison'
+          ? 'PDF di confronto preventivo-consuntivo generato'
+          : 'PDF del consuntivo generato'
+      )
+      setPdfOptionsOpen(false)
+    } catch (err) {
+      if (previewWindow && !previewWindow.closed) previewWindow.close()
+      toast.error(err instanceof Error ? err.message : 'Generazione PDF non riuscita')
+    } finally {
+      setPdfGenerating(false)
+    }
   }
 
   if (loading) {
@@ -146,9 +187,12 @@ export function ConsuntivoTab({
   }
 
   const { kpis, completeness } = report
+  const isDirectionFiltered = filters.direction !== 'all'
+  const directionFilterLabel = filters.direction === 'income' ? 'solo le entrate' : 'solo le uscite'
+  const totalLabelPrefix = isDirectionFiltered ? 'Nel filtro' : 'Totale'
 
   return (
-    <div className="consuntivo-print-root space-y-6">
+    <div className="space-y-6">
       <style>{`
         @media print {
           body * { visibility: hidden !important; }
@@ -184,7 +228,7 @@ export function ConsuntivoTab({
               Criterio di cassa sui movimenti contabilizzati. Solo lettura.
             </p>
           </div>
-          <div className="consuntivo-no-print flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2">
             {canExport && (
               <>
                 <button
@@ -197,18 +241,44 @@ export function ConsuntivoTab({
                 </button>
                 <button
                   type="button"
-                  onClick={handlePrint}
-                  className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  onClick={() => {
+                    setPdfKind('consuntivo')
+                    setPdfOptionsOpen(true)
+                  }}
+                  disabled={pdfGenerating}
+                  className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                 >
-                  <Printer className="h-4 w-4" />
-                  Stampa / PDF
+                  <FileText className="h-4 w-4" />
+                  {pdfGenerating ? 'Generazione PDF...' : 'PDF consuntivo'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPdfKind('comparison')
+                    setPdfOptionsOpen(true)
+                  }}
+                  disabled={pdfGenerating || !report.hasActiveBudget}
+                  title={
+                    report.hasActiveBudget
+                      ? 'Confronta preventivo ed effettivo'
+                      : 'Serve prima un preventivo'
+                  }
+                  className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <BarChart3 className="h-4 w-4" />
+                  PDF confronto
                 </button>
               </>
             )}
           </div>
         </div>
+        {!report.hasActiveBudget && (
+          <p className="mt-3 text-xs text-amber-800">
+            Crea un preventivo per poter generare il confronto con il consuntivo.
+          </p>
+        )}
 
-        <div className="consuntivo-no-print mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               Filtri
@@ -251,7 +321,7 @@ export function ConsuntivoTab({
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-600">A</label>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">Al</label>
                   <input
                     type="date"
                     value={filters.dateTo}
@@ -348,10 +418,26 @@ export function ConsuntivoTab({
         </div>
       </div>
 
+      {isDirectionFiltered && (
+        <div className="flex flex-col gap-3 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950 sm:flex-row sm:items-center sm:justify-between">
+          <p>
+            Stai visualizzando <strong>{directionFilterLabel}</strong>. I totali qui sotto non includono
+            l'altra direzione.
+          </p>
+          <button
+            type="button"
+            onClick={() => onFiltersChange({ direction: 'all' })}
+            className="shrink-0 font-semibold text-sky-800 underline decoration-sky-300 underline-offset-4 hover:text-sky-950"
+          >
+            Mostra entrate e uscite
+          </button>
+        </div>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {[
-          { label: 'Totale entrate', value: formatFeeAmount(kpis.incomeCents) },
-          { label: 'Totale uscite', value: formatFeeAmount(kpis.expenseCents) },
+          { label: `${totalLabelPrefix} entrate`, value: formatFeeAmount(kpis.incomeCents) },
+          { label: `${totalLabelPrefix} uscite`, value: formatFeeAmount(kpis.expenseCents) },
           {
             label: 'Avanzo / disavanzo',
             value: formatSignedCents(kpis.surplusCents),
@@ -404,42 +490,62 @@ export function ConsuntivoTab({
                   </td>
                 </tr>
               ) : (
-                report.categories.map((row) => {
-                  const cat = categories.find((c) => c.id === row.categoryId)
-                  const groupLabel = cat?.group
-                    ? `${cat.group.code} · `
-                    : ''
-                  const inactiveBadge =
-                    cat && cat.is_active === false ? (
-                      <span className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700">
-                        Categoria non attiva
-                      </span>
-                    ) : null
-                  return (
-                  <tr key={row.categoryId ?? 'none'}>
-                    <td className="px-3 py-2 text-slate-900">
-                      <span className="text-xs text-slate-500">{groupLabel}</span>
-                      <span className="font-medium">{row.categoryCode}</span>
-                      <span className="text-slate-500"> — {row.categoryName}</span>
-                      {inactiveBadge}
+                report.categoryGroups.flatMap((group) => [
+                  <tr key={`group:${group.groupId ?? 'legacy'}`} className="bg-slate-50">
+                    <td colSpan={2} className="px-3 py-2 text-slate-900">
+                      <span className="font-semibold">{group.groupName}</span>
+                      {group.isLegacy && (
+                        <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+                          Storico senza macro
+                        </span>
+                      )}
                     </td>
-                    <td className="px-3 py-2 text-slate-600">{natureLabel(row.nature)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-900">
-                      {formatFeeAmount(row.incomeCents)}
+                    <td className="px-3 py-2 text-right font-semibold tabular-nums text-slate-900">
+                      {formatFeeAmount(group.incomeCents)}
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-900">
-                      {formatFeeAmount(row.expenseCents)}
+                    <td className="px-3 py-2 text-right font-semibold tabular-nums text-slate-900">
+                      {formatFeeAmount(group.expenseCents)}
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-900">
-                      {formatSignedCents(row.balanceCents)}
+                    <td className="px-3 py-2 text-right font-semibold tabular-nums text-slate-900">
+                      {formatSignedCents(group.balanceCents)}
                     </td>
-                    <td className="px-3 py-2 text-right text-slate-600">{row.movementCount}</td>
-                    <td className="px-3 py-2 text-xs text-amber-700">
-                      {row.anomalies.length ? row.anomalies.join(' · ') : '—'}
+                    <td className="px-3 py-2 text-right font-semibold text-slate-600">
+                      {group.movementCount}
                     </td>
-                  </tr>
-                  )
-                })
+                    <td className="px-3 py-2 text-xs text-slate-500">Totale macro</td>
+                  </tr>,
+                  ...group.categories.map((row) => (
+                    <tr key={row.categoryId ?? `none:${group.groupId ?? 'legacy'}`}>
+                      <td className="px-3 py-2 pl-6 text-slate-900">
+                        <span className="font-normal">{row.categoryName}</span>
+                        {row.isInactive && (
+                          <span className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700">
+                            Non attiva
+                          </span>
+                        )}
+                        {row.isArchived && (
+                          <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+                            Archiviata
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-slate-600">{natureLabel(row.nature)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-900">
+                        {formatFeeAmount(row.incomeCents)}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-900">
+                        {formatFeeAmount(row.expenseCents)}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-900">
+                        {formatSignedCents(row.balanceCents)}
+                      </td>
+                      <td className="px-3 py-2 text-right text-slate-600">{row.movementCount}</td>
+                      <td className="px-3 py-2 text-xs text-amber-700">
+                        {row.anomalies.length ? row.anomalies.join(' · ') : '—'}
+                      </td>
+                    </tr>
+                  ))
+                ])
               )}
             </tbody>
           </table>
@@ -448,10 +554,10 @@ export function ConsuntivoTab({
 
       <section className="rounded-xl bg-white p-6 shadow-sm">
         <h3 className="text-base font-semibold text-slate-900">
-          Confronto con preventivo approvato
+          Confronto con preventivo
         </h3>
-        {!hasApprovedBudget ? (
-          <p className="mt-3 text-sm text-slate-600">Nessun preventivo approvato</p>
+        {!hasActiveBudget ? (
+          <p className="mt-3 text-sm text-slate-600">Nessun preventivo disponibile</p>
         ) : (
           <div className="mt-4 overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
@@ -504,6 +610,18 @@ export function ConsuntivoTab({
         <p className="mt-1 text-xs text-slate-500">
           Totale movimenti netti per conto (criterio di cassa). Non è un saldo bancario
           riconciliato con estratto conto.
+          {onOpenReconciliation && (
+            <>
+              {' '}
+              <button
+                type="button"
+                onClick={onOpenReconciliation}
+                className="font-medium text-brand-primary hover:underline"
+              >
+                Vai alla riconciliazione
+              </button>
+            </>
+          )}
         </p>
         <div className="mt-4 overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
@@ -586,6 +704,15 @@ export function ConsuntivoTab({
           </p>
         )}
       </section>
+      <AccountingPdfOptionsModal
+        open={pdfOptionsOpen}
+        title={pdfKind === 'comparison' ? 'Confronto preventivo e consuntivo' : 'Rendiconto gestionale'}
+        generating={pdfGenerating}
+        onClose={() => {
+          if (!pdfGenerating) setPdfOptionsOpen(false)
+        }}
+        onGenerate={handleGeneratePdf}
+      />
     </div>
   )
 }

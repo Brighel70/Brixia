@@ -62,7 +62,8 @@ export interface BrandConfig {
   }
 }
 
-// Configurazione di default
+// Seed club di default per questa installazione (non è il nome del prodotto TeamFlow).
+// Altre società sovrascrivono tutto da Personalizzazione Brand / storage.
 export const DEFAULT_BRAND_CONFIG: BrandConfig = {
   // Nome e identità del club
   clubName: 'Brixia Rugby',
@@ -72,7 +73,7 @@ export const DEFAULT_BRAND_CONFIG: BrandConfig = {
   
   // Colori sociali del club
   colors: {
-    primary: '#0b1f4d',      // Blu navy Brixia
+    primary: '#0b1f4d',      // Blu navy
     secondary: '#4aa3ff',    // Celeste
     accent: '#f7f7f5',       // Bianco sporco
     success: '#10b981',      // Verde per presenze
@@ -95,13 +96,13 @@ export const DEFAULT_BRAND_CONFIG: BrandConfig = {
   // Stagione sportiva
   season: '2025/26',
   
-  // Logo e assets (logo ufficiale = public/logo bianco e celeste.png, copia come logo-brixia-official.png)
+  // Logo e assets del club (file in public/; sostituibili da Brand)
   assets: {
     logo: '/logo-brixia-official.png',
-    logoAlt: 'Logo Brixia Rugby',
+    logoAlt: 'Logo società',
     favicon: '/favicon.ico',
     heroImage: '/hero-rugby.jpg',
-    headerCenterLogo: '/TeamFlow%20bubble.png',  // Logo al centro dell'header (sostituibile da Brand)
+    headerCenterLogo: '/TeamFlow%20bubble.png',  // Logo prodotto header (sostituibile)
     mobileAppLogo: '',  // Logo app mobile: caricato da Brand, pubblicato su Storage per FlowMe
     letterheadLogo: ''  // Logo per carta intestata (ricevute PDF)
   },
@@ -124,16 +125,18 @@ export const DEFAULT_BRAND_CONFIG: BrandConfig = {
   }
 }
 
-const BRAND_STORAGE_KEY = 'brixia-brand-config'
-const IDB_NAME = 'AppBrixiaBrand'
+const BRAND_STORAGE_KEY = 'teamflow-brand-config'
+const LEGACY_BRAND_STORAGE_KEY = 'brixia-brand-config'
+const IDB_NAME = 'TeamFlowBrand'
+const LEGACY_IDB_NAME = 'AppBrixiaBrand'
 const IDB_VERSION = 1
 const IDB_STORE = 'config'
 
 let cachedConfig: BrandConfig | null = null
 
-function openBrandDB(): Promise<IDBDatabase> {
+function openBrandDB(name: string = IDB_NAME): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(IDB_NAME, IDB_VERSION)
+    const req = indexedDB.open(name, IDB_VERSION)
     req.onerror = () => reject(req.error)
     req.onsuccess = () => resolve(req.result)
     req.onupgradeneeded = (e) => {
@@ -146,22 +149,47 @@ function openBrandDB(): Promise<IDBDatabase> {
 }
 
 async function getBrandFromIDB(): Promise<string | null> {
-  const db = await openBrandDB()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(IDB_STORE, 'readonly')
-    const req = tx.objectStore(IDB_STORE).get(BRAND_STORAGE_KEY)
-    req.onsuccess = () => { db.close(); resolve(req.result ?? null) }
-    req.onerror = () => { db.close(); reject(req.error) }
-  })
+  const tryGet = async (dbName: string, key: string): Promise<string | null> => {
+    try {
+      const db = await openBrandDB(dbName)
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction(IDB_STORE, 'readonly')
+        const req = tx.objectStore(IDB_STORE).get(key)
+        req.onsuccess = () => {
+          db.close()
+          resolve((req.result as string | undefined) ?? null)
+        }
+        req.onerror = () => {
+          db.close()
+          reject(req.error)
+        }
+      })
+    } catch {
+      return null
+    }
+  }
+
+  return (
+    (await tryGet(IDB_NAME, BRAND_STORAGE_KEY)) ||
+    (await tryGet(IDB_NAME, LEGACY_BRAND_STORAGE_KEY)) ||
+    (await tryGet(LEGACY_IDB_NAME, LEGACY_BRAND_STORAGE_KEY)) ||
+    (await tryGet(LEGACY_IDB_NAME, BRAND_STORAGE_KEY))
+  )
 }
 
 async function setBrandInIDB(json: string): Promise<void> {
-  const db = await openBrandDB()
+  const db = await openBrandDB(IDB_NAME)
   return new Promise((resolve, reject) => {
     const tx = db.transaction(IDB_STORE, 'readwrite')
     tx.objectStore(IDB_STORE).put(json, BRAND_STORAGE_KEY)
-    tx.oncomplete = () => { db.close(); resolve() }
-    tx.onerror = () => { db.close(); reject(tx.error) }
+    tx.oncomplete = () => {
+      db.close()
+      resolve()
+    }
+    tx.onerror = () => {
+      db.close()
+      reject(tx.error)
+    }
   })
 }
 
@@ -170,12 +198,20 @@ export async function initBrandConfig(): Promise<BrandConfig> {
   try {
     let json: string | null = await getBrandFromIDB()
     if (!json) {
-      const fromLS = localStorage.getItem(BRAND_STORAGE_KEY)
+      const fromLS =
+        localStorage.getItem(BRAND_STORAGE_KEY) ||
+        localStorage.getItem(LEGACY_BRAND_STORAGE_KEY)
       if (fromLS) {
         json = fromLS
         await setBrandInIDB(json)
-        try { localStorage.removeItem(BRAND_STORAGE_KEY) } catch (_) {}
+        try {
+          localStorage.removeItem(BRAND_STORAGE_KEY)
+          localStorage.removeItem(LEGACY_BRAND_STORAGE_KEY)
+        } catch (_) {}
       }
+    } else {
+      // Migra su chiavi/DB nuovi se arrivava dal legacy
+      await setBrandInIDB(json)
     }
     if (json) {
       const parsed = JSON.parse(json)
@@ -197,7 +233,9 @@ export async function initBrandConfig(): Promise<BrandConfig> {
 export const getBrandConfig = (): BrandConfig => {
   if (cachedConfig) return cachedConfig
   try {
-    const saved = localStorage.getItem(BRAND_STORAGE_KEY)
+    const saved =
+      localStorage.getItem(BRAND_STORAGE_KEY) ||
+      localStorage.getItem(LEGACY_BRAND_STORAGE_KEY)
     if (saved) return { ...DEFAULT_BRAND_CONFIG, ...JSON.parse(saved) }
   } catch (_) {}
   return DEFAULT_BRAND_CONFIG
@@ -238,18 +276,18 @@ export function applyFavicon(config: BrandConfig) {
 export const updateCSSVariables = (config: BrandConfig) => {
   const root = document.documentElement
   
-  // Colori principali
-  root.style.setProperty('--brixia-primary', config.colors.primary)
-  root.style.setProperty('--brixia-secondary', config.colors.secondary)
-  root.style.setProperty('--brixia-accent', config.colors.accent)
-  root.style.setProperty('--brixia-success', config.colors.success)
-  root.style.setProperty('--brixia-warning', config.colors.warning)
-  root.style.setProperty('--brixia-danger', config.colors.danger)
-  root.style.setProperty('--brixia-info', config.colors.info)
+  // Colori principali (token prodotto-neutri; valori = club corrente)
+  root.style.setProperty('--brand-primary', config.colors.primary)
+  root.style.setProperty('--brand-secondary', config.colors.secondary)
+  root.style.setProperty('--brand-accent', config.colors.accent)
+  root.style.setProperty('--brand-success', config.colors.success)
+  root.style.setProperty('--brand-warning', config.colors.warning)
+  root.style.setProperty('--brand-danger', config.colors.danger)
+  root.style.setProperty('--brand-info', config.colors.info)
   
   // Font e UI
   if (config.ui.fontFamily) {
-    root.style.setProperty('--brixia-font-family', config.ui.fontFamily)
+    root.style.setProperty('--brand-font-family', config.ui.fontFamily)
   }
   
   // Tema
